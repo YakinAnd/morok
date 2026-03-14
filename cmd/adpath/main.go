@@ -7,6 +7,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"github.com/YakinAnd/adpath/internal/analysis"
 	"github.com/YakinAnd/adpath/internal/graph"
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 	"github.com/YakinAnd/adpath/internal/report"
@@ -52,6 +53,12 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var kerberosCmd = &cobra.Command{
+    Use:   "kerberos",
+    Short: "Analyze Kerberoastable and AS-REP roastable accounts",
+    RunE:  runKerberos,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
@@ -66,8 +73,17 @@ func init() {
 	enumCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 	enumCmd.MarkFlagRequired("domain")
 
+	kerberosCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
+  kerberosCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
+  kerberosCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
+  kerberosCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+  kerberosCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+  kerberosCmd.MarkFlagRequired("domain")
+
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(kerberosCmd)
+
 	rootCmd.Version = "0.1.0"
 }
 
@@ -123,6 +139,45 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+
+// ============================================================
+// Логіка команди Kerberoasting
+// ============================================================
+func runKerberos(cmd *cobra.Command, args []string) error {
+    printBanner()
+
+    // підключення
+    client := adldap.NewClient(domain, username, password, dc, verbose)
+    if err := client.Connect(); err != nil {
+        return fmt.Errorf("connection error: %w", err)
+    }
+    defer client.Close()
+
+    // автентифікація
+    if username != "" {
+        if err := client.Bind(); err != nil {
+            return fmt.Errorf("auth error: %w", err)
+        }
+    } else {
+        color.Yellow("[!] No credentials provided, trying anonymous bind...")
+        if err := client.AnonymousBind(); err != nil {
+            return fmt.Errorf("anonymous bind failed: %w", err)
+        }
+    }
+
+    // enumeration
+    result, err := client.EnumerateAll()
+    if err != nil {
+        return fmt.Errorf("enumeration error: %w", err)
+    }
+
+    // kerberos аналіз
+    kr := analysis.AnalyzeKerberos(result)
+    analysis.PrintKerberosResult(kr)
+
+    return nil
 }
 
 // ============================================================
