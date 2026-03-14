@@ -59,6 +59,12 @@ var kerberosCmd = &cobra.Command{
     RunE:  runKerberos,
 }
 
+var aclCmd = &cobra.Command{
+    Use:   "acl",
+    Short: "Analyze dangerous ACL permissions in AD",
+    RunE:  runACL,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
@@ -78,8 +84,16 @@ func init() {
   kerberosCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
   kerberosCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
   kerberosCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-  kerberosCmd.MarkFlagRequired("domain")
+	kerberosCmd.MarkFlagRequired("domain")
 
+	aclCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
+	aclCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
+	aclCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
+	aclCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+	aclCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	aclCmd.MarkFlagRequired("domain")
+
+	rootCmd.AddCommand(aclCmd)
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(kerberosCmd)
@@ -176,6 +190,45 @@ func runKerberos(cmd *cobra.Command, args []string) error {
     // kerberos аналіз
     kr := analysis.AnalyzeKerberos(result)
     analysis.PrintKerberosResult(kr)
+
+    return nil
+}
+
+
+// ============================================================
+// Логіка команди ACL аналіз
+// ============================================================
+func runACL(cmd *cobra.Command, args []string) error {
+    printBanner()
+
+    client := adldap.NewClient(domain, username, password, dc, verbose)
+    if err := client.Connect(); err != nil {
+        return fmt.Errorf("connection error: %w", err)
+    }
+    defer client.Close()
+
+    if username != "" {
+        if err := client.Bind(); err != nil {
+            return fmt.Errorf("auth error: %w", err)
+        }
+    } else {
+        color.Yellow("[!] No credentials provided, trying anonymous bind...")
+        if err := client.AnonymousBind(); err != nil {
+            return fmt.Errorf("anonymous bind failed: %w", err)
+        }
+    }
+
+    result, err := client.EnumerateAll()
+    if err != nil {
+        return fmt.Errorf("enumeration error: %w", err)
+    }
+
+    aclResult, err := analysis.AnalyzeACL(client, result)
+    if err != nil {
+        return fmt.Errorf("ACL analysis error: %w", err)
+    }
+
+    analysis.PrintACLResult(aclResult)
 
     return nil
 }

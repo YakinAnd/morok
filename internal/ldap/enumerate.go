@@ -28,6 +28,7 @@ type LDAPUser struct {
 	DontReqPreauth   bool   // AS-REP roastable
 	LastLogon        string
 	PasswordLastSet  string
+	ObjectSid        string
 }
 
 // LDAPGroup представляє групу AD
@@ -38,6 +39,7 @@ type LDAPGroup struct {
 	Members        []string // DN членів
 	AdminCount     bool
 	GroupType      string
+	ObjectSid      string
 }
 
 // LDAPComputer представляє комп'ютер AD
@@ -51,6 +53,7 @@ type LDAPComputer struct {
 	LastLogon              string
 	SPNs                   []string
 	UnconstrainedDelegation bool
+	ObjectSid              string
 }
 
 // EnumerationResult містить всі зібрані дані
@@ -91,6 +94,7 @@ var userAttributes = []string{
 	"userAccountControl",
 	"lastLogonTimestamp",
 	"pwdLastSet",
+	"objectSid",
 }
 
 var groupAttributes = []string{
@@ -100,6 +104,7 @@ var groupAttributes = []string{
 	"member",
 	"adminCount",
 	"groupType",
+	"objectSid",
 }
 
 var computerAttributes = []string{
@@ -111,6 +116,7 @@ var computerAttributes = []string{
 	"userAccountControl",
 	"lastLogonTimestamp",
 	"servicePrincipalName",
+	"objectSid",
 }
 
 // ============================================================
@@ -241,6 +247,7 @@ func parseUser(entry *goldap.Entry) LDAPUser {
 		DontReqPreauth:       isBitSet(uac, 0x400000), // ADS_UF_DONT_REQUIRE_PREAUTH
 		LastLogon:            parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		PasswordLastSet:      parseFileTime(entry.GetAttributeValue("pwdLastSet")),
+		ObjectSid:            parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
 	}
 }
 
@@ -252,6 +259,7 @@ func parseGroup(entry *goldap.Entry) LDAPGroup {
 		Members:        entry.GetAttributeValues("member"),
 		AdminCount:     entry.GetAttributeValue("adminCount") == "1",
 		GroupType:      parseGroupType(entry.GetAttributeValue("groupType")),
+		ObjectSid:      parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
 	}
 }
 
@@ -267,7 +275,8 @@ func parseComputer(entry *goldap.Entry) LDAPComputer {
 		Enabled:                 !isBitSet(uac, 0x0002),
 		LastLogon:               parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		SPNs:                    entry.GetAttributeValues("servicePrincipalName"),
-		UnconstrainedDelegation: isBitSet(uac, 0x80000), // ADS_UF_TRUSTED_FOR_DELEGATION
+		UnconstrainedDelegation: isBitSet(uac, 0x80000),
+		ObjectSid:               parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
 	}
 }
 
@@ -404,4 +413,29 @@ func printFinding(label string, count int) {
 	} else {
 		color.Red("    %-40s %d  ◄", label+":", count)
 	}
+}
+
+// parseSIDBytes конвертує raw objectSid bytes в рядок S-1-5-...
+func parseSIDBytes(data []byte) string {
+	if len(data) < 8 {
+		return ""
+	}
+	revision := data[0]
+	subAuthorityCount := int(data[1])
+	if len(data) < 8+subAuthorityCount*4 {
+		return ""
+	}
+	var authority uint64
+	for i := 0; i < 6; i++ {
+		authority = authority<<8 | uint64(data[2+i])
+	}
+	sid := fmt.Sprintf("S-%d-%d", revision, authority)
+	for i := 0; i < subAuthorityCount; i++ {
+		subAuth := uint32(data[8+i*4]) |
+			uint32(data[9+i*4])<<8 |
+			uint32(data[10+i*4])<<16 |
+			uint32(data[11+i*4])<<24
+		sid += fmt.Sprintf("-%d", subAuth)
+	}
+	return sid
 }

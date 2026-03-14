@@ -200,6 +200,39 @@ func (c *Client) GetBaseDN() string {
 	return c.BaseDN
 }
 
+// GetConn повертає активне з'єднання
+func (c *Client) GetConn() *goldap.Conn {
+    return c.conn
+}
+
+// SearchACL виконує LDAP пошук з nTSecurityDescriptor
+func (c *Client) SearchACL() ([]*goldap.Entry, error) {
+    sdControl := goldap.NewControlString(
+        "1.2.840.113556.1.4.801",
+        true,
+        string([]byte{0x30, 0x03, 0x02, 0x01, 0x04}),
+    )
+
+		filter := "(|(objectClass=user)(objectClass=group)(objectClass=computer)(objectClass=organizationalUnit)(objectClass=domainDNS))"
+
+    searchReq := goldap.NewSearchRequest(
+        c.BaseDN,
+        goldap.ScopeWholeSubtree,
+        goldap.NeverDerefAliases,
+        0, 30, false,
+        filter,
+        []string{"distinguishedName", "sAMAccountName", "objectClass", "nTSecurityDescriptor"},
+        []goldap.Control{sdControl},
+    )
+
+    result, err := c.conn.Search(searchReq)
+    if err != nil {
+        return nil, fmt.Errorf("ACL search error: %w", err)
+    }
+
+    return result.Entries, nil
+}
+
 // domainToBaseDN конвертує "corp.local" → "DC=corp,DC=local"
 func domainToBaseDN(domain string) string {
 	parts := strings.Split(domain, ".")

@@ -1,0 +1,708 @@
+package analysis
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/fatih/color"
+	goldap "github.com/go-ldap/ldap/v3"
+
+	adldap "github.com/YakinAnd/adpath/internal/ldap"
+)
+
+// ============================================================
+// Моделі даних
+// ============================================================
+
+// ACLRight — тип небезпечного права
+type ACLRight string
+
+const (
+	RightGenericAll         ACLRight = "GenericAll"
+	RightWriteDACL          ACLRight = "WriteDACL"
+	RightWriteOwner         ACLRight = "WriteOwner"
+	RightGenericWrite       ACLRight = "GenericWrite"
+	RightForceChangePassword ACLRight = "ForceChangePassword"
+	RightAddMember          ACLRight = "AddMember"
+)
+
+// ACLFinding — одна небезпечна ACL знахідка
+type ACLFinding struct {
+	// хто має право
+	PrincipalDN   string
+	PrincipalName string
+	PrincipalType string // user / group / computer
+
+	// на кого має право
+	TargetDN   string
+	TargetName string
+	TargetType string
+
+	// яке право
+	Right    ACLRight
+	Severity string // Critical / High / Medium
+}
+
+// ACLResult — результат ACL аналізу
+type ACLResult struct {
+	Domain   string
+	Findings []ACLFinding
+}
+
+// ============================================================
+// LDAP атрибути і константи
+// ============================================================
+
+// GUID прав для розпізнавання extended rights
+const (
+	// ForceChangePassword extended right GUID
+	guidForceChangePassword = "00299570-246d-11d0-a768-00aa006e0529"
+	// AddMember extended right GUID
+	guidAddMember = "bf9679c0-0de6-11d0-a285-00aa003049e2"
+)
+
+// ACL атрибути для LDAP запиту
+var aclAttributes = []string{
+	"distinguishedName",
+	"sAMAccountName",
+	"objectClass",
+	"nTSecurityDescriptor",
+}
+
+const (
+	ADS_RIGHT_GENERIC_ALL   = 0x10000000
+	ADS_RIGHT_GENERIC_WRITE = 0x40000000
+	ADS_RIGHT_WRITE_DACL    = 0x00040000
+	ADS_RIGHT_WRITE_OWNER   = 0x00080000
+
+	// специфічні маски AD
+	ADS_RIGHT_DS_WRITE_PROP    = 0x00000020 // GenericWrite еквівалент
+	ADS_RIGHT_DS_CONTROL_ACCESS = 0x00000100 // Extended rights
+	ADS_RIGHT_ACTRL_DS_LIST    = 0x00000004
+	// повний доступ до об'єкту
+	ADS_RIGHT_DS_FULL = 0x000F01FF
+)
+
+// ============================================================
+// Основна функція аналізу
+// ============================================================
+
+// AnalyzeACL збирає небезпечні ACL з AD
+func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLResult, error) {
+	aclResult := &ACLResult{
+		Domain: result.Domain,
+	}
+
+	color.Blue("\n[*] Analyzing dangerous ACL permissions...")
+
+	// запитуємо ACL для всіх об'єктів
+	entries, err := client.SearchACL()
+	if err != nil {
+		return nil, fmt.Errorf("ACL search failed: %w", err)
+	}
+
+	color.Blue("[*] Processing %d objects for ACL analysis...", len(entries))
+
+	// будуємо map DN → SAMAccountName для швидкого lookup
+	nameMap := buildNameMap(result)
+
+
+
+	// аналізуємо кожен об'єкт
+	for _, entry := range entries {
+		findings := parseACLEntry(entry, nameMap, result)
+		aclResult.Findings = append(aclResult.Findings, findings...)
+	}
+	// фільтруємо стандартні системні права
+	aclResult.Findings = filterSystemACL(aclResult.Findings)
+
+
+	color.Green("[+] Found %d dangerous ACL findings", len(aclResult.Findings))
+
+	return aclResult, nil
+}
+
+
+// ============================================================
+// Парсинг ACL записів
+// ============================================================
+
+// parseACLEntry аналізує security descriptor одного об'єкта
+func parseACLEntry(
+	entry *goldap.Entry,
+	nameMap map[string]nameInfo,
+	result *adldap.EnumerationResult,
+) []ACLFinding {
+	var findings []ACLFinding
+
+	targetDN := entry.DN
+	targetName := entry.GetAttributeValue("sAMAccountName")
+	targetType := getObjectType(entry)
+
+	// отримуємо raw bytes nTSecurityDescriptor
+	sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
+
+
+	if len(sdBytes) == 0 {
+		return findings
+	}
+
+	// парсимо security descriptor
+	aces, err := parseSecurityDescriptor(sdBytes)
+	if err != nil {
+		return findings
+	}
+
+
+	for _, ace := range aces {
+
+		// шукаємо principal в нашому nameMap
+		principalInfo, exists := nameMap[ace.SID]
+		if !exists {
+			continue
+		}
+
+
+		// пропускаємо права на самого себе
+		if strings.EqualFold(ace.SID, getSIDForDN(targetDN, result)) {
+			continue
+		}
+
+		// перевіряємо кожне небезпечне право
+		rights := detectDangerousRights(ace)
+
+
+		for _, right := range rights {
+			findings = append(findings, ACLFinding{
+				PrincipalDN:   principalInfo.DN,
+				PrincipalName: principalInfo.Name,
+				PrincipalType: principalInfo.Type,
+				TargetDN:      targetDN,
+				TargetName:    targetName,
+				TargetType:    targetType,
+				Right:         right,
+				Severity:      calcSeverity(right, targetName, principalInfo.Name),
+			})
+		}
+	}
+
+	return findings
+}
+
+
+// ============================================================
+// Парсинг Windows Security Descriptor
+// ============================================================
+
+// ACE — один запис в Access Control List
+type ACE struct {
+	SID        string // SID того хто має право (у форматі S-1-5-...)
+	AccessMask uint32 // бітова маска прав
+	ObjectType string // GUID для extended rights (може бути порожнім)
+	ACEType    byte   // 0x00=Allow, 0x01=Deny, 0x05=ObjectAllow
+}
+
+// parseSecurityDescriptor парсить raw bytes Windows Security Descriptor
+func parseSecurityDescriptor(data []byte) ([]ACE, error) {
+	if len(data) < 20 {
+		return nil, fmt.Errorf("security descriptor too short")
+	}
+
+	// Security Descriptor структура:
+	// Offset 0:  Revision (1 byte)
+	// Offset 1:  Sbz1 (1 byte)
+	// Offset 2:  Control (2 bytes)
+	// Offset 4:  OffsetOwner (4 bytes)
+	// Offset 8:  OffsetGroup (4 bytes)
+	// Offset 12: OffsetSacl (4 bytes)
+	// Offset 16: OffsetDacl (4 bytes)
+
+	daclOffset := readUint32LE(data, 16)
+	if daclOffset == 0 || int(daclOffset) >= len(data) {
+		return nil, nil // немає DACL
+	}
+
+	return parseACL(data, int(daclOffset))
+}
+
+// parseACL парсить ACL структуру
+func parseACL(data []byte, offset int) ([]ACE, error) {
+	if offset+8 > len(data) {
+		return nil, fmt.Errorf("ACL offset out of bounds")
+	}
+
+	// ACL Header:
+	// Offset 0: AclRevision (1 byte)
+	// Offset 1: Sbz1 (1 byte)
+	// Offset 2: AclSize (2 bytes)
+	// Offset 4: AceCount (2 bytes)
+	// Offset 6: Sbz2 (2 bytes)
+
+	aceCount := int(readUint16LE(data, offset+4))
+	aceOffset := offset + 8
+
+	var aces []ACE
+
+	for i := 0; i < aceCount; i++ {
+		if aceOffset+4 > len(data) {
+			break
+		}
+
+		ace, size, err := parseACE(data, aceOffset)
+		if err != nil {
+			aceOffset += 4
+			continue
+		}
+
+		aces = append(aces, ace)
+		aceOffset += size
+	}
+
+	return aces, nil
+}
+
+// parseACE парсить один ACE запис
+func parseACE(data []byte, offset int) (ACE, int, error) {
+	if offset+8 > len(data) {
+		return ACE{}, 0, fmt.Errorf("ACE too short")
+	}
+
+	// ACE Header:
+	// Offset 0: AceType (1 byte)
+	// Offset 1: AceFlags (1 byte)
+	// Offset 2: AceSize (2 bytes)
+
+	aceType := data[offset]
+	aceSize := int(readUint16LE(data, offset+2))
+
+	if aceSize < 8 || offset+aceSize > len(data) {
+		return ACE{}, aceSize, fmt.Errorf("invalid ACE size")
+	}
+
+	ace := ACE{ACEType: aceType}
+
+	switch aceType {
+	case 0x00, 0x01: // ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE
+		// Offset 4: AccessMask (4 bytes)
+		// Offset 8: SID
+		ace.AccessMask = readUint32LE(data, offset+4)
+		ace.SID = parseSID(data, offset+8)
+
+	case 0x05, 0x06: // ACCESS_ALLOWED_OBJECT_ACE, ACCESS_DENIED_OBJECT_ACE
+		// Offset 4:  AccessMask (4 bytes)
+		// Offset 8:  Flags (4 bytes)
+		// Offset 12: ObjectType GUID (16 bytes, якщо є)
+		// Offset 28: InheritedObjectType GUID (16 bytes, якщо є)
+		// потім SID
+		ace.AccessMask = readUint32LE(data, offset+4)
+		flags := readUint32LE(data, offset+8)
+
+		sidOffset := offset + 12
+		if flags&0x01 != 0 { // ACE_OBJECT_TYPE_PRESENT
+			if offset+28 <= len(data) {
+				ace.ObjectType = formatGUID(data[offset+12 : offset+28])
+				sidOffset = offset + 28
+			}
+		}
+		if flags&0x02 != 0 { // ACE_INHERITED_OBJECT_TYPE_PRESENT
+			sidOffset += 16
+		}
+
+		if sidOffset < offset+aceSize {
+			ace.SID = parseSID(data, sidOffset)
+		}
+	}
+
+	return ace, aceSize, nil
+}
+
+// ============================================================
+// Допоміжні функції парсингу
+// ============================================================
+
+// parseSID конвертує raw bytes SID в рядок S-1-5-...
+func parseSID(data []byte, offset int) string {
+	if offset+8 > len(data) {
+		return ""
+	}
+
+	revision := data[offset]
+	subAuthorityCount := int(data[offset+1])
+
+	if offset+8+subAuthorityCount*4 > len(data) {
+		return ""
+	}
+
+	// identifier authority (6 bytes, big-endian)
+	var authority uint64
+	for i := 0; i < 6; i++ {
+		authority = authority<<8 | uint64(data[offset+2+i])
+	}
+
+	sid := fmt.Sprintf("S-%d-%d", revision, authority)
+
+	for i := 0; i < subAuthorityCount; i++ {
+		subAuth := readUint32LE(data, offset+8+i*4)
+		sid += fmt.Sprintf("-%d", subAuth)
+	}
+
+	return sid
+}
+
+// formatGUID конвертує 16 bytes GUID в рядок
+func formatGUID(b []byte) string {
+	if len(b) < 16 {
+		return ""
+	}
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		readUint32LE(b, 0),
+		readUint16LE(b, 4),
+		readUint16LE(b, 6),
+		[]byte{b[8], b[9]},
+		b[10:16],
+	)
+}
+
+func readUint32LE(data []byte, offset int) uint32 {
+	if offset+4 > len(data) {
+		return 0
+	}
+	return uint32(data[offset]) |
+		uint32(data[offset+1])<<8 |
+		uint32(data[offset+2])<<16 |
+		uint32(data[offset+3])<<24
+}
+
+func readUint16LE(data []byte, offset int) uint16 {
+	if offset+2 > len(data) {
+		return 0
+	}
+	return uint16(data[offset]) | uint16(data[offset+1])<<8
+}
+
+// ============================================================
+// Детектування небезпечних прав
+// ============================================================
+
+// detectDangerousRights перевіряє ACE на небезпечні права
+func detectDangerousRights(ace ACE) []ACLRight {
+	if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+		return nil
+	}
+
+
+	var rights []ACLRight
+
+	// Generic права
+	if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 {
+		rights = append(rights, RightGenericAll)
+	}
+	if ace.AccessMask&ADS_RIGHT_WRITE_DACL != 0 {
+		rights = append(rights, RightWriteDACL)
+	}
+	if ace.AccessMask&ADS_RIGHT_WRITE_OWNER != 0 {
+		rights = append(rights, RightWriteOwner)
+	}
+	if ace.AccessMask&ADS_RIGHT_GENERIC_WRITE != 0 {
+		rights = append(rights, RightGenericWrite)
+	}
+
+	// специфічні AD права — повний доступ
+	if ace.AccessMask&0x000F01FF == 0x000F01FF {
+		rights = append(rights, RightGenericAll)
+	}
+	// WriteDACL специфічний
+	if ace.AccessMask&0x00040000 != 0 {
+		if !containsRight(rights, RightWriteDACL) {
+			rights = append(rights, RightWriteDACL)
+		}
+	}
+	// WriteOwner специфічний
+	if ace.AccessMask&0x00080000 != 0 {
+		if !containsRight(rights, RightWriteOwner) {
+			rights = append(rights, RightWriteOwner)
+		}
+	}
+
+	// для Object ACE (0x05) з DS_CONTROL_ACCESS — перевіряємо extended rights через GUID
+	if (ace.ACEType == 0x05 || ace.ACEType == 0x06) &&
+    ace.AccessMask&ADS_RIGHT_DS_CONTROL_ACCESS != 0 {
+    // extended right визначається через ObjectType GUID
+	}
+
+	// Extended rights через GUID
+	if ace.ObjectType != "" {
+		switch strings.ToLower(ace.ObjectType) {
+		case guidForceChangePassword:
+			rights = append(rights, RightForceChangePassword)
+		case guidAddMember:
+			rights = append(rights, RightAddMember)
+		}
+	}
+
+	if ace.ObjectType == "00299570-246d-11d0-a768-00aa006e0529" {
+	}
+
+	return rights
+}
+
+// containsRight перевіряє чи є право вже в списку
+func containsRight(rights []ACLRight, right ACLRight) bool {
+	for _, r := range rights {
+		if r == right {
+			return true
+		}
+	}
+	return false
+}
+
+// ============================================================
+// Допоміжні структури і функції
+// ============================================================
+
+type nameInfo struct {
+	DN   string
+	Name string
+	Type string
+}
+
+// buildNameMap будує map SID → nameInfo з EnumerationResult
+// Увага: для повного маппінгу SID→DN потрібен окремий LDAP запит
+// В MVP використовуємо DN як ключ і будуємо часткову відповідність
+func buildNameMap(result *adldap.EnumerationResult) map[string]nameInfo {
+		m := make(map[string]nameInfo)
+
+		for _, u := range result.Users {
+		if u.ObjectSid != "" {
+			m[u.ObjectSid] = nameInfo{DN: u.DN, Name: u.SAMAccountName, Type: "user"}
+			}
+		}
+
+    for _, u := range result.Users {
+        if u.ObjectSid != "" {
+            m[u.ObjectSid] = nameInfo{DN: u.DN, Name: u.SAMAccountName, Type: "user"}
+        }
+    }
+    for _, g := range result.Groups {
+        if g.ObjectSid != "" {
+            m[g.ObjectSid] = nameInfo{DN: g.DN, Name: g.SAMAccountName, Type: "group"}
+        }
+    }
+    for _, c := range result.Computers {
+        if c.ObjectSid != "" {
+            m[c.ObjectSid] = nameInfo{DN: c.DN, Name: c.SAMAccountName, Type: "computer"}
+        }
+		}
+
+
+    return m
+}
+
+// getObjectType визначає тип об'єкта з objectClass
+func getObjectType(entry *goldap.Entry) string {
+	classes := entry.GetAttributeValues("objectClass")
+	for _, c := range classes {
+		switch strings.ToLower(c) {
+		case "user":
+			return "user"
+		case "group":
+			return "group"
+		case "computer":
+			return "computer"
+		}
+	}
+	return "object"
+}
+
+// getSIDForDN повертає SID об'єкта за його DN
+func getSIDForDN(dn string, result *adldap.EnumerationResult) string {
+	for _, u := range result.Users {
+		if strings.EqualFold(u.DN, dn) {
+			return u.ObjectSid
+		}
+	}
+	for _, g := range result.Groups {
+		if strings.EqualFold(g.DN, dn) {
+			return g.ObjectSid
+		}
+	}
+	for _, c := range result.Computers {
+		if strings.EqualFold(c.DN, dn) {
+			return c.ObjectSid
+		}
+	}
+	return ""
+}
+
+
+// filterSystemACL прибирає стандартні системні ACL
+func filterSystemACL(findings []ACLFinding) []ACLFinding {
+	// показуємо тільки знахідки де principal — звичайний user
+	// або кастомна група (не вбудована системна)
+	builtinGroups := map[string]bool{
+		"Administrators":                          true,
+		"Account Operators":                       true,
+		"Server Operators":                        true,
+		"Print Operators":                         true,
+		"Backup Operators":                        true,
+		"Domain Admins":                           true,
+		"Enterprise Admins":                       true,
+		"Schema Admins":                           true,
+		"Group Policy Creator Owners":             true,
+		"SYSTEM":                                  true,
+		"Administrator":                           true,
+		"Domain Controllers":                      true,
+		"Read-only Domain Controllers":            true,
+		"Cloneable Domain Controllers":            true,
+		"Key Admins":                              true,
+		"Enterprise Key Admins":                   true,
+	}
+
+	var filtered []ACLFinding
+	for _, f := range findings {
+		if builtinGroups[f.PrincipalName] {
+			continue
+		}
+		if strings.HasSuffix(f.PrincipalName, "$") {
+			continue
+		}
+		if f.PrincipalName == "vagrant" {
+			continue
+		}
+		filtered = append(filtered, f)
+	}
+	return filtered
+}
+
+// calcSeverity розраховує severity знахідки
+func calcSeverity(right ACLRight, targetName, principalName string) string {
+	// права на DA або AdminCount об'єкти — завжди Critical
+	if strings.Contains(strings.ToLower(targetName), "domain admins") ||
+		strings.Contains(strings.ToLower(targetName), "enterprise admins") {
+		return "Critical"
+	}
+
+	switch right {
+	case RightGenericAll, RightWriteDACL, RightWriteOwner:
+		return "Critical"
+	case RightForceChangePassword, RightAddMember:
+		return "High"
+	case RightGenericWrite:
+		return "High"
+	default:
+		return "Medium"
+	}
+}
+
+// ============================================================
+// Вивід результатів
+// ============================================================
+
+// PrintACLResult виводить результати ACL аналізу
+func PrintACLResult(aclResult *ACLResult) {
+	if len(aclResult.Findings) == 0 {
+		color.Green("[+] No dangerous ACL findings")
+		return
+	}
+
+	color.Red("\n[!] Dangerous ACL Findings (%d):\n", len(aclResult.Findings))
+
+	// групуємо по severity
+	critical := filterBySeverity(aclResult.Findings, "Critical")
+	high := filterBySeverity(aclResult.Findings, "High")
+	medium := filterBySeverity(aclResult.Findings, "Medium")
+
+	if len(critical) > 0 {
+		color.Red("  ── CRITICAL (%d) ──────────────────────────", len(critical))
+		for _, f := range critical {
+			printACLFinding(f)
+		}
+	}
+
+	if len(high) > 0 {
+		color.Yellow("\n  ── HIGH (%d) ────────────────────────────", len(high))
+		for _, f := range high {
+			printACLFinding(f)
+		}
+	}
+
+	if len(medium) > 0 {
+		color.White("\n  ── MEDIUM (%d) ──────────────────────────", len(medium))
+		for _, f := range medium {
+			printACLFinding(f)
+		}
+	}
+
+	// підказки для експлуатації
+	printACLExploitHints(aclResult)
+}
+
+func printACLFinding(f ACLFinding) {
+	icon := aclRightIcon(f.Right)
+	color.White("\n  %s [%s] %s ──[%s]──► %s [%s]",
+		icon,
+		strings.ToUpper(f.PrincipalType),
+		f.PrincipalName,
+		f.Right,
+		f.TargetName,
+		strings.ToUpper(f.TargetType),
+	)
+}
+
+func aclRightIcon(right ACLRight) string {
+	switch right {
+	case RightGenericAll:
+		return "🔴"
+	case RightWriteDACL, RightWriteOwner:
+		return "🟠"
+	case RightForceChangePassword:
+		return "🟡"
+	case RightAddMember:
+		return "🟡"
+	case RightGenericWrite:
+		return "🟠"
+	default:
+		return "⚪"
+	}
+}
+
+func printACLExploitHints(aclResult *ACLResult) {
+	color.Cyan("\n[*] Exploitation hints:")
+
+	seen := make(map[ACLRight]bool)
+	for _, f := range aclResult.Findings {
+		if seen[f.Right] {
+			continue
+		}
+		seen[f.Right] = true
+
+		switch f.Right {
+		case RightGenericAll:
+			color.White("  GenericAll → full control: change password, add to group, modify SPN")
+			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> add groupMember 'Domain Admins' %s",
+				f.PrincipalName, aclResult.Domain, f.PrincipalName)
+		case RightForceChangePassword:
+			color.White("  ForceChangePassword → change password without knowing current:")
+			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> set password %s 'NewPass123!'",
+				f.PrincipalName, aclResult.Domain, f.TargetName)
+		case RightWriteDACL:
+			color.White("  WriteDACL → grant yourself GenericAll then exploit:")
+			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> add genericAll %s",
+				f.PrincipalName, aclResult.Domain, f.TargetName)
+		case RightAddMember:
+			color.White("  AddMember → add yourself to the group:")
+			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> add groupMember '%s' %s",
+				f.PrincipalName, aclResult.Domain, f.TargetName, f.PrincipalName)
+		}
+	}
+}
+
+func filterBySeverity(findings []ACLFinding, severity string) []ACLFinding {
+	var result []ACLFinding
+	for _, f := range findings {
+		if f.Severity == severity {
+			result = append(result, f)
+		}
+	}
+	return result
+}
