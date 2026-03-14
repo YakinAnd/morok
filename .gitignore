@@ -6,3 +6,4 @@ dist/
 *.log
 report*.html
 adpath
+*.html
