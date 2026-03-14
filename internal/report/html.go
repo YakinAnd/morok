@@ -238,6 +238,8 @@ func marshalD3(d3 D3Graph) string {
 
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
+		"inc": func(i int) int { return i + 1 },
+    "dec": func(i int) int { return i - 1 },
 		"severityClass": func(count int) string {
 			if count == 0 {
 				return "badge-ok"
@@ -262,7 +264,7 @@ func templateFuncs() template.FuncMap {
 			}
 			return "sev-medium"
 		},
-		"nodeTypeIcon": func(t string) string {
+		"nodeTypeIcon": func(t graph.NodeType) string {
 			switch t {
 			case "user":
 				return "👤"
