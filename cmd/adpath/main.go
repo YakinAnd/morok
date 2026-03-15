@@ -71,6 +71,12 @@ var delegationCmd = &cobra.Command{
     RunE:  runDelegation,
 }
 
+var gpoCmd = &cobra.Command{
+	Use:   "gpo",
+	Short: "Analyze Group Policy Objects for security issues",
+	RunE:  runGPO,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
@@ -106,11 +112,19 @@ func init() {
 	delegationCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 	delegationCmd.MarkFlagRequired("domain")
 
+	gpoCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
+	gpoCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
+	gpoCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
+	gpoCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+	gpoCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	gpoCmd.MarkFlagRequired("domain")
+
 	rootCmd.AddCommand(aclCmd)
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(kerberosCmd)
 	rootCmd.AddCommand(delegationCmd)
+	rootCmd.AddCommand(gpoCmd)
 
 
 	rootCmd.Version = "0.1.0"
@@ -280,6 +294,40 @@ func runDelegation(cmd *cobra.Command, args []string) error {
     analysis.PrintDelegationResult(dr)
 
     return nil
+}
+
+// ============================================================
+// Логіка команди GPO
+// ============================================================
+
+func runGPO(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client := adldap.NewClient(domain, username, password, dc, verbose)
+	if err := client.Connect(); err != nil {
+		return fmt.Errorf("connection error: %w", err)
+	}
+	defer client.Close()
+
+	if username != "" {
+		if err := client.Bind(); err != nil {
+			return fmt.Errorf("auth error: %w", err)
+		}
+	} else {
+		color.Yellow("[!] No credentials provided, trying anonymous bind...")
+		if err := client.AnonymousBind(); err != nil {
+			return fmt.Errorf("anonymous bind failed: %w", err)
+		}
+	}
+
+	gr, err := analysis.AnalyzeGPO(client)
+	if err != nil {
+		return fmt.Errorf("GPO analysis error: %w", err)
+	}
+
+	analysis.PrintGPOResult(gr)
+
+	return nil
 }
 
 // ============================================================
