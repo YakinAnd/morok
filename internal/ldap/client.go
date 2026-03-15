@@ -242,3 +242,8 @@ func domainToBaseDN(domain string) string {
 	}
 	return strings.Join(dcs, ",")
 }
+
+// GetDomain повертає домен
+func (c *Client) GetDomain() string {
+    return c.Domain
+}

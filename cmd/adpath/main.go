@@ -65,6 +65,12 @@ var aclCmd = &cobra.Command{
     RunE:  runACL,
 }
 
+var delegationCmd = &cobra.Command{
+    Use:   "delegation",
+    Short: "Analyze dangerous delegation configurations in AD",
+    RunE:  runDelegation,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
@@ -93,10 +99,19 @@ func init() {
 	aclCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 	aclCmd.MarkFlagRequired("domain")
 
+	delegationCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
+	delegationCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
+	delegationCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
+	delegationCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+	delegationCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+	delegationCmd.MarkFlagRequired("domain")
+
 	rootCmd.AddCommand(aclCmd)
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(kerberosCmd)
+	rootCmd.AddCommand(delegationCmd)
+
 
 	rootCmd.Version = "0.1.0"
 }
@@ -229,6 +244,40 @@ func runACL(cmd *cobra.Command, args []string) error {
     }
 
     analysis.PrintACLResult(aclResult)
+
+    return nil
+}
+
+// ============================================================
+// Логіка команди Delegation
+// ============================================================
+
+func runDelegation(cmd *cobra.Command, args []string) error {
+    printBanner()
+
+    client := adldap.NewClient(domain, username, password, dc, verbose)
+    if err := client.Connect(); err != nil {
+        return fmt.Errorf("connection error: %w", err)
+    }
+    defer client.Close()
+
+    if username != "" {
+        if err := client.Bind(); err != nil {
+            return fmt.Errorf("auth error: %w", err)
+        }
+    } else {
+        color.Yellow("[!] No credentials provided, trying anonymous bind...")
+        if err := client.AnonymousBind(); err != nil {
+            return fmt.Errorf("anonymous bind failed: %w", err)
+        }
+    }
+
+    dr, err := analysis.AnalyzeDelegation(client)
+    if err != nil {
+        return fmt.Errorf("delegation analysis error: %w", err)
+    }
+
+    analysis.PrintDelegationResult(dr)
 
     return nil
 }
