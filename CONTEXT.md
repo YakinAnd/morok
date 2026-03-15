@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.2.0
+- **Поточна версія:** v0.3.0
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -17,14 +17,16 @@ adpath/
 ├── internal/
 │   ├── ldap/
 │   │   ├── client.go               # TCP підключення, bind, LDAP search з paging
-│   │   └── enumerate.go            # Users, groups, computers enumeration
+│   │   └── enumerate.go            # Users, groups, computers enumeration + objectSid
 │   ├── graph/
 │   │   ├── model.go                # Node, Edge, Graph, AttackPath structs
 │   │   ├── builder.go              # Будує граф з EnumerationResult
 │   │   └── paths.go                # BFS пошук attack paths до Domain Admins
 │   ├── analysis/
 │   │   ├── kerberos.go             # Kerberoastable + AS-REP roastable detection
-│   │   └── acl.go                  # Dangerous ACL (GenericAll, WriteDACL, ForceChangePassword...)
+│   │   ├── acl.go                  # Dangerous ACL (GenericAll, WriteDACL, ForceChangePassword...)
+│   │   ├── delegation.go           # Unconstrained, Constrained, RBCD delegation
+│   │   └── gpo.go                  # GPO enumeration + password policy audit
 │   └── report/
 │       └── html.go                 # Single-file HTML звіт з D3.js графом
 ```
@@ -50,6 +52,12 @@ github.com/olekukonko/tablewriter
 
 # Небезпечні ACL
 ./adpath acl -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Delegation checks
+./adpath delegation -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# GPO analysis + password policy
+./adpath gpo -d corp.local -u admin -p Pass --dc 10.0.0.1
 
 # Версія
 ./adpath version
@@ -77,17 +85,28 @@ github.com/olekukonko/tablewriter
 - AddMember GUID: bf9679c0-0de6-11d0-a285-00aa003049e2
 - SID маппінг через objectSid атрибут
 
+### Delegation
+- Unconstrained: UAC біт 0x80000, виключає DC (0x2000)
+- Constrained: msDS-AllowedToDelegateTo атрибут
+- RBCD: msDS-AllowedToActOnBehalfOfOtherIdentity атрибут
+- Protocol Transition: UAC біт 0x1000000
+
+### GPO
+- Password policy через атрибути domain об'єкта
+- GPO links через gPLink атрибут на OU і domain
+- maxPwdAge конвертація: 100ns інтервали → дні
+
 ### HTML звіт
 - Single file (CSS + D3.js inline)
-- Tabs: Summary, Attack Paths, Graph, Users, Groups, Computers
+- Tabs: Summary, Attack Paths, Graph, Kerberos, ACL, Delegation, GPO, Users, Groups, Computers
 - D3.js force-directed граф для attack paths
-- Template functions: inc, dec, severityClass, pathSeverity, nodeTypeIcon
+- Summary: findings chart по severity + категорії
 
 ---
 
 ## Тестова лаба
 - **GOAD-Light** на VMware Fusion
-- Workspace: `~/Downloads/projects/GOAD/workspace/458cf1-goad-light-vmware/provider`
+- Workspace: ~/Downloads/projects/GOAD/workspace/458cf1-goad-light-vmware/provider
 - DC01: 192.168.56.10 (sevenkingdoms.local, admin/8dCT-DJjgScp)
 - DC02: 192.168.56.11 (north.sevenkingdoms.local, jon.snow/iknownothing)
 - SRV02: 192.168.56.22
@@ -100,7 +119,7 @@ vagrant resume
 # Зупинити лабу
 vagrant suspend
 
-# Ansible provisioning (якщо потрібно)
+# Ansible provisioning
 cd ~/Downloads/projects/GOAD
 OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects/GOAD/workspace/458cf1-goad-light-vmware/inventory ansible/build.yml
 ```
@@ -109,42 +128,39 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 
 ## Roadmap
 
-### ✅ v0.1 — ЗАВЕРШЕНО
+### v0.1 ЗАВЕРШЕНО
 - LDAP підключення і автентифікація
 - Enumeration users/groups/computers
 - BFS attack paths до Domain Admins
 - CLI output з кольорами
 - HTML звіт з D3.js графом
 
-### ✅ v0.2 — ЗАВЕРШЕНО
-- `kerberos` команда — Kerberoastable/AS-REP detection з оцінкою ризику
-- `acl` команда — небезпечні ACL з bloodyAD hints
+### v0.2 ЗАВЕРШЕНО
+- kerberos команда — Kerberoastable/AS-REP detection
+- acl команда — небезпечні ACL з bloodyAD hints
 
-### 🔄 v0.3 — НАСТУПНИЙ
-- Delegation checks (constrained/resource-based/unconstrained)
-- GPO analysis
-- Покращений дизайн HTML звіту
+### v0.3 ЗАВЕРШЕНО
+- delegation команда — Unconstrained/Constrained/RBCD
+- gpo команда — GPO enumeration + password policy
+- HTML звіт оновлено: нові вкладки + findings chart
 
-### 📋 v0.4
-- NTLM/Kerberos auth (ccache підтримка)
+### v0.4 НАСТУПНИЙ
+- NTLM / Kerberos auth (ccache підтримка)
 - Lateral movement mapping
 
-### 🎯 v1.0 — ПУБЛІЧНИЙ РЕЛІЗ
+### v0.5 Report версія
+- Покращений HTML звіт
+- JSON export
+
+### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
-- Стаття на Medium/blog
-- Пост на r/netsec, r/redteamsec, UISGCON
+- Стаття, пости на r/netsec, UISGCON
 
 ---
 
 ## Як використовувати цей файл
 
-На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат. Це відновить контекст проекту.
+На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
+Після кожної версії — оновлюй файл і пушь в репо.
 
-Після кожної завершеної версії — оновлюй цей файл:
-1. Переміщуй версію з "НАСТУПНИЙ" в "ЗАВЕРШЕНО"
-2. Додавай нові технічні деталі
-3. Оновлюй roadmap
-
----
-
-*Останнє оновлення: v0.2.0*
+*Останнє оновлення: v0.3.0*
