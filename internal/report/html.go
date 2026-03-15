@@ -9,6 +9,7 @@ import (
 
 	"github.com/fatih/color"
 
+	"github.com/YakinAnd/adpath/internal/analysis"
 	"github.com/YakinAnd/adpath/internal/graph"
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 )
@@ -26,7 +27,13 @@ type ReportData struct {
 	Groups      []adldap.LDAPGroup
 	Computers   []adldap.LDAPComputer
 	AttackPaths []graph.AttackPath
-	GraphJSON   template.JS // серіалізований граф для D3.js
+	GraphJSON   template.JS
+	// v0.2
+	KerberosResult *analysis.KerberosResult
+	ACLResult      *analysis.ACLResult
+	// v0.3
+	DelegationResult *analysis.DelegationResult
+	GPOResult        *analysis.GPOResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -41,7 +48,12 @@ type Summary struct {
 	PasswordNeverExpires    int
 	UnconstrainedDelegation int
 	AttackPathsCount        int
-	CriticalCount           int // paths з глибиною <= 2
+	CriticalCount           int
+	// v0.2
+	DangerousACLCount       int
+	// v0.3
+	DelegationCount         int
+	WeakPasswordPolicy      bool
 }
 
 // GraphNode і GraphEdge для D3.js JSON
@@ -75,19 +87,27 @@ func Generate(
 	result *adldap.EnumerationResult,
 	g *graph.Graph,
 	paths []graph.AttackPath,
+	kr *analysis.KerberosResult,
+	aclResult *analysis.ACLResult,
+	dr *analysis.DelegationResult,
+	gr *analysis.GPOResult,
 ) error {
 	color.Blue("[*] Generating HTML report...")
 
 	data := ReportData{
-		Domain:      result.Domain,
-		GeneratedAt: time.Now().Format("2006-01-02 15:04:05"),
-		Users:       result.Users,
-		Groups:      result.Groups,
-		Computers:   result.Computers,
-		AttackPaths: paths,
-		Summary:     buildSummary(result, paths),
-		GraphJSON:   template.JS(buildD3JSON(g, paths)),
-	}
+	Domain:           result.Domain,
+	GeneratedAt:      time.Now().Format("2006-01-02 15:04:05"),
+	Users:            result.Users,
+	Groups:           result.Groups,
+	Computers:        result.Computers,
+	AttackPaths:      paths,
+	Summary:          buildSummary(result, paths, kr, aclResult, dr, gr),
+	GraphJSON:        template.JS(buildD3JSON(g, paths)),
+	KerberosResult:   kr,
+	ACLResult:        aclResult,
+	DelegationResult: dr,
+	GPOResult:        gr,
+}
 
 	// парсимо шаблон
 	tmpl, err := template.New("report").Funcs(templateFuncs()).Parse(htmlTemplate)
@@ -115,11 +135,18 @@ func Generate(
 // Побудова Summary
 // ============================================================
 
-func buildSummary(result *adldap.EnumerationResult, paths []graph.AttackPath) Summary {
+func buildSummary(
+	result *adldap.EnumerationResult,
+	paths []graph.AttackPath,
+	kr *analysis.KerberosResult,
+	aclResult *analysis.ACLResult,
+	dr *analysis.DelegationResult,
+	gr *analysis.GPOResult,
+) Summary {
 	s := Summary{
-		TotalUsers:     len(result.Users),
-		TotalGroups:    len(result.Groups),
-		TotalComputers: len(result.Computers),
+		TotalUsers:       len(result.Users),
+		TotalGroups:      len(result.Groups),
+		TotalComputers:   len(result.Computers),
 		AttackPathsCount: len(paths),
 	}
 
@@ -152,6 +179,19 @@ func buildSummary(result *adldap.EnumerationResult, paths []graph.AttackPath) Su
 		if p.Depth <= 2 {
 			s.CriticalCount++
 		}
+	}
+
+	if aclResult != nil {
+		s.DangerousACLCount = len(aclResult.Findings)
+	}
+
+	if dr != nil {
+		s.DelegationCount = len(dr.Findings)
+	}
+
+	if gr != nil && gr.DefaultPolicy != nil {
+		pp := gr.DefaultPolicy
+		s.WeakPasswordPolicy = pp.MinLength < 8 || !pp.Complexity || pp.LockoutThreshold == 0
 	}
 
 	return s
@@ -334,7 +374,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; colo
 .card .value { font-size: 2rem; font-weight: 700; color: #63b3ed; }
 .card .label { font-size: 0.8rem; color: #718096; margin-top: 4px;
   text-transform: uppercase; letter-spacing: 0.05em; }
-.card.critical .value { color: #fc8181; }
+.card.critical .value { color: #e53e3e; }
 .card.warning .value { color: #f6ad55; }
 .card.ok .value { color: #68d391; }
 
@@ -343,10 +383,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; colo
   font-size: 0.75rem; font-weight: 600; }
 .badge-ok { background: #1c4532; color: #68d391; }
 .badge-medium { background: #744210; color: #f6ad55; }
-.badge-critical { background: #742a2a; color: #fc8181; }
+.badge-critical { background: #742a2a; color: #e53e3e; }
 
 /* Severity */
-.sev-critical { color: #fc8181; font-weight: 700; }
+.sev-critical { color: #e53e3e; font-weight: 700; }
 .sev-high     { color: #f6ad55; font-weight: 600; }
 .sev-medium   { color: #faf089; }
 
@@ -405,6 +445,10 @@ tr:hover td { background: #1a1f2e; }
   <button class="active" onclick="showTab('summary')">Summary</button>
   <button onclick="showTab('paths')">Attack Paths ({{.Summary.AttackPathsCount}})</button>
   <button onclick="showTab('graph')">Graph</button>
+  <button onclick="showTab('kerberos')">Kerberos</button>
+  <button onclick="showTab('acl')">ACL ({{.Summary.DangerousACLCount}})</button>
+  <button onclick="showTab('delegation')">Delegation ({{.Summary.DelegationCount}})</button>
+  <button onclick="showTab('gpo')">GPO</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -414,14 +458,25 @@ tr:hover td { background: #1a1f2e; }
 
 <!-- SUMMARY TAB -->
 <div id="tab-summary" class="tab-pane active">
-  <div class="cards">
+
+  <!-- Findings Overview -->
+  <div style="padding:20px 24px;background:#1a1f2e;border:1px solid #2d3748;border-radius:8px;margin-bottom:24px">
+   <div style="font-size:14px;font-weight:500;color:#e2e8f0;margin-bottom:16px">
+    Findings Overview — {{.Domain}}
+   </div>
+   <div id="findings-chart" style="display:flex;flex-direction:column;gap:10px"></div>
+  </div>
+
+  <!-- Attack Surface -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Attack Surface</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:20px">
     <div class="card {{if gt .Summary.AttackPathsCount 0}}critical{{else}}ok{{end}}">
       <div class="value">{{.Summary.AttackPathsCount}}</div>
-      <div class="label">Attack Paths</div>
+      <div class="label">Attack Paths to DA</div>
     </div>
     <div class="card {{if gt .Summary.CriticalCount 0}}critical{{else}}ok{{end}}">
       <div class="value">{{.Summary.CriticalCount}}</div>
-      <div class="label">Critical Paths</div>
+      <div class="label">Critical Paths (depth ≤ 2)</div>
     </div>
     <div class="card {{if gt .Summary.KerberoastableCount 0}}warning{{else}}ok{{end}}">
       <div class="value">{{.Summary.KerberoastableCount}}</div>
@@ -431,23 +486,88 @@ tr:hover td { background: #1a1f2e; }
       <div class="value">{{.Summary.ASREPCount}}</div>
       <div class="label">AS-REP Roastable</div>
     </div>
-    <div class="card {{if gt .Summary.UnconstrainedDelegation 0}}critical{{else}}ok{{end}}">
-      <div class="value">{{.Summary.UnconstrainedDelegation}}</div>
-      <div class="label">Unconstrained Deleg.</div>
+    <div class="card {{if gt .Summary.DelegationCount 0}}warning{{else}}ok{{end}}">
+      <div class="value">{{.Summary.DelegationCount}}</div>
+      <div class="label">Delegation Issues</div>
     </div>
-    <div class="card">
-      <div class="value">{{.Summary.EnabledUsers}}</div>
-      <div class="label">Enabled Users</div>
+    <div class="card {{if gt .Summary.DangerousACLCount 0}}critical{{else}}ok{{end}}">
+      <div class="value">{{.Summary.DangerousACLCount}}</div>
+      <div class="label">Dangerous ACLs</div>
     </div>
+  </div>
+
+  <!-- Account Hygiene -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Account Hygiene</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:20px">
     <div class="card {{if gt .Summary.PasswordNeverExpires 0}}warning{{else}}ok{{end}}">
       <div class="value">{{.Summary.PasswordNeverExpires}}</div>
       <div class="label">Pwd Never Expires</div>
     </div>
     <div class="card {{if gt .Summary.AdminCount 0}}warning{{else}}ok{{end}}">
       <div class="value">{{.Summary.AdminCount}}</div>
-      <div class="label">AdminCount=1</div>
+      <div class="label">AdminCount = 1</div>
+    </div>
+    <div class="card">
+      <div class="value">{{.Summary.EnabledUsers}}</div>
+      <div class="label">Enabled Users</div>
+    </div>
+    <div class="card">
+      <div class="value">{{.Summary.TotalComputers}}</div>
+      <div class="label">Computers</div>
     </div>
   </div>
+
+  <!-- Policy & Configuration -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Policy & Configuration</div>
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:8px;overflow:hidden">
+    {{if .GPOResult}}{{if .GPOResult.DefaultPolicy}}
+    {{$pp := .GPOResult.DefaultPolicy}}
+    {{if not $pp.Complexity}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2d3748">
+      <span class="badge badge-critical">Critical</span>
+      <span style="font-size:13px;color:#e2e8f0">Password complexity disabled</span>
+    </div>
+    {{end}}
+    {{if lt $pp.MinLength 8}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2d3748">
+      <span class="badge badge-critical">Critical</span>
+      <span style="font-size:13px;color:#e2e8f0">Minimum password length: {{$pp.MinLength}} chars</span>
+    </div>
+    {{end}}
+    {{if or (eq $pp.MaxAge 0) (gt $pp.MaxAge 3650)}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2d3748">
+      <span class="badge badge-critical">Critical</span>
+      <span style="font-size:13px;color:#e2e8f0">Passwords never expire</span>
+    </div>
+    {{end}}
+    {{if $pp.ReversibleEncryption}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2d3748">
+      <span class="badge badge-critical">Critical</span>
+      <span style="font-size:13px;color:#e2e8f0">Reversible encryption enabled</span>
+    </div>
+    {{end}}
+    {{if eq $pp.LockoutThreshold 0}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2d3748">
+      <span class="badge badge-critical">Critical</span>
+      <span style="font-size:13px;color:#e2e8f0">Account lockout disabled — brute force possible</span>
+    </div>
+    {{else}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #2d3748">
+      <span class="badge badge-ok">OK</span>
+      <span style="font-size:13px;color:#e2e8f0">Account lockout configured (threshold: {{$pp.LockoutThreshold}})</span>
+    </div>
+    {{end}}
+    {{if not $pp.ReversibleEncryption}}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 16px">
+      <span class="badge badge-ok">OK</span>
+      <span style="font-size:13px;color:#e2e8f0">Reversible encryption disabled</span>
+    </div>
+    {{end}}
+    {{end}}{{else}}
+    <div style="padding:16px;color:#718096;font-size:13px">GPO data not collected — run with --report to include policy analysis</div>
+    {{end}}
+  </div>
+
 </div>
 
 <!-- ATTACK PATHS TAB -->
@@ -604,9 +724,262 @@ tr:hover td { background: #1a1f2e; }
   </div>
 </div>
 
+<!-- KERBEROS TAB -->
+<div id="tab-kerberos" class="tab-pane">
+  <h2 class="section-title">Kerberos Attack Surface</h2>
+  {{if .KerberosResult}}
+
+  <h3 class="section-title" style="font-size:0.95rem; margin-top:16px">
+    Kerberoastable Accounts
+    <span>{{len .KerberosResult.KerberoastableAccounts}}</span>
+  </h3>
+  {{if .KerberosResult.KerberoastableAccounts}}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th>SPNs</th>
+        <th>Admin</th>
+        <th>Last Logon</th>
+        <th>Password Last Set</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .KerberosResult.KerberoastableAccounts}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
+      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+      <td class="mono">{{.LastLogon}}</td>
+      <td class="mono">{{.PasswordLastSet}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391">✓ No Kerberoastable accounts found.</p>{{end}}
+
+  <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
+    AS-REP Roastable Accounts
+    <span>{{len .KerberosResult.ASREPAccounts}}</span>
+  </h3>
+  {{if .KerberosResult.ASREPAccounts}}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th>Admin</th>
+        <th>Last Logon</th>
+        <th>Password Last Set</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .KerberosResult.ASREPAccounts}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+      <td class="mono">{{.LastLogon}}</td>
+      <td class="mono">{{.PasswordLastSet}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391">✓ No AS-REP Roastable accounts found.</p>{{end}}
+
+  {{else}}<p style="color:#718096">Kerberos data not available.</p>{{end}}
+</div>
+
+<!-- ACL TAB -->
+<div id="tab-acl" class="tab-pane">
+  <h2 class="section-title">
+    Dangerous ACL Permissions
+    <span>{{.Summary.DangerousACLCount}} finding(s)</span>
+  </h2>
+  {{if .ACLResult}}
+  {{if .ACLResult.Findings}}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Principal</th>
+        <th>Type</th>
+        <th>Right</th>
+        <th>Target</th>
+        <th>Target Type</th>
+        <th>Severity</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .ACLResult.Findings}}
+    <tr>
+      <td class="mono">{{.PrincipalName}}</td>
+      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.PrincipalType}}</span></td>
+      <td><span class="badge badge-critical">{{.Right}}</span></td>
+      <td class="mono">{{.TargetName}}</td>
+      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.TargetType}}</span></td>
+      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else if eq .Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{.Severity}}</span></td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391">✓ No dangerous ACL findings.</p>{{end}}
+  {{else}}<p style="color:#718096">ACL data not available.</p>{{end}}
+</div>
+
+<!-- DELEGATION TAB -->
+<div id="tab-delegation" class="tab-pane">
+  <h2 class="section-title">
+    Delegation Configurations
+    <span>{{.Summary.DelegationCount}} finding(s)</span>
+  </h2>
+  {{if .DelegationResult}}
+  {{if .DelegationResult.Findings}}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Account</th>
+        <th>Type</th>
+        <th>Delegation Type</th>
+        <th>Risk</th>
+        <th>Allowed Services</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .DelegationResult.Findings}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.ObjectType}}</span></td>
+      <td><span class="badge badge-critical">{{.DelegationType}}</span></td>
+      <td style="color:#fc8181; font-size:0.8rem">{{.RiskReason}}</td>
+      <td class="mono" style="font-size:0.75rem">{{joinSPNs .AllowedServices}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391">✓ No dangerous delegation configurations.</p>{{end}}
+  {{else}}<p style="color:#718096">Delegation data not available.</p>{{end}}
+</div>
+
+<!-- GPO TAB -->
+<div id="tab-gpo" class="tab-pane">
+  <h2 class="section-title">Group Policy Analysis</h2>
+  {{if .GPOResult}}
+
+  {{if .GPOResult.DefaultPolicy}}
+  <h3 class="section-title" style="font-size:0.95rem; margin-top:16px">
+    Default Domain Password Policy
+  </h3>
+  <div class="cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))">
+    {{$pp := .GPOResult.DefaultPolicy}}
+    <div class="card {{if lt $pp.MinLength 8}}critical{{else if lt $pp.MinLength 12}}warning{{else}}ok{{end}}">
+      <div class="value">{{$pp.MinLength}}</div>
+      <div class="label">Min Password Length</div>
+    </div>
+    <div class="card {{if not $pp.Complexity}}critical{{else}}ok{{end}}">
+      <div class="value">{{if $pp.Complexity}}ON{{else}}OFF{{end}}</div>
+      <div class="label">Complexity</div>
+    </div>
+    <div class="card {{if eq $pp.LockoutThreshold 0}}critical{{else if gt $pp.LockoutThreshold 10}}warning{{else}}ok{{end}}">
+      <div class="value">{{if eq $pp.LockoutThreshold 0}}∞{{else}}{{$pp.LockoutThreshold}}{{end}}</div>
+      <div class="label">Lockout Threshold</div>
+    </div>
+    <div class="card {{if or (eq $pp.MaxAge 0) (gt $pp.MaxAge 3650)}}critical{{else if gt $pp.MaxAge 90}}warning{{else}}ok{{end}}">
+      <div class="value">{{if or (eq $pp.MaxAge 0) (gt $pp.MaxAge 3650)}}∞{{else}}{{$pp.MaxAge}}d{{end}}</div>
+      <div class="label">Max Password Age</div>
+    </div>
+    <div class="card {{if $pp.ReversibleEncryption}}critical{{else}}ok{{end}}">
+      <div class="value">{{if $pp.ReversibleEncryption}}ON{{else}}OFF{{end}}</div>
+      <div class="label">Reversible Encryption</div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if .GPOResult.GPOFindings}}
+  <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
+    Dangerous GPO Findings <span>{{len .GPOResult.GPOFindings}}</span>
+  </h3>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>GPO Name</th><th>GUID</th><th>Linked To</th><th>Risk</th></tr>
+    </thead>
+    <tbody>
+    {{range .GPOResult.GPOFindings}}
+    <tr>
+      <td class="mono">{{.Name}}</td>
+      <td class="mono" style="font-size:0.75rem">{{.GUID}}</td>
+      <td style="font-size:0.8rem">{{joinSPNs .LinkedTo}}</td>
+      <td style="color:#fc8181; font-size:0.8rem">{{index .RiskReasons 0}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}
+
+  {{else}}<p style="color:#718096">GPO data not available.</p>{{end}}
+</div>
+
 </div><!-- /content -->
 
 <script>
+
+// Findings calculation
+(function() {
+  var chart = document.getElementById('findings-chart');
+  if (!chart) return;
+
+  var findings = [
+    {
+      label: 'Critical',
+      color: '#e53e3e',
+      bg: '#742a2a',
+      count: {{.Summary.CriticalCount}} + {{.Summary.DangerousACLCount}}
+    },
+    {
+      label: 'High',
+      color: '#dd6b20',
+      bg: '#7b341e',
+      count: {{.Summary.KerberoastableCount}} + {{.Summary.ASREPCount}} + {{.Summary.DelegationCount}}
+    },
+    {
+      label: 'Medium',
+      color: '#d69e2e',
+      bg: '#744210',
+      count: {{.Summary.PasswordNeverExpires}} + {{.Summary.AdminCount}}
+    },
+    {
+      label: 'Info',
+      color: '#4299e1',
+      bg: '#2a4365',
+      count: {{.Summary.TotalUsers}} + {{.Summary.TotalGroups}} + {{.Summary.TotalComputers}}
+    }
+  ];
+
+  var max = Math.max.apply(null, findings.map(function(f){ return f.count; }));
+  if (max === 0) max = 1;
+
+  findings.forEach(function(f) {
+    var pct = Math.round((f.count / max) * 100);
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:12px';
+    row.innerHTML =
+      '<div style="width:64px;font-size:12px;color:#718096;text-align:right">' + f.label + '</div>' +
+      '<div style="flex:1;background:#2d3748;border-radius:4px;height:24px;overflow:hidden">' +
+        '<div style="width:'+pct+'%;background:'+f.color+';height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;transition:width .3s;min-width:'+(f.count > 0 ? '32px' : '0')+';">' +
+          (f.count > 0 ? '<span style="font-size:12px;font-weight:500;color:#fff">'+f.count+'</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="width:32px;font-size:13px;font-weight:500;color:'+f.color+'">'+f.count+'</div>';
+    chart.appendChild(row);
+  });
+})();
 // ============================================================
 // Tab navigation
 // ============================================================

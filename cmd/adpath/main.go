@@ -175,8 +175,30 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	g.PrintPaths(paths)
 
 	// ── HTML звіт (опціонально) ───────────────────────────────
+	// ── HTML звіт (опціонально) ───────────────────────────────
 	if reportPath != "" {
-		if err := report.Generate(reportPath, result, g, paths); err != nil {
+		// збираємо додаткові дані для звіту
+		kr := analysis.AnalyzeKerberos(result)
+
+		aclResult, err := analysis.AnalyzeACL(client, result)
+		if err != nil {
+			color.Yellow("[!] ACL analysis failed: %v", err)
+			aclResult = nil
+		}
+
+		dr, err := analysis.AnalyzeDelegation(client)
+		if err != nil {
+			color.Yellow("[!] Delegation analysis failed: %v", err)
+			dr = nil
+		}
+
+		gr, err := analysis.AnalyzeGPO(client)
+		if err != nil {
+			color.Yellow("[!] GPO analysis failed: %v", err)
+			gr = nil
+		}
+
+		if err := report.Generate(reportPath, result, g, paths, kr, aclResult, dr, gr); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
 	}
