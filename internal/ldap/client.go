@@ -13,14 +13,17 @@ import (
 
 // Client зберігає параметри підключення та активне з'єднання
 type Client struct {
-	Host     string
-	Port     int
-	Domain   string
-	Username string
-	Password string
-	BaseDN   string
-	conn     *goldap.Conn
-	Verbose  bool
+	Host       string
+	Port       int
+	Domain     string
+	Username   string
+	Password   string
+	NTHash     string // NT hash for Pass-the-Hash (NTLM auth)
+	CcachePath string // path to ccache file for Pass-the-Ticket (Kerberos auth)
+	BaseDN     string
+	conn       *goldap.Conn
+	saslWrap   *saslConn // non-nil only for Kerberos ccache connections
+	Verbose    bool
 }
 
 // NewClient створює новий Client
@@ -50,19 +53,20 @@ func (c *Client) Connect() error {
 		color.Blue("[*] Connecting to %s", address)
 	}
 
-	conn, err := c.dialWithTimeout(address, false)
+	conn, wrap, err := c.dialWithTimeout(address, false)
 	if err != nil {
 		// fallback на LDAPS port 636
 		color.Yellow("[!] Port 389 failed, trying LDAPS (636)...")
 		c.Port = 636
 		address = fmt.Sprintf("%s:%d", c.Host, c.Port)
-		conn, err = c.dialWithTimeout(address, true)
+		conn, wrap, err = c.dialWithTimeout(address, true)
 		if err != nil {
 			return fmt.Errorf("connection failed on both 389 and 636: %w", err)
 		}
 	}
 
 	c.conn = conn
+	c.saslWrap = wrap
 
 	if c.Verbose {
 		color.Green("[+] Connected to %s", address)
@@ -71,8 +75,9 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// dialWithTimeout відкриває з'єднання з таймаутом
-func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, error) {
+// dialWithTimeout відкриває з'єднання з таймаутом.
+// Повертає go-ldap Conn, saslConn (для Kerberos wrapping), і помилку.
+func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, *saslConn, error) {
 	timeout := 10 * time.Second
 
 	if useTLS {
@@ -80,18 +85,20 @@ func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, err
 			InsecureSkipVerify: true, // для пентесту прийнятно
 			ServerName:         c.Host,
 		}
-		return goldap.DialTLS("tcp", address, tlsCfg)
+		conn, err := goldap.DialTLS("tcp", address, tlsCfg)
+		return conn, nil, err
 	}
 
-	// звичайний dial з таймаутом
+	// Створюємо saslConn-обгортку — passthrough до Activate()
 	netConn, err := net.DialTimeout("tcp", address, timeout)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	conn := goldap.NewConn(netConn, false)
+	wrap := newSASLConn(netConn)
+	conn := goldap.NewConn(wrap, false)
 	conn.Start()
-	return conn, nil
+	return conn, wrap, nil
 }
 
 // Bind виконує автентифікацію
@@ -118,6 +125,67 @@ func (c *Client) Bind() error {
 	}
 
 	color.Green("[+] Authenticated as %s", upn)
+	return nil
+}
+
+// BindNTLM виконує Pass-the-Hash автентифікацію через NTLM.
+// Потребує NTHash у форматі hex (32 символи, без двокрапок).
+func (c *Client) BindNTLM() error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected, call Connect() first")
+	}
+
+	netbiosDomain := strings.ToUpper(strings.Split(c.Domain, ".")[0])
+
+	if c.Verbose {
+		color.Blue("[*] NTLM bind (Pass-the-Hash) as %s\\%s", netbiosDomain, c.Username)
+	}
+
+	if err := c.conn.NTLMBindWithHash(netbiosDomain, c.Username, c.NTHash); err != nil {
+		return fmt.Errorf("NTLM bind failed: %w", err)
+	}
+
+	color.Green("[+] Authenticated via NTLM (Pass-the-Hash) as %s\\%s", netbiosDomain, c.Username)
+	return nil
+}
+
+// BindKerberos виконує Pass-the-Ticket автентифікацію через ccache файл.
+func (c *Client) BindKerberos() error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected, call Connect() first")
+	}
+
+	if c.Verbose {
+		color.Blue("[*] Kerberos bind (Pass-the-Ticket) from ccache: %s", c.CcachePath)
+	}
+
+	// Kerberos requires an FQDN SPN — resolve IP to hostname if needed
+	host := c.kerberosHost()
+
+	gssClient, err := NewKerberosClientFromCCache(c.CcachePath, host, c.Domain)
+	if err != nil {
+		return fmt.Errorf("kerberos init: %w", err)
+	}
+
+	spn := fmt.Sprintf("ldap/%s", host)
+	if c.Verbose {
+		color.Blue("[*] Kerberos SPN: %s", spn)
+	}
+	if err := c.conn.GSSAPIBind(gssClient, spn, ""); err != nil {
+		return fmt.Errorf("kerberos bind failed: %w", err)
+	}
+
+	// Activate SASL message wrapping using the Kerberos session key.
+	// After SPNEGO GSSAPI bind, Windows encrypts all subsequent LDAP PDUs
+	// using the session key established during the AP-REQ/AP-REP exchange.
+	if c.saslWrap != nil && gssClient.sessionKey.KeyType != 0 {
+		c.saslWrap.Activate(gssClient.sessionKey)
+		if c.Verbose {
+			color.Blue("[*] SASL wrapping activated (keytype=%d)", gssClient.sessionKey.KeyType)
+		}
+	}
+
+	color.Green("[+] Authenticated via Kerberos (ccache: %s)", c.CcachePath)
 	return nil
 }
 
@@ -231,6 +299,27 @@ func (c *Client) SearchACL() ([]*goldap.Entry, error) {
     }
 
     return result.Entries, nil
+}
+
+// kerberosHost returns the FQDN for building the LDAP SPN.
+// Kerberos requires a hostname, not an IP. If c.Host looks like an IP,
+// we perform a reverse DNS lookup. If that fails, we fall back to the IP
+// and let the KDC return a helpful error.
+func (c *Client) kerberosHost() string {
+	if net.ParseIP(c.Host) == nil {
+		return c.Host // already a hostname
+	}
+	names, err := net.LookupAddr(c.Host)
+	if err != nil || len(names) == 0 {
+		color.Yellow("[!] Reverse DNS lookup for %s failed: %v — using IP for SPN (may fail)", c.Host, err)
+		return c.Host
+	}
+	// LookupAddr returns names with a trailing dot; strip it
+	fqdn := strings.TrimSuffix(names[0], ".")
+	if c.Verbose {
+		color.Blue("[*] Resolved %s → %s", c.Host, fqdn)
+	}
+	return fqdn
 }
 
 // domainToBaseDN конвертує "corp.local" → "DC=corp,DC=local"

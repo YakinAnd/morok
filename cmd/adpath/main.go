@@ -21,6 +21,8 @@ var (
 	domain     string
 	username   string
 	password   string
+	ntHash     string // --hash: NT hash for Pass-the-Hash
+	ccachePath string // --ccache: path to ccache file for Pass-the-Ticket
 	dc         string
 	reportPath string
 	maxDepth   int
@@ -82,42 +84,19 @@ var gpoCmd = &cobra.Command{
 // ============================================================
 
 func init() {
-	enumCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
-	enumCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
-	enumCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-	enumCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd} {
+		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
+		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
+		cmd.Flags().StringVarP(&password, "password", "p", "", "Password")
+		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+		cmd.Flags().StringVar(&ntHash, "hash", "", "NT hash for Pass-the-Hash (NTLM auth)")
+		cmd.Flags().StringVar(&ccachePath, "ccache", "", "Path to Kerberos ccache file for Pass-the-Ticket")
+		cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+		cmd.MarkFlagRequired("domain")
+	}
+
 	enumCmd.Flags().StringVar(&reportPath, "report", "", "Save HTML report to file (e.g. report.html)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
-	enumCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-	enumCmd.MarkFlagRequired("domain")
-
-	kerberosCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
-  kerberosCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
-  kerberosCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-  kerberosCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
-  kerberosCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-	kerberosCmd.MarkFlagRequired("domain")
-
-	aclCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
-	aclCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
-	aclCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-	aclCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
-	aclCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-	aclCmd.MarkFlagRequired("domain")
-
-	delegationCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
-	delegationCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
-	delegationCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-	delegationCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
-	delegationCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-	delegationCmd.MarkFlagRequired("domain")
-
-	gpoCmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
-	gpoCmd.Flags().StringVarP(&username, "username", "u", "", "Username")
-	gpoCmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-	gpoCmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
-	gpoCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
-	gpoCmd.MarkFlagRequired("domain")
 
 	rootCmd.AddCommand(aclCmd)
 	rootCmd.AddCommand(enumCmd)
@@ -131,33 +110,64 @@ func init() {
 }
 
 // ============================================================
+// Auth helper
+// ============================================================
+
+// connectAndBind підключається та автентифікується відповідним методом:
+//
+//	--ccache → Kerberos ccache (Pass-the-Ticket)
+//	--hash   → NTLM hash (Pass-the-Hash)
+//	-u/-p    → simple bind (UPN / NT format)
+//	(none)   → anonymous bind (null session)
+func connectAndBind() (*adldap.Client, error) {
+	client := adldap.NewClient(domain, username, password, dc, verbose)
+	client.NTHash = ntHash
+	client.CcachePath = ccachePath
+
+	if err := client.Connect(); err != nil {
+		return nil, fmt.Errorf("connection error: %w", err)
+	}
+
+	switch {
+	case ccachePath != "":
+		if err := client.BindKerberos(); err != nil {
+			client.Close()
+			return nil, fmt.Errorf("kerberos auth error: %w", err)
+		}
+	case ntHash != "":
+		if err := client.BindNTLM(); err != nil {
+			client.Close()
+			return nil, fmt.Errorf("NTLM auth error: %w", err)
+		}
+	case username != "":
+		if err := client.Bind(); err != nil {
+			client.Close()
+			return nil, fmt.Errorf("auth error: %w", err)
+		}
+	default:
+		color.Yellow("[!] No credentials provided, trying anonymous bind...")
+		if err := client.AnonymousBind(); err != nil {
+			client.Close()
+			return nil, fmt.Errorf("anonymous bind failed: %w", err)
+		}
+	}
+
+	color.Green("[+] BaseDN: %s", client.GetBaseDN())
+	return client, nil
+}
+
+// ============================================================
 // Логіка команди enum
 // ============================================================
 
 func runEnum(cmd *cobra.Command, args []string) error {
 	printBanner()
 
-	// ── підключення ──────────────────────────────────────────
-	client := adldap.NewClient(domain, username, password, dc, verbose)
-
-	if err := client.Connect(); err != nil {
-		return fmt.Errorf("connection error: %w", err)
+	client, err := connectAndBind()
+	if err != nil {
+		return err
 	}
 	defer client.Close()
-
-	// ── автентифікація ────────────────────────────────────────
-	if username != "" {
-		if err := client.Bind(); err != nil {
-			return fmt.Errorf("auth error: %w", err)
-		}
-	} else {
-		color.Yellow("[!] No credentials provided, trying anonymous bind...")
-		if err := client.AnonymousBind(); err != nil {
-			return fmt.Errorf("anonymous bind failed: %w", err)
-		}
-	}
-
-	color.Green("[+] BaseDN: %s", client.GetBaseDN())
 
 	// ── enumeration ───────────────────────────────────────────
 	result, err := client.EnumerateAll()
@@ -213,24 +223,11 @@ func runEnum(cmd *cobra.Command, args []string) error {
 func runKerberos(cmd *cobra.Command, args []string) error {
     printBanner()
 
-    // підключення
-    client := adldap.NewClient(domain, username, password, dc, verbose)
-    if err := client.Connect(); err != nil {
-        return fmt.Errorf("connection error: %w", err)
+    client, err := connectAndBind()
+    if err != nil {
+        return err
     }
     defer client.Close()
-
-    // автентифікація
-    if username != "" {
-        if err := client.Bind(); err != nil {
-            return fmt.Errorf("auth error: %w", err)
-        }
-    } else {
-        color.Yellow("[!] No credentials provided, trying anonymous bind...")
-        if err := client.AnonymousBind(); err != nil {
-            return fmt.Errorf("anonymous bind failed: %w", err)
-        }
-    }
 
     // enumeration
     result, err := client.EnumerateAll()
@@ -252,22 +249,11 @@ func runKerberos(cmd *cobra.Command, args []string) error {
 func runACL(cmd *cobra.Command, args []string) error {
     printBanner()
 
-    client := adldap.NewClient(domain, username, password, dc, verbose)
-    if err := client.Connect(); err != nil {
-        return fmt.Errorf("connection error: %w", err)
+    client, err := connectAndBind()
+    if err != nil {
+        return err
     }
     defer client.Close()
-
-    if username != "" {
-        if err := client.Bind(); err != nil {
-            return fmt.Errorf("auth error: %w", err)
-        }
-    } else {
-        color.Yellow("[!] No credentials provided, trying anonymous bind...")
-        if err := client.AnonymousBind(); err != nil {
-            return fmt.Errorf("anonymous bind failed: %w", err)
-        }
-    }
 
     result, err := client.EnumerateAll()
     if err != nil {
@@ -291,22 +277,11 @@ func runACL(cmd *cobra.Command, args []string) error {
 func runDelegation(cmd *cobra.Command, args []string) error {
     printBanner()
 
-    client := adldap.NewClient(domain, username, password, dc, verbose)
-    if err := client.Connect(); err != nil {
-        return fmt.Errorf("connection error: %w", err)
+    client, err := connectAndBind()
+    if err != nil {
+        return err
     }
     defer client.Close()
-
-    if username != "" {
-        if err := client.Bind(); err != nil {
-            return fmt.Errorf("auth error: %w", err)
-        }
-    } else {
-        color.Yellow("[!] No credentials provided, trying anonymous bind...")
-        if err := client.AnonymousBind(); err != nil {
-            return fmt.Errorf("anonymous bind failed: %w", err)
-        }
-    }
 
     dr, err := analysis.AnalyzeDelegation(client)
     if err != nil {
@@ -325,22 +300,11 @@ func runDelegation(cmd *cobra.Command, args []string) error {
 func runGPO(cmd *cobra.Command, args []string) error {
 	printBanner()
 
-	client := adldap.NewClient(domain, username, password, dc, verbose)
-	if err := client.Connect(); err != nil {
-		return fmt.Errorf("connection error: %w", err)
+	client, err := connectAndBind()
+	if err != nil {
+		return err
 	}
 	defer client.Close()
-
-	if username != "" {
-		if err := client.Bind(); err != nil {
-			return fmt.Errorf("auth error: %w", err)
-		}
-	} else {
-		color.Yellow("[!] No credentials provided, trying anonymous bind...")
-		if err := client.AnonymousBind(); err != nil {
-			return fmt.Errorf("anonymous bind failed: %w", err)
-		}
-	}
 
 	gr, err := analysis.AnalyzeGPO(client)
 	if err != nil {

@@ -144,13 +144,34 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - gpo команда — GPO enumeration + password policy
 - HTML звіт оновлено: нові вкладки + findings chart
 
-### v0.4 НАСТУПНИЙ
-- NTLM / Kerberos auth (ccache підтримка)
-- Lateral movement mapping
+### v0.4 В РОЗРОБЦІ
+- ✅ Pass-the-Hash (NTLM) — `--hash <NT_hash>` — протестовано на GOAD, працює
+- 🔧 Pass-the-Ticket (Kerberos ccache) — `--ccache <path>` — частково реалізовано
+
+#### Стан PTT (ccache) на кінець сесії:
+- `KerberosGSSAPIClient` реалізує go-ldap GSSAPIClient через gokrb5
+- SPNEGO NegTokenInit обгортка AP-REQ — аутентифікація проходить
+- Після bind Windows шифрує LDAP PDU через Kerberos session key
+- `saslConn` (`internal/ldap/sasl_conn.go`) — обгортка net.Conn для SASL wrap/unwrap
+- SASL активується через `Activate(sessionKey)` після GSSAPI bind
+- **Відкрита проблема**: go-ldap читає відповіді через внутрішній goroutine
+  (`processMessages`) до того як наш `saslConn.Read` може перехопити трафік.
+  Дані що приходять від сервера (зашифровані) обробляються BER-парсером go-ldap
+  і викликають "invalid length byte 0xff".
+- **Наступний крок**: зрозуміти як `processMessages` читає з conn і вирішити
+  проблему перехоплення (можливо через `bufio` буферизацію або зміну підходу).
+
+#### Ключові технічні деталі PTT:
+- Кредси: `--ccache /tmp/krb5cc_0 --dc FQDN` (DC треба FQDN, не IP)
+- Якщо `--dc` IP — автоматиЌчний reverse DNS lookup до FQDN
+- `KRB5_CONFIG` env var → `/etc/krb5.conf` → мінімальний inline config
+- GOAD: DC01 = `kingslanding.sevenkingdoms.local` (192.168.56.10)
+- Тест PTH: `--hash c66d72021a2d4744409969a581a1705e` (admin/8dCT-DJjgScp)
 
 ### v0.5 Report версія
 - Покращений HTML звіт
 - JSON export
+- PTT (ccache) повна підтримка з SASL signing
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -163,4 +184,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.3.0*
+*Останнє оновлення: v0.4.0-dev (PTH ✅, PTT 🔧)*
