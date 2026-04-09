@@ -208,7 +208,17 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			gr = nil
 		}
 
-		if err := report.Generate(reportPath, result, g, paths, kr, aclResult, dr, gr); err != nil {
+		authMethod := "Password"
+		switch {
+		case ccachePath != "":
+			authMethod = "PTT (Kerberos ccache)"
+		case ntHash != "":
+			authMethod = "PTH (NTLM hash)"
+		case username == "":
+			authMethod = "Anonymous"
+		}
+
+		if err := report.Generate(reportPath, result, g, paths, kr, aclResult, dr, gr, authMethod); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
 	}

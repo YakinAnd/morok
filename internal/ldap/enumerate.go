@@ -2,7 +2,9 @@ package ldap
 
 import (
 	"fmt"
+	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -44,26 +46,33 @@ type LDAPGroup struct {
 
 // LDAPComputer представляє комп'ютер AD
 type LDAPComputer struct {
-	DN                     string
-	SAMAccountName         string
-	DNSHostName            string
-	OperatingSystem        string
-	OperatingSystemVersion string
-	Enabled                bool
-	LastLogon              string
-	SPNs                   []string
+	DN                      string
+	SAMAccountName          string
+	DNSHostName             string
+	OperatingSystem         string
+	OperatingSystemVersion  string
+	OperatingSystemSP       string
+	Enabled                 bool
+	LastLogon               string
+	SPNs                    []string
 	UnconstrainedDelegation bool
-	ObjectSid              string
+	ObjectSid               string
+	Description             string
+	WhenCreated             string
+	LAPSEnabled             bool
+	Domain                  string // e.g. "north.sevenkingdoms.local"
+	IsGC                    bool   // true if data came from GC (may be partial)
 }
 
 // EnumerationResult містить всі зібрані дані
 type EnumerationResult struct {
-	Domain    string
-	BaseDN    string
-	Users     []LDAPUser
-	Groups    []LDAPGroup
-	Computers []LDAPComputer
+	Domain      string
+	BaseDN      string
+	Users       []LDAPUser
+	Groups      []LDAPGroup
+	Computers   []LDAPComputer
 	CollectedAt time.Time
+	ForestWide  bool // true if computers cover entire forest (GC was used)
 }
 
 // ============================================================
@@ -113,10 +122,14 @@ var computerAttributes = []string{
 	"dNSHostName",
 	"operatingSystem",
 	"operatingSystemVersion",
+	"operatingSystemServicePack",
 	"userAccountControl",
 	"lastLogonTimestamp",
 	"servicePrincipalName",
 	"objectSid",
+	"description",
+	"whenCreated",
+	"ms-MCS-AdmPwdExpirationTime",
 }
 
 // ============================================================
@@ -147,18 +160,23 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	}
 	result.Groups = groups
 
-	// Computers
-	computers, err := c.EnumerateComputers()
+	// Computers — try forest-wide (GC), fall back to domain-only
+	computers, forestWide, err := c.enumerateComputersForest()
 	if err != nil {
 		return nil, fmt.Errorf("computer enumeration failed: %w", err)
 	}
 	result.Computers = computers
+	result.ForestWide = forestWide
 
 	// Підсумок
 	color.Cyan("\n[*] Enumeration complete:")
 	color.Green("    Users:     %d", len(result.Users))
 	color.Green("    Groups:    %d", len(result.Groups))
-	color.Green("    Computers: %d", len(result.Computers))
+	if result.ForestWide {
+		color.Green("    Computers: %d (forest-wide)", len(result.Computers))
+	} else {
+		color.Green("    Computers: %d (domain-only)", len(result.Computers))
+	}
 
 	// Швидкий аналіз цікавих об'єктів
 	c.printQuickFindings(result)
@@ -265,6 +283,7 @@ func parseGroup(entry *goldap.Entry) LDAPGroup {
 
 func parseComputer(entry *goldap.Entry) LDAPComputer {
 	uac := parseUAC(entry.GetAttributeValue("userAccountControl"))
+	lapsExpiry := entry.GetAttributeValue("ms-MCS-AdmPwdExpirationTime")
 
 	return LDAPComputer{
 		DN:                      entry.DN,
@@ -272,11 +291,16 @@ func parseComputer(entry *goldap.Entry) LDAPComputer {
 		DNSHostName:             entry.GetAttributeValue("dNSHostName"),
 		OperatingSystem:         entry.GetAttributeValue("operatingSystem"),
 		OperatingSystemVersion:  entry.GetAttributeValue("operatingSystemVersion"),
+		OperatingSystemSP:       entry.GetAttributeValue("operatingSystemServicePack"),
 		Enabled:                 !isBitSet(uac, 0x0002),
 		LastLogon:               parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		SPNs:                    entry.GetAttributeValues("servicePrincipalName"),
-		UnconstrainedDelegation: isBitSet(uac, 0x80000),
+		UnconstrainedDelegation: isBitSet(uac, 0x80000) && !isBitSet(uac, 0x2000),
 		ObjectSid:               parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
+		Description:             entry.GetAttributeValue("description"),
+		WhenCreated:             parseGeneralizedTime(entry.GetAttributeValue("whenCreated")),
+		LAPSEnabled:             lapsExpiry != "",
+		Domain:                  dnToDomainLabel(entry.DN),
 	}
 }
 
@@ -413,6 +437,118 @@ func printFinding(label string, count int) {
 	} else {
 		color.Red("    %-40s %d  ◄", label+":", count)
 	}
+}
+
+// ============================================================
+// Forest-wide computer enumeration
+// ============================================================
+
+// enumerateComputersForest tries GC (port 3268) to get all forest computers,
+// then upgrades to full attributes via direct domain DC queries.
+// Returns (computers, forestWide, error).
+func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
+	color.Blue("[*] Enumerating computers (forest-wide via GC)...")
+
+	gcEntries, err := c.SearchGC(FilterAllComputers, computerAttributes)
+	if err != nil {
+		color.Yellow("[!] GC not available (%v), falling back to domain-only", err)
+		computers, err := c.EnumerateComputers()
+		return computers, false, err
+	}
+
+	// Group entries by domain baseDN
+	domainEntries := make(map[string][]*goldap.Entry)
+	for _, entry := range gcEntries {
+		baseDN := dnToBaseDN(entry.DN)
+		domainEntries[baseDN] = append(domainEntries[baseDN], entry)
+	}
+
+	var computers []LDAPComputer
+
+	for baseDN, entries := range domainEntries {
+		if baseDN == strings.ToLower(c.BaseDN) {
+			// Current domain — query directly for full attributes
+			full, err := c.EnumerateComputers()
+			if err == nil {
+				computers = append(computers, full...)
+				continue
+			}
+		}
+
+		// Child domain — try to resolve DC and query directly
+		childDomain := baseDNToDomain(baseDN)
+		fullEntries, err := c.queryChildDomainComputers(childDomain, baseDN)
+		if err == nil {
+			for _, e := range fullEntries {
+				comp := parseComputer(e)
+				computers = append(computers, comp)
+			}
+		} else {
+			color.Yellow("[!] Cannot query %s directly (%v), using GC partial data", childDomain, err)
+			for _, e := range entries {
+				comp := parseComputer(e)
+				comp.IsGC = true
+				computers = append(computers, comp)
+			}
+		}
+	}
+
+	color.Green("[+] Found %d computers (forest-wide)", len(computers))
+	return computers, true, nil
+}
+
+// queryChildDomainComputers resolves the child domain's DC via DNS and queries it.
+func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Entry, error) {
+	addrs, err := net.LookupHost(domain)
+	if err != nil || len(addrs) == 0 {
+		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)
+	}
+	color.Blue("[*] Querying child domain %s → %s", domain, addrs[0])
+	return c.SearchDomain(addrs[0], baseDN, FilterAllComputers, computerAttributes)
+}
+
+// dnToBaseDN extracts the DC= components from a DN as a lowercase string.
+// "CN=CASTELBLACK,CN=Computers,DC=north,DC=sevenkingdoms,DC=local" → "dc=north,dc=sevenkingdoms,dc=local"
+func dnToBaseDN(dn string) string {
+	parts := strings.Split(strings.ToLower(dn), ",")
+	var dcs []string
+	for _, p := range parts {
+		if strings.HasPrefix(strings.TrimSpace(p), "dc=") {
+			dcs = append(dcs, strings.TrimSpace(p))
+		}
+	}
+	return strings.Join(dcs, ",")
+}
+
+// dnToDomainLabel extracts the domain label (e.g. "north.sevenkingdoms.local") from a DN.
+func dnToDomainLabel(dn string) string {
+	return baseDNToDomain(dnToBaseDN(dn))
+}
+
+// baseDNToDomain converts "dc=north,dc=sevenkingdoms,dc=local" → "north.sevenkingdoms.local"
+func baseDNToDomain(baseDN string) string {
+	parts := strings.Split(strings.ToLower(baseDN), ",")
+	var labels []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if strings.HasPrefix(p, "dc=") {
+			labels = append(labels, strings.TrimPrefix(p, "dc="))
+		}
+	}
+	return strings.Join(labels, ".")
+}
+
+// parseGeneralizedTime parses LDAP generalized time "20230101120000.0Z" → "2023-01-01"
+func parseGeneralizedTime(val string) string {
+	if val == "" {
+		return ""
+	}
+	for _, layout := range []string{"20060102150405.0Z", "20060102150405Z", "20060102150405.0-0700", "20060102150405-0700"} {
+		if t, err := time.Parse(layout, val); err == nil {
+			return t.Format("2006-01-02")
+		}
+	}
+	return val
 }
 
 // parseSIDBytes конвертує raw objectSid bytes в рядок S-1-5-...

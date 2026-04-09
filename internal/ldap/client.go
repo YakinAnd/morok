@@ -253,6 +253,135 @@ func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, er
 	return allEntries, nil
 }
 
+// SearchGC connects to Global Catalog (port 3268) and searches the entire forest.
+// Returns all objects across all domains in the forest.
+// Supports password and NTLM hash auth; Kerberos ccache not yet supported.
+func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, error) {
+	gcAddress := fmt.Sprintf("%s:3268", c.Host)
+
+	netConn, err := net.DialTimeout("tcp", gcAddress, 10*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("GC connection to %s failed: %w", gcAddress, err)
+	}
+
+	wrap := newSASLConn(netConn)
+	gcConn := goldap.NewConn(wrap, false)
+	gcConn.Start()
+	defer gcConn.Close()
+
+	switch {
+	case c.NTHash != "":
+		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
+		if err := gcConn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
+			return nil, fmt.Errorf("GC NTLM bind: %w", err)
+		}
+	case c.Password != "" && c.Username != "":
+		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
+		if err := gcConn.Bind(upn, c.Password); err != nil {
+			return nil, fmt.Errorf("GC bind: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("GC query requires credentials (anonymous/Kerberos not supported for GC yet)")
+	}
+
+	searchReq := goldap.NewSearchRequest(
+		"", // empty base = forest-wide
+		goldap.ScopeWholeSubtree,
+		goldap.NeverDerefAliases,
+		0, 30, false,
+		filter,
+		attributes,
+		nil,
+	)
+	pagingControl := goldap.NewControlPaging(1000)
+	searchReq.Controls = append(searchReq.Controls, pagingControl)
+
+	var allEntries []*goldap.Entry
+	for {
+		result, err := gcConn.Search(searchReq)
+		if err != nil {
+			return nil, fmt.Errorf("GC search failed: %w", err)
+		}
+		allEntries = append(allEntries, result.Entries...)
+
+		updated := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
+		if updated == nil {
+			break
+		}
+		paging, ok := updated.(*goldap.ControlPaging)
+		if !ok || len(paging.Cookie) == 0 {
+			break
+		}
+		pagingControl.SetCookie(paging.Cookie)
+	}
+
+	return allEntries, nil
+}
+
+// SearchDomain connects to a specific DC and searches a given base DN.
+// Used for cross-domain queries with full attribute resolution.
+func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([]*goldap.Entry, error) {
+	address := fmt.Sprintf("%s:389", dc)
+
+	netConn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("cross-domain connection to %s failed: %w", address, err)
+	}
+
+	wrap := newSASLConn(netConn)
+	conn := goldap.NewConn(wrap, false)
+	conn.Start()
+	defer conn.Close()
+
+	switch {
+	case c.NTHash != "":
+		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
+		if err := conn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
+			return nil, fmt.Errorf("cross-domain NTLM bind: %w", err)
+		}
+	case c.Password != "" && c.Username != "":
+		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
+		if err := conn.Bind(upn, c.Password); err != nil {
+			return nil, fmt.Errorf("cross-domain bind: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("cross-domain query requires credentials")
+	}
+
+	searchReq := goldap.NewSearchRequest(
+		baseDN,
+		goldap.ScopeWholeSubtree,
+		goldap.NeverDerefAliases,
+		0, 30, false,
+		filter,
+		attributes,
+		nil,
+	)
+	pagingControl := goldap.NewControlPaging(1000)
+	searchReq.Controls = append(searchReq.Controls, pagingControl)
+
+	var allEntries []*goldap.Entry
+	for {
+		result, err := conn.Search(searchReq)
+		if err != nil {
+			return nil, fmt.Errorf("cross-domain search failed: %w", err)
+		}
+		allEntries = append(allEntries, result.Entries...)
+
+		updated := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
+		if updated == nil {
+			break
+		}
+		paging, ok := updated.(*goldap.ControlPaging)
+		if !ok || len(paging.Cookie) == 0 {
+			break
+		}
+		pagingControl.SetCookie(paging.Cookie)
+	}
+
+	return allEntries, nil
+}
+
 // Close закриває з'єднання
 func (c *Client) Close() {
 	if c.conn != nil {
