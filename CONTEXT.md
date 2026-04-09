@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.3.0
+- **Поточна версія:** v0.5.0
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -165,9 +165,25 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - Тест PTH: `--hash c66d72021a2d4744409969a581a1705e` (admin/8dCT-DJjgScp)
 - `LdapServerIntegrity=0` на DC01 для тестування (дозволяє SASL без примусового signing)
 
-### v0.5 Report версія
-- Покращений HTML звіт
-- JSON export
+### v0.5 ЗАВЕРШЕНО
+- Forest-wide computer enumeration через Global Catalog (порт 3268)
+  - Видно всі комп'ютери в усіх доменах лісу (не тільки поточний домен)
+  - Запит до child domain DC напряму через DNS-резолвінг для повних атрибутів
+  - Fallback на GC partial data якщо child domain недоступний
+  - `LDAPComputer` тепер має: LAPS, OS Service Pack, description, whenCreated, domain label
+- HTML звіт — Summary cards клікабельні (перехід до відповідної вкладки)
+- HTML звіт — Accordion "🔴 Exploit / 🛡 Fix" для кожного файдінгу в ACL, Delegation, Kerberos, Attack Path вкладках
+- HTML звіт — Exploit команди контекстно залежні (bloodyAD, getST.py, GetUserSPNs, Rubeus, hashcat)
+- HTML звіт — D3.js граф перероблений: розмір ноди = кількість шляхів, tooltip при hover, підписи ребер, червоні стрілки для admin-шляхів, кнопка Reset Zoom
+- HTML звіт — вкладка Computers розширена: Domain, LAPS, Version, Created, Description
+
+### v0.6 TODO
+- **Unauthenticated recon 1**: Username enumeration через Kerberos AS-REQ (без credentials, тільки DC IP + domain + wordlist)
+  - `adpath enum-users -d domain --dc dc --wordlist users.txt`
+  - Розрізнення помилок: `PRINCIPAL_UNKNOWN` (не існує) vs `PREAUTH_REQUIRED` (існує)
+- **Unauthenticated recon 2**: RootDSE enumeration без bind (domain name, forest, AD version, functional level)
+- **Summary finding grouping**: зараз 72 ACL findings → в Summary має бути "1 Critical — ACL Privilege Escalation". Групувати raw findings в логічні issues для executive view; detail-вкладки залишаються з індивідуальними записами
+- **Offline KB (knowledge base)**: `internal/kb/findings.go` — єдиний map `finding_type → KBEntry{Exploit, Fix, CVSS, References}`. Поточні switch-case в html.go замінити на KB lookup. Повністю вбудований в бінарник, не потребує інтернету. Кожен новий модуль реєструє свої типи в KB.
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -180,4 +196,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.4.0 (PTH ✅, PTT ✅)*
+*Останнє оновлення: v0.5.0 (forest-wide computers ✅, report UX ✅, accordion exploit/fix ✅)*
