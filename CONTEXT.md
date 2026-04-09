@@ -144,34 +144,30 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - gpo команда — GPO enumeration + password policy
 - HTML звіт оновлено: нові вкладки + findings chart
 
-### v0.4 В РОЗРОБЦІ
+### v0.4 ЗАВЕРШЕНО
 - ✅ Pass-the-Hash (NTLM) — `--hash <NT_hash>` — протестовано на GOAD, працює
-- 🔧 Pass-the-Ticket (Kerberos ccache) — `--ccache <path>` — частково реалізовано
+- ✅ Pass-the-Ticket (Kerberos ccache) — `--ccache <path>` — протестовано на GOAD, працює
 
-#### Стан PTT (ccache) на кінець сесії:
-- `KerberosGSSAPIClient` реалізує go-ldap GSSAPIClient через gokrb5
-- SPNEGO NegTokenInit обгортка AP-REQ — аутентифікація проходить
-- Після bind Windows шифрує LDAP PDU через Kerberos session key
+#### Технічні деталі реалізації PTT:
+- `KerberosGSSAPIClient` (`internal/ldap/kerberos_auth.go`) — реалізує go-ldap GSSAPIClient через gokrb5
+- SPNEGO NegTokenInit обгортка AP-REQ (Windows вимагає SPNEGO, не raw KRB5)
 - `saslConn` (`internal/ldap/sasl_conn.go`) — обгортка net.Conn для SASL wrap/unwrap
-- SASL активується через `Activate(sessionKey)` після GSSAPI bind
-- **Відкрита проблема**: go-ldap читає відповіді через внутрішній goroutine
-  (`processMessages`) до того як наш `saslConn.Read` може перехопити трафік.
-  Дані що приходять від сервера (зашифровані) обробляються BER-парсером go-ldap
-  і викликають "invalid length byte 0xff".
-- **Наступний крок**: зрозуміти як `processMessages` читає з conn і вирішити
-  проблему перехоплення (можливо через `bufio` буферизацію або зміну підходу).
+- Після GSSAPI bind Windows шифрує всі LDAP PDU через Kerberos session key
+- **Race condition вирішено**: go-ldap's reader goroutine блокується в `c.Conn.Read()` до виклику `Activate()`. Рішення — 5ms deadline polling + читання в tmp buffer з перевіркою `active` ПІСЛЯ повернення даних. Якщо `active=true` — байти йдуть в `rawBuf` і обробляються як SASL frame.
+- **Write bug вирішено**: `gssapi.NewInitiatorWrapToken` обчислює checksum з `SndSeqNum=0`. Для seqNum>0 checksum невалідний → DC reset. Фікс: будуємо `WrapToken` вручну з правильним seqNum перед `SetCheckSum`.
 
-#### Ключові технічні деталі PTT:
-- Кредси: `--ccache /tmp/krb5cc_0 --dc FQDN` (DC треба FQDN, не IP)
-- Якщо `--dc` IP — автоматиЌчний reverse DNS lookup до FQDN
+#### Ключові технічні деталі:
+- Кредси: `--ccache <path> --dc FQDN` (DC треба FQDN, не IP)
+- Якщо `--dc` IP — автоматичний reverse DNS lookup до FQDN
 - `KRB5_CONFIG` env var → `/etc/krb5.conf` → мінімальний inline config
+- Отримати TGT на macOS: `getTGT.py sevenkingdoms.local/administrator:'pass' -dc-ip 192.168.56.10`
 - GOAD: DC01 = `kingslanding.sevenkingdoms.local` (192.168.56.10)
 - Тест PTH: `--hash c66d72021a2d4744409969a581a1705e` (admin/8dCT-DJjgScp)
+- `LdapServerIntegrity=0` на DC01 для тестування (дозволяє SASL без примусового signing)
 
 ### v0.5 Report версія
 - Покращений HTML звіт
 - JSON export
-- PTT (ccache) повна підтримка з SASL signing
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -184,4 +180,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.4.0-dev (PTH ✅, PTT 🔧)*
+*Останнє оновлення: v0.4.0 (PTH ✅, PTT ✅)*
