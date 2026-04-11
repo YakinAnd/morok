@@ -202,7 +202,7 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 		}
 	}
 
-	printADCSResult(result)
+	printADCSResult(result, false)
 	return result, nil
 }
 
@@ -337,7 +337,7 @@ func formatVulns(vulns []ADCSVulnType) string {
 // Terminal output
 // ============================================================
 
-func printADCSResult(r *ADCSResult) {
+func printADCSResult(r *ADCSResult, showNextSteps bool) {
 	color.Cyan("\n  ADCS")
 	color.White("  %-28s %d", "certificate authorities", len(r.CAs))
 	for _, ca := range r.CAs {
@@ -392,7 +392,7 @@ func printADCSResult(r *ADCSResult) {
 		return false
 	}()
 
-	if hasCritical || len(r.TemplateFindings) > 0 {
+	if showNextSteps && (hasCritical || len(r.TemplateFindings) > 0) {
 		color.Cyan("\n  NEXT STEPS")
 		if critCount > 0 {
 			color.White("  ESC1  certipy req -u user@%s -p pass -ca <CA> -template <tmpl> -upn admin@%s", r.Domain, r.Domain)
@@ -407,7 +407,7 @@ func printADCSResult(r *ADCSResult) {
 	}
 }
 
-// PrintADCSResult — public wrapper for standalone adcs command
+// PrintADCSResult — public wrapper for standalone adcs command (shows next steps)
 func PrintADCSResult(r *ADCSResult) {
-	printADCSResult(r)
+	printADCSResult(r, true)
 }

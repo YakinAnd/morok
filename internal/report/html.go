@@ -1654,7 +1654,8 @@ function showTabByClick(e, name) {
 function toggleAcc(btn) {
   const body = btn.nextElementSibling;
   const open = body.classList.toggle('open');
-  btn.textContent = btn.textContent.replace(/^[▶▼]/, open ? '▼' : '▶');
+  // replace only the arrow character, preserve the rest of innerHTML
+  btn.innerHTML = btn.innerHTML.replace(/[▶▼]/, open ? '▼' : '▶');
 }
 
 // ============================================================
