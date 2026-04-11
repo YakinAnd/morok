@@ -88,12 +88,13 @@ var gpoCmd = &cobra.Command{
 
 func init() {
 	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd} {
+		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
 		cmd.Flags().StringVarP(&password, "password", "p", "", "Password")
-		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
-		cmd.Flags().StringVar(&ntHash, "hash", "", "NT hash for Pass-the-Hash (NTLM auth)")
+		cmd.Flags().StringVarP(&ntHash, "hashes", "H", "", "NT hash for Pass-the-Hash (e.g. aad3b435...)")
 		cmd.Flags().StringVar(&ccachePath, "ccache", "", "Path to Kerberos ccache file for Pass-the-Ticket")
+		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
 		cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 		cmd.MarkFlagRequired("domain")
 	}
@@ -140,10 +141,10 @@ func resolveReportPath(explicit, targetDomain string) string {
 
 // connectAndBind підключається та автентифікується відповідним методом:
 //
-//	--ccache → Kerberos ccache (Pass-the-Ticket)
-//	--hash   → NTLM hash (Pass-the-Hash)
-//	-u/-p    → simple bind (UPN / NT format)
-//	(none)   → anonymous bind (null session)
+//	--ccache  → Kerberos ccache (Pass-the-Ticket)
+//	-H/--hashes → NTLM hash (Pass-the-Hash)
+//	-u/-p     → simple bind (UPN / NT format)
+//	(none)    → anonymous bind (null session)
 func connectAndBind() (*adldap.Client, error) {
 	client := adldap.NewClient(domain, username, password, dc, verbose)
 	client.NTHash = ntHash
