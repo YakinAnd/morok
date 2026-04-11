@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -47,7 +48,6 @@ const (
 
 // AnalyzeHygiene checks stale accounts, krbtgt age, and passwords in description
 func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
-	color.Blue("\n[*] Analyzing AD hygiene...")
 
 	hr := &HygieneResult{}
 	now := time.Now()
@@ -132,31 +132,27 @@ func isStale(lastLogon string, now time.Time, thresholdDays int) bool {
 }
 
 func printHygieneResult(hr *HygieneResult) {
-	// krbtgt
+	color.Cyan("\n  HYGIENE")
+
+	krbtgtAge := "N/A"
 	if hr.KrbtgtPwdAgeDays > 0 {
-		if hr.KrbtgtAtRisk {
-			color.Red("[!] krbtgt password age: %d days (>%d) — Golden Ticket risk elevated", hr.KrbtgtPwdAgeDays, krbtgtMaxAgeDays)
-		} else {
-			color.Green("[+] krbtgt password age: %d days (OK)", hr.KrbtgtPwdAgeDays)
-		}
+		krbtgtAge = fmt.Sprintf("%d days", hr.KrbtgtPwdAgeDays)
+	}
+	if hr.KrbtgtAtRisk {
+		color.Red("  %-28s %s  (>%dd — Golden Ticket risk)", "krbtgt pwd age", krbtgtAge, krbtgtMaxAgeDays)
+	} else {
+		color.White("  %-28s %s", "krbtgt pwd age", krbtgtAge)
 	}
 
-	// stale
 	if len(hr.StaleUsers) > 0 {
-		color.Yellow("[!] Stale user accounts (90+ days, enabled): %d", len(hr.StaleUsers))
+		color.Yellow("  %-28s %d", "stale users (90d+)", len(hr.StaleUsers))
 	} else {
-		color.Green("[+] No stale user accounts")
+		color.White("  %-28s %d", "stale users (90d+)", 0)
 	}
 	if len(hr.StaleComputers) > 0 {
-		color.Yellow("[!] Stale computers (45+ days, enabled): %d", len(hr.StaleComputers))
+		color.Yellow("  %-28s %d", "stale computers (45d+)", len(hr.StaleComputers))
 	} else {
-		color.Green("[+] No stale computers")
+		color.White("  %-28s %d", "stale computers (45d+)", 0)
 	}
-
-	// descriptions
-	if len(hr.PasswordInDesc) > 0 {
-		color.Yellow("[*] Objects with description attribute: %d — review in HTML report", len(hr.PasswordInDesc))
-	} else {
-		color.Green("[+] No description attributes found")
-	}
+	color.White("  %-28s %d", "objects with description", len(hr.PasswordInDesc))
 }

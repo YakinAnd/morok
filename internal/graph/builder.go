@@ -3,8 +3,6 @@ package graph
 import (
 	"strings"
 
-	"github.com/fatih/color"
-
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 )
 
@@ -12,7 +10,6 @@ import (
 func Build(result *adldap.EnumerationResult) *Graph {
 	g := NewGraph()
 
-	color.Blue("[*] Building AD object graph...")
 
 	// --------------------------------------------------------
 	// Крок 1: додаємо всі вузли
@@ -105,9 +102,6 @@ func Build(result *adldap.EnumerationResult) *Graph {
 			}
 		}
 	}
-
-	nodes, edges := g.Stats()
-	color.Green("[+] Graph built: %d nodes, %d edges", nodes, edges)
 
 	return g
 }

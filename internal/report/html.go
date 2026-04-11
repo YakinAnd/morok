@@ -108,7 +108,6 @@ func Generate(
 	psoResult *analysis.PSOResult,
 	authMethod string,
 ) error {
-	color.Blue("[*] Generating HTML report...")
 
 	data := ReportData{
 	Domain:           result.Domain,
@@ -147,7 +146,7 @@ func Generate(
 		return fmt.Errorf("template render error: %w", err)
 	}
 
-	color.Green("[+] Report saved to: %s", outputPath)
+	color.Cyan("\n  report saved to: %s", outputPath)
 	return nil
 }
 

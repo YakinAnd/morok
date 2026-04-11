@@ -144,7 +144,7 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 		CollectedAt: time.Now(),
 	}
 
-	color.Cyan("\n[*] Starting enumeration of %s\n", c.Domain)
+	color.White("\n  enumerating %s ...", c.Domain)
 
 	// Users
 	users, err := c.EnumerateUsers()
@@ -169,14 +169,14 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	result.ForestWide = forestWide
 
 	// Підсумок
-	color.Cyan("\n[*] Enumeration complete:")
-	color.Green("    Users:     %d", len(result.Users))
-	color.Green("    Groups:    %d", len(result.Groups))
+	compLabel := "domain"
 	if result.ForestWide {
-		color.Green("    Computers: %d (forest-wide)", len(result.Computers))
-	} else {
-		color.Green("    Computers: %d (domain-only)", len(result.Computers))
+		compLabel = "forest-wide"
 	}
+	color.Cyan("\n  OBJECTS COLLECTED")
+	color.White("  %-12s %d", "users", len(result.Users))
+	color.White("  %-12s %d", "groups", len(result.Groups))
+	color.White("  %-12s %d  (%s)", "computers", len(result.Computers), compLabel)
 
 	// Швидкий аналіз цікавих об'єктів
 	c.printQuickFindings(result)
@@ -186,47 +186,35 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 
 // EnumerateUsers збирає всіх користувачів AD
 func (c *Client) EnumerateUsers() ([]LDAPUser, error) {
-	color.Blue("[*] Enumerating users...")
-
 	entries, err := c.Search(FilterAllUsers, userAttributes)
 	if err != nil {
 		return nil, err
 	}
 
 	users := make([]LDAPUser, 0, len(entries))
-
 	for _, entry := range entries {
-		user := parseUser(entry)
-		users = append(users, user)
+		users = append(users, parseUser(entry))
 	}
-
-	color.Green("[+] Found %d users", len(users))
 	return users, nil
 }
 
 // EnumerateGroups збирає всі групи AD
 func (c *Client) EnumerateGroups() ([]LDAPGroup, error) {
-	color.Blue("[*] Enumerating groups...")
-
 	entries, err := c.Search(FilterAllGroups, groupAttributes)
 	if err != nil {
 		return nil, err
 	}
 
 	groups := make([]LDAPGroup, 0, len(entries))
-
 	for _, entry := range entries {
-		group := parseGroup(entry)
-		groups = append(groups, group)
+		groups = append(groups, parseGroup(entry))
 	}
-
-	color.Green("[+] Found %d groups", len(groups))
+	return groups, nil
 	return groups, nil
 }
 
 // EnumerateComputers збирає всі комп'ютери AD
 func (c *Client) EnumerateComputers() ([]LDAPComputer, error) {
-	color.Blue("[*] Enumerating computers...")
 
 	entries, err := c.Search(FilterAllComputers, computerAttributes)
 	if err != nil {
@@ -240,7 +228,6 @@ func (c *Client) EnumerateComputers() ([]LDAPComputer, error) {
 		computers = append(computers, computer)
 	}
 
-	color.Green("[+] Found %d computers", len(computers))
 	return computers, nil
 }
 
@@ -389,14 +376,7 @@ func parseGroupType(val string) string {
 
 // printQuickFindings виводить короткий summary цікавих знахідок
 func (c *Client) printQuickFindings(result *EnumerationResult) {
-	color.Yellow("\n[!] Quick findings:")
-
-	// Кербероастабельні акаунти
-	kerberoastable := 0
-	asrep := 0
-	adminUsers := 0
-	passwordNeverExpires := 0
-
+	kerberoastable, asrep, adminUsers, pwdNeverExpires := 0, 0, 0, 0
 	for _, u := range result.Users {
 		if !u.Enabled {
 			continue
@@ -411,31 +391,29 @@ func (c *Client) printQuickFindings(result *EnumerationResult) {
 			adminUsers++
 		}
 		if u.PasswordNeverExpires {
-			passwordNeverExpires++
+			pwdNeverExpires++
 		}
 	}
-
-	printFinding("Kerberoastable accounts", kerberoastable)
-	printFinding("AS-REP roastable accounts", asrep)
-	printFinding("AdminCount=1 users", adminUsers)
-	printFinding("Password never expires", passwordNeverExpires)
-
-	// Комп'ютери з Unconstrained Delegation
-	unconstrainedDelegation := 0
+	unconstrainedDeleg := 0
 	for _, comp := range result.Computers {
 		if comp.UnconstrainedDelegation && comp.Enabled {
-			unconstrainedDelegation++
+			unconstrainedDeleg++
 		}
 	}
-	printFinding("Unconstrained delegation computers", unconstrainedDelegation)
+
+	color.Cyan("\n  QUICK FINDINGS")
+	printFinding("kerberoastable", kerberoastable)
+	printFinding("AS-REP roastable", asrep)
+	printFinding("admins (adminCount=1)", adminUsers)
+	printFinding("password never expires", pwdNeverExpires)
+	printFinding("unconstrained delegation", unconstrainedDeleg)
 }
 
-// printFinding виводить знахідку з кольором залежно від кількості
 func printFinding(label string, count int) {
 	if count == 0 {
-		color.Green("    %-40s %d", label+":", count)
+		color.White("  %-28s %d", label, count)
 	} else {
-		color.Red("    %-40s %d  ◄", label+":", count)
+		color.Yellow("  %-28s %d", label, count)
 	}
 }
 
@@ -447,11 +425,9 @@ func printFinding(label string, count int) {
 // then upgrades to full attributes via direct domain DC queries.
 // Returns (computers, forestWide, error).
 func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
-	color.Blue("[*] Enumerating computers (forest-wide via GC)...")
-
 	gcEntries, err := c.SearchGC(FilterAllComputers, computerAttributes)
 	if err != nil {
-		color.Yellow("[!] GC not available (%v), falling back to domain-only", err)
+		color.White("  GC unavailable (%v), domain-only", err)
 		computers, err := c.EnumerateComputers()
 		return computers, false, err
 	}
@@ -484,7 +460,7 @@ func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 				computers = append(computers, comp)
 			}
 		} else {
-			color.Yellow("[!] Cannot query %s directly (%v), using GC partial data", childDomain, err)
+			color.White("  cannot reach %s (%v), using partial GC data", childDomain, err)
 			for _, e := range entries {
 				comp := parseComputer(e)
 				comp.IsGC = true
@@ -493,7 +469,6 @@ func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 		}
 	}
 
-	color.Green("[+] Found %d computers (forest-wide)", len(computers))
 	return computers, true, nil
 }
 
@@ -503,7 +478,7 @@ func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Ent
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)
 	}
-	color.Blue("[*] Querying child domain %s → %s", domain, addrs[0])
+	color.White("  querying %s via %s", domain, addrs[0])
 	return c.SearchDomain(addrs[0], baseDN, FilterAllComputers, computerAttributes)
 }
 

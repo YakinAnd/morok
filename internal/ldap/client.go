@@ -56,7 +56,7 @@ func (c *Client) Connect() error {
 	conn, wrap, err := c.dialWithTimeout(address, false)
 	if err != nil {
 		// fallback на LDAPS port 636
-		color.Yellow("[!] Port 389 failed, trying LDAPS (636)...")
+		color.White("  port 389 failed, trying LDAPS 636...")
 		c.Port = 636
 		address = fmt.Sprintf("%s:%d", c.Host, c.Port)
 		conn, wrap, err = c.dialWithTimeout(address, true)
@@ -124,7 +124,7 @@ func (c *Client) Bind() error {
 		}
 	}
 
-	color.Green("[+] Authenticated as %s", upn)
+	color.Green("  authenticated     %s@%s", c.Username, c.Domain)
 	return nil
 }
 
@@ -145,7 +145,7 @@ func (c *Client) BindNTLM() error {
 		return fmt.Errorf("NTLM bind failed: %w", err)
 	}
 
-	color.Green("[+] Authenticated via NTLM (Pass-the-Hash) as %s\\%s", netbiosDomain, c.Username)
+	color.Green("  authenticated     %s\\%s  (PTH/NTLM)", netbiosDomain, c.Username)
 	return nil
 }
 
@@ -185,7 +185,7 @@ func (c *Client) BindKerberos() error {
 		}
 	}
 
-	color.Green("[+] Authenticated via Kerberos (ccache: %s)", c.CcachePath)
+	color.Green("  authenticated     %s  (PTT/Kerberos)", c.Username)
 	return nil
 }
 
@@ -200,7 +200,7 @@ func (c *Client) AnonymousBind() error {
 		return fmt.Errorf("anonymous bind failed (null sessions disabled): %w", err)
 	}
 
-	color.Yellow("[!] Anonymous bind successful — null session enabled!")
+	color.Yellow("  null session      anonymous bind OK")
 	return nil
 }
 

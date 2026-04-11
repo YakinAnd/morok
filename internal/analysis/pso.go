@@ -49,13 +49,9 @@ var psoAttributes = []string{
 
 // AnalyzePSO enumerates Fine-Grained Password Policy objects
 func AnalyzePSO(client *adldap.Client) (*PSOResult, error) {
-	color.Blue("\n[*] Analyzing Fine-Grained Password Policy (PSO)...")
-
 	baseDN := "CN=Password Settings Container,CN=System," + client.GetBaseDN()
 	entries, err := client.SearchBase(baseDN, "(objectClass=msDS-PasswordSettings)", psoAttributes)
 	if err != nil {
-		// PSO container may not exist if no PSOs are configured — not an error
-		color.Blue("[*] No PSO container found (no Fine-Grained Password Policies configured)")
 		return &PSOResult{}, nil
 	}
 
@@ -93,15 +89,13 @@ func AnalyzePSO(client *adldap.Client) (*PSOResult, error) {
 		result.PSOs = append(result.PSOs, pso)
 	}
 
-	if len(result.PSOs) == 0 {
-		color.Green("[+] No Fine-Grained Password Policies found")
-	} else {
-		color.Green("[+] Found %d PSO(s)", len(result.PSOs))
+	if len(result.PSOs) > 0 {
+		color.Cyan("\n  FINE-GRAINED PASSWORD POLICY  (%d)", len(result.PSOs))
 		for _, p := range result.PSOs {
 			if p.IsWeak {
-				color.Red("    [WEAK] %s (precedence %d): %s", p.Name, p.Precedence, strings.Join(p.WeakReasons, "; "))
+				color.Yellow("  [WEAK] %-24s prec:%d  %s", p.Name, p.Precedence, strings.Join(p.WeakReasons, "; "))
 			} else {
-				color.Green("    [OK]   %s (precedence %d)", p.Name, p.Precedence)
+				color.White("  [OK]   %-24s prec:%d", p.Name, p.Precedence)
 			}
 		}
 	}

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
@@ -29,8 +30,6 @@ func (g *Graph) FindPathsToDA(maxDepth int) []AttackPath {
 
 // FindPathsToPrivilegedGroups знаходить шляхи до всіх привілейованих груп.
 func (g *Graph) FindPathsToPrivilegedGroups(maxDepth int) []AttackPath {
-	color.Blue("[*] Searching for attack paths to privileged groups...")
-
 	if maxDepth <= 0 {
 		maxDepth = 10
 	}
@@ -39,12 +38,6 @@ func (g *Graph) FindPathsToPrivilegedGroups(maxDepth int) []AttackPath {
 	for _, groupName := range privilegedGroups {
 		paths := g.findPathsToGroup(groupName, maxDepth, 50)
 		all = append(all, paths...)
-	}
-
-	if len(all) == 0 {
-		color.Green("[+] No attack paths to privileged groups found")
-	} else {
-		color.Red("[!] Found %d attack path(s) to privileged groups", len(all))
 	}
 	return all
 }
@@ -74,11 +67,6 @@ func (g *Graph) findPathsToGroup(groupName string, maxDepth, limit int) []Attack
 		}
 	}
 
-	if len(allPaths) > 0 && groupName == "Domain Admins" {
-		color.Red("[!] Found %d attack path(s) to Domain Admins", len(allPaths))
-	} else if len(allPaths) > 0 {
-		color.Yellow("[!] Found %d attack path(s) to %s", len(allPaths), groupName)
-	}
 
 	return allPaths
 }
@@ -87,11 +75,10 @@ func (g *Graph) findPathsToGroup(groupName string, maxDepth, limit int) []Attack
 func (g *Graph) FindPathsToTarget(targetSAM string, maxDepth int) []AttackPath {
 	targetDN := g.findBySAM(targetSAM)
 	if targetDN == "" {
-		color.Yellow("[!] Target '%s' not found in graph", targetSAM)
+		color.White("  target '%s' not found in graph", targetSAM)
 		return nil
 	}
 
-	color.Blue("[*] Searching for attack paths to '%s'...", targetSAM)
 
 	if maxDepth <= 0 {
 		maxDepth = 10
@@ -243,45 +230,37 @@ func pathContains(path []Edge, dn string) bool {
 
 // PrintPaths виводить знайдені шляхи в термінал
 func (g *Graph) PrintPaths(paths []AttackPath) {
+	color.Cyan("\n  ATTACK PATHS")
 	if len(paths) == 0 {
+		color.White("  none found")
 		return
 	}
-
-	color.Red("\n[!] Attack Paths to Privileged Groups:\n")
+	color.Red("  %d path(s) to privileged groups\n", len(paths))
 
 	for i, path := range paths {
 		target := path.TargetGroup
 		if target == "" {
 			target = "Domain Admins"
 		}
-		color.Yellow("  Path %d → %s (depth: %d):", i+1, target, path.Depth)
+		color.Red("  #%-3d → %-30s  depth: %d", i+1, target, path.Depth)
 
 		for j, node := range path.Nodes {
-			prefix := "  "
-			if j < len(path.Nodes)-1 {
-				prefix = "  ├─"
-			} else {
-				prefix = "  └─"
+			prefix := "  │   ├─"
+			if j == len(path.Nodes)-1 {
+				prefix = "  │   └─"
 			}
-
-			// колір залежно від типу вузла
-			switch node.Type {
-			case NodeUser:
-				extras := nodeExtras(node)
-				color.Cyan("%s [USER] %s%s", prefix, node.SAMAccountName, extras)
-			case NodeGroup:
-				color.Magenta("%s [GROUP] %s", prefix, node.SAMAccountName)
-			case NodeComputer:
-				extras := nodeExtras(node)
-				color.Blue("%s [COMPUTER] %s%s", prefix, node.SAMAccountName, extras)
+			extras := ""
+			if node.Type == NodeUser || node.Type == NodeComputer {
+				extras = nodeExtras(node)
 			}
+			typeTag := strings.ToUpper(string(node.Type))
+			color.White("%s [%-8s] %s%s", prefix, typeTag, node.SAMAccountName, extras)
 
-			// показуємо тип зв'язку між вузлами
 			if j < len(path.Edges) {
-				color.White("  │   └─[%s]", path.Edges[j].Type)
+				color.White("  │        via %s", path.Edges[j].Type)
 			}
 		}
-		color.White("")
+		fmt.Println()
 	}
 }
 

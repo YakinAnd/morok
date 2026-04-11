@@ -54,7 +54,6 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 		AnalyzedAt: time.Now(),
 	}
 
-	color.Blue("\n[*] Analyzing Kerberos attack surface...")
 
 	// ── Kerberoastable ────────────────────────────────────────
 	for _, u := range result.Users {
@@ -114,116 +113,56 @@ func PrintKerberosResult(kr *KerberosResult) {
 }
 
 func printKerberoastable(kr *KerberosResult) {
-	color.Yellow("\n[!] Kerberoastable Accounts (%d):\n", len(kr.KerberoastableAccounts))
-
+	color.Cyan("\n  KERBEROASTABLE  (%d)", len(kr.KerberoastableAccounts))
 	if len(kr.KerberoastableAccounts) == 0 {
-		color.Green("    None found")
+		color.White("  none found")
 		return
 	}
-
+	color.White("  %-20s %-22s %-22s %s", "account", "pwd last set", "last logon", "spns")
+	color.White("  " + strings.Repeat("-", 78))
 	for _, acc := range kr.KerberoastableAccounts {
-		// заголовок акаунту
+		risk := ""
 		if acc.AdminCount {
-			color.Red("  ► %s [ADMINCOUNT — HIGH VALUE TARGET]", acc.SAMAccountName)
-		} else {
-			color.Yellow("  ► %s", acc.SAMAccountName)
+			risk = " [ADMIN]"
 		}
-
-		// деталі
-		color.White("      DN:               %s", acc.DN)
-		color.White("      Password Last Set: %s", acc.PasswordLastSet)
-		color.White("      Last Logon:        %s", acc.LastLogon)
-
-		if acc.Description != "" {
-			color.White("      Description:      %s", acc.Description)
-		}
-
-		// SPNs
-		color.White("      SPNs:")
-		for _, spn := range acc.SPNs {
-			color.Cyan("        - %s", spn)
-		}
-
-		// оцінка ризику
-		printKerberoastRisk(acc)
-		fmt.Println()
+		color.Yellow("  %-20s %-22s %-22s %d%s",
+			acc.SAMAccountName+risk,
+			acc.PasswordLastSet,
+			acc.LastLogon,
+			len(acc.SPNs),
+		)
 	}
 }
 
 func printASREP(kr *KerberosResult) {
-	color.Yellow("\n[!] AS-REP Roastable Accounts (%d):\n", len(kr.ASREPAccounts))
-
+	color.Cyan("\n  AS-REP ROASTABLE  (%d)", len(kr.ASREPAccounts))
 	if len(kr.ASREPAccounts) == 0 {
-		color.Green("    None found")
+		color.White("  none found")
 		return
 	}
-
+	color.White("  %-20s %-22s %s", "account", "pwd last set", "last logon")
+	color.White("  " + strings.Repeat("-", 66))
 	for _, acc := range kr.ASREPAccounts {
+		risk := ""
 		if acc.AdminCount {
-			color.Red("  ► %s [ADMINCOUNT — CRITICAL]", acc.SAMAccountName)
-		} else {
-			color.Yellow("  ► %s", acc.SAMAccountName)
+			risk = " [ADMIN]"
 		}
-
-		color.White("      DN:               %s", acc.DN)
-		color.White("      Password Last Set: %s", acc.PasswordLastSet)
-		color.White("      Last Logon:        %s", acc.LastLogon)
-
-		if acc.Description != "" {
-			color.White("      Description:      %s", acc.Description)
-		}
-
-		fmt.Println()
+		color.Yellow("  %-20s %-22s %s", acc.SAMAccountName+risk, acc.PasswordLastSet, acc.LastLogon)
 	}
 }
 
-// printKerberoastRisk оцінює ризик конкретного акаунту
-func printKerberoastRisk(acc KerberoastableAccount) {
-	var risks []string
-
-	if acc.AdminCount {
-		risks = append(risks, "AdminCount=1 (privileged account)")
-	}
-	if acc.PasswordLastSet == "Never" || acc.PasswordLastSet == "" {
-		risks = append(risks, "Password never set")
-	}
-	if acc.LastLogon == "Never" || acc.LastLogon == "" {
-		risks = append(risks, "Account never used (weak password likely)")
-	}
-	if len(acc.SPNs) > 1 {
-		risks = append(risks, fmt.Sprintf("Multiple SPNs (%d)", len(acc.SPNs)))
-	}
-
-	if len(risks) == 0 {
-		color.Green("      Risk: Low")
-		return
-	}
-
-	color.Red("      Risk: HIGH")
-	for _, r := range risks {
-		color.Red("        • %s", r)
-	}
-}
-
-// printHashcatHints виводить підказки для наступних кроків
 func printHashcatHints(kr *KerberosResult) {
-	total := len(kr.KerberoastableAccounts) + len(kr.ASREPAccounts)
-	if total == 0 {
+	if len(kr.KerberoastableAccounts)+len(kr.ASREPAccounts) == 0 {
 		return
 	}
-
-	color.Cyan("\n[*] Next steps:")
-
+	color.Cyan("\n  NEXT STEPS")
 	if len(kr.KerberoastableAccounts) > 0 {
-		color.White("  Kerberoasting — request TGS tickets:")
-		color.White("    impacket:  GetUserSPNs.py %s/jon.snow:password -dc-ip <DC> -request", kr.Domain)
-		color.White("    hashcat:   hashcat -m 13100 hashes.txt wordlist.txt")
+		color.White("  kerberoast   GetUserSPNs.py %s/<user>:<pass> -dc-ip <DC> -request", kr.Domain)
+		color.White("               hashcat -m 13100 hashes.txt wordlist.txt")
 	}
-
 	if len(kr.ASREPAccounts) > 0 {
-		color.White("\n  AS-REP Roasting — request AS-REP hashes:")
-		color.White("    impacket:  GetNPUsers.py %s/ -usersfile users.txt -dc-ip <DC>", kr.Domain)
-		color.White("    hashcat:   hashcat -m 18200 hashes.txt wordlist.txt")
+		color.White("  asrep-roast  GetNPUsers.py %s/ -usersfile users.txt -dc-ip <DC>", kr.Domain)
+		color.White("               hashcat -m 18200 hashes.txt wordlist.txt")
 	}
 }
 

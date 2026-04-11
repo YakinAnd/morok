@@ -93,15 +93,11 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 		Domain: client.GetDomain(),
 	}
 
-	color.Blue("\n[*] Analyzing Group Policy Objects...")
-
 	// збираємо всі GPO
 	gpos, err := collectGPOs(client)
 	if err != nil {
 		return nil, err
 	}
-
-	color.Blue("[*] Found %d GPOs, analyzing...", len(gpos))
 
 	// збираємо GPO links (OU → GPO)
 	links, err := collectGPOLinks(client)
@@ -141,8 +137,6 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 		result.DefaultPolicy = pp
 		assessPasswordPolicy(pp, result)
 	}
-
-	color.Green("[+] Found %d GPO findings", len(result.GPOFindings))
 
 	return result, nil
 }
@@ -367,97 +361,75 @@ func PrintGPOResult(gr *GPOResult) {
 }
 
 func printPasswordPolicyResult(gr *GPOResult) {
+	color.Cyan("\n  PASSWORD POLICY")
 	if gr.DefaultPolicy == nil {
-		color.Yellow("[!] Could not retrieve password policy")
+		color.White("  could not retrieve")
 		return
 	}
-
 	pp := gr.DefaultPolicy
-	color.Cyan("\n[*] Default Domain Password Policy:\n")
 
-	// мінімальна довжина
-	if pp.MinLength < 8 {
-		color.Red("  🔴 Minimum password length: %d (recommended: 12+)", pp.MinLength)
-	} else if pp.MinLength < 12 {
-		color.Yellow("  🟠 Minimum password length: %d (recommended: 12+)", pp.MinLength)
-	} else {
-		color.Green("  ✓  Minimum password length: %d", pp.MinLength)
-	}
+	printPolicyLine("min length", func() { color.White("  %-24s %d", "min length", pp.MinLength) },
+		pp.MinLength < 8, pp.MinLength < 12,
+		fmt.Sprintf("%d  (rec: 12+)", pp.MinLength))
 
-	// складність
 	if !pp.Complexity {
-		color.Red("  🔴 Password complexity: DISABLED")
+		color.Red("  %-24s DISABLED", "complexity")
 	} else {
-		color.Green("  ✓  Password complexity: enabled")
+		color.White("  %-24s enabled", "complexity")
 	}
-
-	// reversible encryption
 	if pp.ReversibleEncryption {
-		color.Red("  🔴 Reversible encryption: ENABLED (passwords stored in plaintext-equivalent)")
+		color.Red("  %-24s ENABLED  (plaintext-equivalent)", "reversible enc")
 	} else {
-		color.Green("  ✓  Reversible encryption: disabled")
+		color.White("  %-24s disabled", "reversible enc")
 	}
-
-	// lockout
 	if pp.LockoutThreshold == 0 {
-		color.Red("  🔴 Account lockout: DISABLED (brute force possible)")
+		color.Red("  %-24s DISABLED  (brute force possible)", "lockout")
 	} else if pp.LockoutThreshold > 10 {
-		color.Yellow("  🟠 Account lockout threshold: %d (recommended: 5 or less)", pp.LockoutThreshold)
+		color.Yellow("  %-24s %d  (rec: ≤5)", "lockout", pp.LockoutThreshold)
 	} else {
-		color.Green("  ✓  Account lockout threshold: %d", pp.LockoutThreshold)
+		color.White("  %-24s %d", "lockout", pp.LockoutThreshold)
 	}
-
-	// max password age
 	if pp.MaxAge == 0 || pp.MaxAge > 3650 {
-    color.Red("  🔴 Maximum password age: NEVER EXPIRES (passwords valid indefinitely)")
+		color.Red("  %-24s never expires", "max pwd age")
 	} else if pp.MaxAge > 90 {
-    color.Yellow("  🟠 Maximum password age: %d days (recommended: 90 or less)", pp.MaxAge)
+		color.Yellow("  %-24s %d days  (rec: ≤90)", "max pwd age", pp.MaxAge)
 	} else {
-    color.Green("  ✓  Maximum password age: %d days", pp.MaxAge)
+		color.White("  %-24s %d days", "max pwd age", pp.MaxAge)
+	}
+}
+
+func printPolicyLine(label string, _ func(), bad bool, warn bool, val string) {
+	if bad {
+		color.Red("  %-24s %s", label, val)
+	} else if warn {
+		color.Yellow("  %-24s %s", label, val)
+	} else {
+		color.White("  %-24s %s", label, val)
 	}
 }
 
 func printGPOFindings(gr *GPOResult) {
+	color.Cyan("\n  GPO FINDINGS")
 	if len(gr.GPOFindings) == 0 {
-		color.Green("\n[+] No dangerous GPO configurations found")
+		color.White("  none found")
 		return
 	}
 
-	color.Red("\n[!] Dangerous GPO Findings (%d):\n", len(gr.GPOFindings))
-
 	for _, gpo := range gr.GPOFindings {
-		icon := "🟠"
+		sev := "WARN"
 		if gpo.IsHighRisk {
-			icon = "🔴"
+			sev = "CRIT"
 		}
-
-		color.White("\n  %s %s", icon, gpo.Name)
-		color.White("      GUID: %s", gpo.GUID)
-		color.White("      DN:   %s", gpo.DN)
-
-		if len(gpo.LinkedTo) > 0 {
-			color.White("      Linked to:")
-			for _, link := range gpo.LinkedTo {
-				color.Cyan("        - %s", link)
-			}
+		color.Yellow("  [%s] %s", sev, gpo.Name)
+		for _, editor := range gpo.EditableBy {
+			color.Red("       editable by: %s", editor)
 		}
-
-		if len(gpo.EditableBy) > 0 {
-			color.Red("      Editable by (non-admins):")
-			for _, editor := range gpo.EditableBy {
-				color.Red("        - %s", editor)
-			}
-		}
-
 		for _, reason := range gpo.RiskReasons {
-			color.Red("      Risk: %s", reason)
+			color.Red("       risk: %s", reason)
 		}
 	}
 
-	color.Cyan("\n[*] GPO Abuse hints:")
-	color.White("  If you can edit a GPO linked to Domain or high-value OU:")
+	color.Cyan("\n  next steps (gpo abuse):")
 	color.White("    pyGPOAbuse.py -f AddLocalAdmin -u <user> -p <pass> -d %s --dc-ip <DC>", gr.Domain)
-	color.White("  Check for cpassword in SYSVOL:")
-	color.White("    Get-GPPPassword (PowerSploit)")
 	color.White("    findstr /S /I cpassword \\\\%s\\SYSVOL\\%s\\Policies\\*.xml", gr.Domain, gr.Domain)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -169,14 +170,13 @@ func connectAndBind() (*adldap.Client, error) {
 			return nil, fmt.Errorf("auth error: %w", err)
 		}
 	default:
-		color.Yellow("[!] No credentials provided, trying anonymous bind...")
+		color.White("  no credentials — anonymous bind")
 		if err := client.AnonymousBind(); err != nil {
 			client.Close()
 			return nil, fmt.Errorf("anonymous bind failed: %w", err)
 		}
 	}
 
-	color.Green("[+] BaseDN: %s", client.GetBaseDN())
 	return client, nil
 }
 
@@ -199,35 +199,36 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enumeration error: %w", err)
 	}
 
-	// ── побудова графа ────────────────────────────────────────
+	// ── граф + attack paths ───────────────────────────────────
 	g := graph.Build(result)
 	nodes, edges := g.Stats()
-	color.Blue("[*] Graph: %d nodes, %d edges", nodes, edges)
+	color.Cyan("\n  GRAPH")
+	color.White("  %-12s %d", "nodes", nodes)
+	color.White("  %-12s %d", "edges", edges)
 
-	// ── пошук attack paths (всі привілейовані групи) ─────────
 	paths := g.FindPathsToPrivilegedGroups(maxDepth)
 	g.PrintPaths(paths)
 
-	// ── HTML звіт ────────────────────────────────────────────
+	// ── аналіз ───────────────────────────────────────────────
 	outPath := resolveReportPath(reportPath, domain)
 
 	kr := analysis.AnalyzeKerberos(result)
 
 	aclResult, err := analysis.AnalyzeACL(client, result)
 	if err != nil {
-		color.Yellow("[!] ACL analysis failed: %v", err)
+		color.Yellow("  acl analysis failed: %v", err)
 		aclResult = nil
 	}
 
 	dr, err := analysis.AnalyzeDelegation(client)
 	if err != nil {
-		color.Yellow("[!] Delegation analysis failed: %v", err)
+		color.Yellow("  delegation analysis failed: %v", err)
 		dr = nil
 	}
 
 	gr, err := analysis.AnalyzeGPO(client)
 	if err != nil {
-		color.Yellow("[!] GPO analysis failed: %v", err)
+		color.Yellow("  gpo analysis failed: %v", err)
 		gr = nil
 	}
 
@@ -235,7 +236,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	psoResult, err := analysis.AnalyzePSO(client)
 	if err != nil {
-		color.Yellow("[!] PSO analysis failed: %v", err)
+		color.Yellow("  pso analysis failed: %v", err)
 		psoResult = nil
 	}
 
@@ -361,15 +362,8 @@ func runGPO(cmd *cobra.Command, args []string) error {
 // ============================================================
 
 func printBanner() {
-	color.Cyan(`
-  █████╗ ██████╗ ██████╗  █████╗ ████████╗██╗  ██╗
- ██╔══██╗██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██║  ██║
- ███████║██║  ██║██████╔╝███████║   ██║   ███████║
- ██╔══██║██║  ██║██╔═══╝ ██╔══██║   ██║   ██╔══██║
- ██║  ██║██████╔╝██║     ██║  ██║   ██║   ██║  ██║
- ╚═╝  ╚═╝╚═════╝ ╚═╝     ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝
-   AD Attack Path Enumerator v0.6 by Ma43t3
-`)
+	color.Cyan("adpath v0.6  //  AD Attack Path Enumerator")
+	color.White(strings.Repeat("─", 44))
 }
 
 // ============================================================

@@ -107,15 +107,11 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLRe
 		Domain: result.Domain,
 	}
 
-	color.Blue("\n[*] Analyzing dangerous ACL permissions...")
-
 	// запитуємо ACL для всіх об'єктів
 	entries, err := client.SearchACL()
 	if err != nil {
 		return nil, fmt.Errorf("ACL search failed: %w", err)
 	}
-
-	color.Blue("[*] Processing %d objects for ACL analysis...", len(entries))
 
 	// будуємо map DN → SAMAccountName для швидкого lookup
 	nameMap := buildNameMap(result)
@@ -134,13 +130,11 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLRe
 	aclResult.DCSyncFindings = checkDCSync(entries, nameMap, client.GetBaseDN())
 
 	if len(aclResult.DCSyncFindings) > 0 {
-		color.Red("[!] DCSync rights found on %d principal(s) — secretsdump possible!", len(aclResult.DCSyncFindings))
+		color.Red("  %-28s %d  (secretsdump possible)", "DCSync rights", len(aclResult.DCSyncFindings))
 		for _, f := range aclResult.DCSyncFindings {
-			color.Red("    [%s] %s", f.PrincipalType, f.PrincipalName)
+			color.Red("    %s  (%s)", f.PrincipalName, f.PrincipalType)
 		}
 	}
-
-	color.Green("[+] Found %d dangerous ACL findings", len(aclResult.Findings))
 
 	return aclResult, nil
 }
@@ -698,74 +692,48 @@ func calcSeverity(right ACLRight, targetName, principalName string) string {
 
 // PrintACLResult виводить результати ACL аналізу
 func PrintACLResult(aclResult *ACLResult) {
+	color.Cyan("\n  ACL FINDINGS")
 	if len(aclResult.Findings) == 0 {
-		color.Green("[+] No dangerous ACL findings")
+		color.White("  none found")
 		return
 	}
 
-	color.Red("\n[!] Dangerous ACL Findings (%d):\n", len(aclResult.Findings))
-
-	// групуємо по severity
 	critical := filterBySeverity(aclResult.Findings, "Critical")
 	high := filterBySeverity(aclResult.Findings, "High")
 	medium := filterBySeverity(aclResult.Findings, "Medium")
 
 	if len(critical) > 0 {
-		color.Red("  ── CRITICAL (%d) ──────────────────────────", len(critical))
+		color.Red("  CRITICAL (%d)", len(critical))
 		for _, f := range critical {
 			printACLFinding(f)
 		}
 	}
-
 	if len(high) > 0 {
-		color.Yellow("\n  ── HIGH (%d) ────────────────────────────", len(high))
+		color.Yellow("\n  HIGH (%d)", len(high))
 		for _, f := range high {
 			printACLFinding(f)
 		}
 	}
-
 	if len(medium) > 0 {
-		color.White("\n  ── MEDIUM (%d) ──────────────────────────", len(medium))
+		color.White("\n  MEDIUM (%d)", len(medium))
 		for _, f := range medium {
 			printACLFinding(f)
 		}
 	}
-
-	// підказки для експлуатації
 	printACLExploitHints(aclResult)
 }
 
 func printACLFinding(f ACLFinding) {
-	icon := aclRightIcon(f.Right)
-	color.White("\n  %s [%s] %s ──[%s]──► %s [%s]",
-		icon,
-		strings.ToUpper(f.PrincipalType),
+	color.White("  %-20s %-22s -> %s  (%s)",
 		f.PrincipalName,
-		f.Right,
+		"["+string(f.Right)+"]",
 		f.TargetName,
-		strings.ToUpper(f.TargetType),
+		f.TargetType,
 	)
 }
 
-func aclRightIcon(right ACLRight) string {
-	switch right {
-	case RightGenericAll:
-		return "🔴"
-	case RightWriteDACL, RightWriteOwner:
-		return "🟠"
-	case RightForceChangePassword:
-		return "🟡"
-	case RightAddMember:
-		return "🟡"
-	case RightGenericWrite:
-		return "🟠"
-	default:
-		return "⚪"
-	}
-}
-
 func printACLExploitHints(aclResult *ACLResult) {
-	color.Cyan("\n[*] Exploitation hints:")
+	color.Cyan("\n  EXPLOITATION HINTS")
 
 	seen := make(map[ACLRight]bool)
 	for _, f := range aclResult.Findings {
@@ -776,20 +744,16 @@ func printACLExploitHints(aclResult *ACLResult) {
 
 		switch f.Right {
 		case RightGenericAll:
-			color.White("  GenericAll → full control: change password, add to group, modify SPN")
-			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> add groupMember 'Domain Admins' %s",
+			color.White("  GenericAll      bloodyAD -u %s -p <pass> -d %s --host <DC> add groupMember 'Domain Admins' %s",
 				f.PrincipalName, aclResult.Domain, f.PrincipalName)
 		case RightForceChangePassword:
-			color.White("  ForceChangePassword → change password without knowing current:")
-			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> set password %s 'NewPass123!'",
+			color.White("  ForcePwdChange  bloodyAD -u %s -p <pass> -d %s --host <DC> set password %s 'NewPass123!'",
 				f.PrincipalName, aclResult.Domain, f.TargetName)
 		case RightWriteDACL:
-			color.White("  WriteDACL → grant yourself GenericAll then exploit:")
-			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> add genericAll %s",
+			color.White("  WriteDACL       bloodyAD -u %s -p <pass> -d %s --host <DC> add genericAll %s",
 				f.PrincipalName, aclResult.Domain, f.TargetName)
 		case RightAddMember:
-			color.White("  AddMember → add yourself to the group:")
-			color.White("    bloodyAD: bloodyAD -u %s -p <pass> -d %s --host <DC> add groupMember '%s' %s",
+			color.White("  AddMember       bloodyAD -u %s -p <pass> -d %s --host <DC> add groupMember '%s' %s",
 				f.PrincipalName, aclResult.Domain, f.TargetName, f.PrincipalName)
 		}
 	}
