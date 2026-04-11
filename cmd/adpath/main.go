@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -110,6 +112,28 @@ func init() {
 }
 
 // ============================================================
+// Report path helper
+// ============================================================
+
+// resolveReportPath повертає шлях до HTML звіту.
+// Якщо explicit задано — використовує його.
+// Інакше — генерує назву {domain}_{YYYY-MM-DD_HH-MM-SS}.html
+// поруч з бінарним файлом.
+func resolveReportPath(explicit, targetDomain string) string {
+	if explicit != "" {
+		return explicit
+	}
+	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	filename := targetDomain + "_" + timestamp + ".html"
+
+	exe, err := os.Executable()
+	if err != nil {
+		return filename // fallback: поточна директорія
+	}
+	return filepath.Join(filepath.Dir(exe), filename)
+}
+
+// ============================================================
 // Auth helper
 // ============================================================
 
@@ -184,49 +208,49 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	paths := g.FindPathsToPrivilegedGroups(maxDepth)
 	g.PrintPaths(paths)
 
-	// ── HTML звіт (опціонально) ───────────────────────────────
-	if reportPath != "" {
-		kr := analysis.AnalyzeKerberos(result)
+	// ── HTML звіт ────────────────────────────────────────────
+	outPath := resolveReportPath(reportPath, domain)
 
-		aclResult, err := analysis.AnalyzeACL(client, result)
-		if err != nil {
-			color.Yellow("[!] ACL analysis failed: %v", err)
-			aclResult = nil
-		}
+	kr := analysis.AnalyzeKerberos(result)
 
-		dr, err := analysis.AnalyzeDelegation(client)
-		if err != nil {
-			color.Yellow("[!] Delegation analysis failed: %v", err)
-			dr = nil
-		}
+	aclResult, err := analysis.AnalyzeACL(client, result)
+	if err != nil {
+		color.Yellow("[!] ACL analysis failed: %v", err)
+		aclResult = nil
+	}
 
-		gr, err := analysis.AnalyzeGPO(client)
-		if err != nil {
-			color.Yellow("[!] GPO analysis failed: %v", err)
-			gr = nil
-		}
+	dr, err := analysis.AnalyzeDelegation(client)
+	if err != nil {
+		color.Yellow("[!] Delegation analysis failed: %v", err)
+		dr = nil
+	}
 
-		hr := analysis.AnalyzeHygiene(result)
+	gr, err := analysis.AnalyzeGPO(client)
+	if err != nil {
+		color.Yellow("[!] GPO analysis failed: %v", err)
+		gr = nil
+	}
 
-		psoResult, err := analysis.AnalyzePSO(client)
-		if err != nil {
-			color.Yellow("[!] PSO analysis failed: %v", err)
-			psoResult = nil
-		}
+	hr := analysis.AnalyzeHygiene(result)
 
-		authMethod := "Password"
-		switch {
-		case ccachePath != "":
-			authMethod = "PTT (Kerberos ccache)"
-		case ntHash != "":
-			authMethod = "PTH (NTLM hash)"
-		case username == "":
-			authMethod = "Anonymous"
-		}
+	psoResult, err := analysis.AnalyzePSO(client)
+	if err != nil {
+		color.Yellow("[!] PSO analysis failed: %v", err)
+		psoResult = nil
+	}
 
-		if err := report.Generate(reportPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, authMethod); err != nil {
-			return fmt.Errorf("report error: %w", err)
-		}
+	authMethod := "Password"
+	switch {
+	case ccachePath != "":
+		authMethod = "PTT (Kerberos ccache)"
+	case ntHash != "":
+		authMethod = "PTH (NTLM hash)"
+	case username == "":
+		authMethod = "Anonymous"
+	}
+
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, authMethod); err != nil {
+		return fmt.Errorf("report error: %w", err)
 	}
 
 	return nil

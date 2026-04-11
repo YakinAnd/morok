@@ -198,13 +198,14 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - Offline KB (`internal/kb/findings.go`) — map[finding_type]KBEntry
 - LAPS readability — хто може читати ms-MCS-AdmPwd; машини без LAPS
 
-### v0.7 TODO — Advanced attacks
+### v0.7 TODO — Advanced attacks + Report UX
 - **ADCS** (Certipy-style) — ESC1, ESC4, ESC7, ESC8 — нова команда `adpath adcs`
 - **Trust attacks** — enumeration forest/external trusts, SID filtering статус, cross-forest paths
 - **GPO ACL** — хто може модифікувати GPO objects (особливо linked до DC OU)
 - **BloodHound JSON export** — `--bloodhound` flag, сумісність з BH GUI
 - **AdminSDHolder** — кастомні ACE в template, orphaned AdminCount objects
 - **Audit Policy / Blue Team** — Advanced Audit налаштування, event log retention, AD Recycle Bin
+- **Global search** — єдиний пошуковий рядок по всіх tabs звіту (users, groups, computers, ACL, paths) з підсвіткою результатів і переходом між вкладками
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо

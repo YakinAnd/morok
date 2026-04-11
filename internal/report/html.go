@@ -441,7 +441,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>adpath — AD Security Report: {{.Domain}}</title>
+<title>adpath — {{.Domain}} — {{.GeneratedAt}}</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -549,12 +549,30 @@ tr:hover td { background: #1a1f2e; }
   padding-bottom: 8px; border-bottom: 1px solid #2d3748; }
 .section-title span { color: #718096; font-size: 0.85rem; font-weight: 400;
   margin-left: 8px; }
+
+/* Table filters */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+.filter-bar input[type=text] {
+  background: #1a1f2e; border: 1px solid #2d3748; border-radius: 6px;
+  color: #e2e8f0; padding: 6px 10px; font-size: 0.8rem; outline: none;
+  min-width: 180px; }
+.filter-bar input[type=text]:focus { border-color: #63b3ed; }
+.filter-bar select {
+  background: #1a1f2e; border: 1px solid #2d3748; border-radius: 6px;
+  color: #e2e8f0; padding: 6px 10px; font-size: 0.8rem; outline: none;
+  cursor: pointer; }
+.filter-bar select:focus { border-color: #63b3ed; }
+.filter-bar .filter-count { font-size: 0.78rem; color: #718096; margin-left: auto; }
+.filter-bar button {
+  background: #2d3748; border: none; border-radius: 6px; color: #a0aec0;
+  padding: 6px 12px; font-size: 0.78rem; cursor: pointer; }
+.filter-bar button:hover { background: #4a5568; color: #e2e8f0; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>⚔ adpath v0.4 — AD Security Report</h1>
+  <h1>⚔ adpath v0.6 — {{.Domain}} — {{.GeneratedAt}}</h1>
   <div class="meta">
     Domain: <span class="domain">{{.Domain}}</span> &nbsp;|&nbsp;
     Auth: <span style="color:#68d391">{{.AuthMethod}}</span> &nbsp;|&nbsp;
@@ -783,8 +801,34 @@ tr:hover td { background: #1a1f2e; }
 <!-- USERS TAB -->
 <div id="tab-users" class="tab-pane">
   <h2 class="section-title">Users <span>{{.Summary.TotalUsers}} total</span></h2>
+  <div class="filter-bar">
+    <input type="text" placeholder="Search account..." data-col="0" oninput="filterTable('tbl-users','cnt-users')">
+    <select data-col="2" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Enabled: all</option>
+      <option value="Yes">Enabled only</option>
+      <option value="No">Disabled only</option>
+    </select>
+    <select data-col="3" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Admin: all</option>
+      <option value="Yes">AdminCount = 1</option>
+    </select>
+    <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Kerberoastable: all</option>
+      <option value="Yes">Yes</option>
+    </select>
+    <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">AS-REP: all</option>
+      <option value="Yes">Yes</option>
+    </select>
+    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Pwd Exp: all</option>
+      <option value="Yes">Never expires</option>
+    </select>
+    <span class="filter-count" id="cnt-users"></span>
+    <button onclick="clearFilters('tbl-users','cnt-users')">Clear</button>
+  </div>
   <div class="table-wrap">
-  <table>
+  <table id="tbl-users">
     <thead>
       <tr>
         <th>Account</th>
@@ -821,8 +865,17 @@ tr:hover td { background: #1a1f2e; }
 <!-- GROUPS TAB -->
 <div id="tab-groups" class="tab-pane">
   <h2 class="section-title">Groups <span>{{.Summary.TotalGroups}} total</span></h2>
+  <div class="filter-bar">
+    <input type="text" placeholder="Search group..." data-col="0" oninput="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="3" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
+      <option value="">Admin: all</option>
+      <option value="Yes">AdminCount = 1</option>
+    </select>
+    <span class="filter-count" id="cnt-groups"></span>
+    <button onclick="clearFilters('tbl-groups','cnt-groups')">Clear</button>
+  </div>
   <div class="table-wrap">
-  <table>
+  <table id="tbl-groups">
     <thead>
       <tr>
         <th>Name</th>
@@ -853,8 +906,24 @@ tr:hover td { background: #1a1f2e; }
     Computers
     <span>{{.Summary.TotalComputers}} total{{if .ForestWide}} — forest-wide{{end}}</span>
   </h2>
+  <div class="filter-bar">
+    <input type="text" placeholder="Search computer..." data-col="0" oninput="filterTable('tbl-computers','cnt-computers')">
+    <input type="text" placeholder="OS..." data-col="2" oninput="filterTable('tbl-computers','cnt-computers')">
+    <select data-col="4" data-match="exact" onchange="filterTable('tbl-computers','cnt-computers')">
+      <option value="">Enabled: all</option>
+      <option value="Yes">Enabled only</option>
+      <option value="No">Disabled only</option>
+    </select>
+    <select data-col="5" data-match="exact" onchange="filterTable('tbl-computers','cnt-computers')">
+      <option value="">LAPS: all</option>
+      <option value="Yes">LAPS enabled</option>
+      <option value="No">No LAPS</option>
+    </select>
+    <span class="filter-count" id="cnt-computers"></span>
+    <button onclick="clearFilters('tbl-computers','cnt-computers')">Clear</button>
+  </div>
   <div class="table-wrap">
-  <table>
+  <table id="tbl-computers">
     <thead>
       <tr>
         <th>Name</th>
@@ -1025,8 +1094,29 @@ tr:hover td { background: #1a1f2e; }
   {{end}}{{end}}
   {{if .ACLResult}}
   {{if .ACLResult.Findings}}
+  <div class="filter-bar" style="margin-bottom:12px">
+    <input type="text" id="acl-search" placeholder="Search principal or target..." oninput="filterACL()" style="min-width:220px">
+    <select id="acl-severity" onchange="filterACL()">
+      <option value="">Severity: all</option>
+      <option value="Critical">Critical</option>
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+    </select>
+    <select id="acl-right" onchange="filterACL()">
+      <option value="">Right: all</option>
+      <option value="GenericAll">GenericAll</option>
+      <option value="WriteDACL">WriteDACL</option>
+      <option value="WriteOwner">WriteOwner</option>
+      <option value="ForceChangePassword">ForceChangePassword</option>
+      <option value="AddMember">AddMember</option>
+      <option value="GenericWrite">GenericWrite</option>
+    </select>
+    <span class="filter-count" id="cnt-acl"></span>
+    <button onclick="document.getElementById('acl-search').value='';document.getElementById('acl-severity').value='';document.getElementById('acl-right').value='';filterACL()">Clear</button>
+  </div>
+  <div id="acl-findings">
   {{range $i, $f := .ACLResult.Findings}}
-  <div class="path-card" style="margin-bottom:10px">
+  <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
       <span class="badge badge-critical" style="font-family:monospace">{{$f.Right}}</span>
@@ -1046,6 +1136,7 @@ tr:hover td { background: #1a1f2e; }
     </div>
   </div>
   {{end}}
+  </div>{{/* end acl-findings */}}
   {{else}}<p style="color:#68d391">✓ No dangerous ACL findings.</p>{{end}}
   {{else}}<p style="color:#718096">ACL data not available.</p>{{end}}
 </div>
@@ -1503,6 +1594,75 @@ function nodeColor(d) {
   if (d.type === 'group')    return '#b794f4';
   if (d.type === 'computer') return '#90cdf4';
   return '#63b3ed';
+}
+
+// ── Table filters ─────────────────────────────────────────────
+function filterTable(tableId, countId) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const bar = table.previousElementSibling; // .filter-bar
+  const inputs  = bar ? bar.querySelectorAll('input[type=text]')  : [];
+  const selects = bar ? bar.querySelectorAll('select') : [];
+  const rows = table.tBodies[0].rows;
+  let visible = 0;
+
+  for (const row of rows) {
+    let show = true;
+    // text inputs — check against column by data-col index
+    inputs.forEach(inp => {
+      const col = parseInt(inp.dataset.col ?? '0');
+      const val = (row.cells[col]?.textContent ?? '').toLowerCase();
+      if (!val.includes(inp.value.toLowerCase())) show = false;
+    });
+    // selects — data-col + optional data-match for exact cell text
+    selects.forEach(sel => {
+      if (!sel.value) return;
+      const col = parseInt(sel.dataset.col ?? '0');
+      const cell = row.cells[col]?.textContent?.trim() ?? '';
+      if (sel.dataset.match === 'exact') {
+        if (cell !== sel.value) show = false;
+      } else {
+        if (!cell.toLowerCase().includes(sel.value.toLowerCase())) show = false;
+      }
+    });
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  }
+
+  if (countId) {
+    const el = document.getElementById(countId);
+    if (el) el.textContent = visible + ' / ' + rows.length;
+  }
+}
+
+function clearFilters(tableId, countId) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const bar = table.previousElementSibling;
+  if (bar) {
+    bar.querySelectorAll('input[type=text]').forEach(i => i.value = '');
+    bar.querySelectorAll('select').forEach(s => s.value = '');
+  }
+  filterTable(tableId, countId);
+}
+
+function filterACL() {
+  const q        = (document.getElementById('acl-search')?.value   ?? '').toLowerCase();
+  const severity = (document.getElementById('acl-severity')?.value ?? '');
+  const right    = (document.getElementById('acl-right')?.value    ?? '');
+  const cards    = document.querySelectorAll('#acl-findings .acl-card');
+  let visible = 0;
+  cards.forEach(card => {
+    const text = (card.dataset.text ?? '').toLowerCase();
+    const show =
+      (!q        || text.includes(q)) &&
+      (!severity || card.dataset.severity === severity) &&
+      (!right    || card.dataset.right === right);
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const cnt = document.getElementById('cnt-acl');
+  if (cnt) cnt.textContent = visible + ' / ' + cards.length;
 }
 </script>
 
