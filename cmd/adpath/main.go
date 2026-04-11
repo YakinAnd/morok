@@ -253,6 +253,9 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		color.Yellow("  adcs analysis failed: %v", err)
 		adcsResult = nil
 	}
+	if adcsResult != nil {
+		analysis.PrintADCSResultSummary(adcsResult)
+	}
 
 	authMethod := "Password"
 	switch {
@@ -384,11 +387,12 @@ func runADCS(cmd *cobra.Command, args []string) error {
 	}
 	defer client.Close()
 
-	_, err = analysis.AnalyzeADCS(client)
+	r, err := analysis.AnalyzeADCS(client)
 	if err != nil {
 		return fmt.Errorf("ADCS analysis error: %w", err)
 	}
 
+	analysis.PrintADCSResult(r)
 	return nil
 }
 

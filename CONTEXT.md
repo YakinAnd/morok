@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.6.0
+- **Поточна версія:** v0.7.0
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -198,16 +198,44 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - Offline KB (`internal/kb/findings.go`) — map[finding_type]KBEntry
 - LAPS readability — хто може читати ms-MCS-AdmPwd; машини без LAPS
 
-### v0.7 TODO — Advanced attacks + Report UX
-- **ADCS** (Certipy-style) — ESC1, ESC4, ESC7, ESC8 — нова команда `adpath adcs`
-- **Trust attacks** — enumeration forest/external trusts, SID filtering статус, cross-forest paths
-- **GPO ACL** — хто може модифікувати GPO objects (особливо linked до DC OU)
-- **BloodHound JSON export** — `--bloodhound` flag, сумісність з BH GUI
-- **AdminSDHolder** — кастомні ACE в template, orphaned AdminCount objects
-- **Audit Policy / Blue Team** — Advanced Audit налаштування, event log retention, AD Recycle Bin
-- **Global search** — єдиний пошуковий рядок по всіх tabs звіту (users, groups, computers, ACL, paths) з підсвіткою результатів і переходом між вкладками
-- **Finding grouping** — групування findings за категорією/ознакою: замість "72 ACL findings" показувати згруповано "GenericAll (12), WriteDACL (8), ForceChangePassword (3)..." з можливістю розгорнути кожну групу
-- **Section tooltips** — знак `?` біля заголовків розділів (Kerberos TGT, Dangerous ACL Permissions, DCSync і т.д.) з hover-підказкою що пояснює розділ і чому він важливий для безпеки; корисно для клієнтів і джуніорів в команді
+### v0.7 ЗАВЕРШЕНО
+
+- ✅ ADCS module (`internal/analysis/adcs.go`) — ESC1, ESC2, ESC3, ESC4, ESC6, ESC7, ESC8 detection
+  - ESC1: ENROLLEE_SUPPLIES_SUBJECT bitmask + auth EKU → Critical
+  - ESC2: Any Purpose EKU або no EKUs
+  - ESC3: Certificate Request Agent EKU + msPKI-RA-Signature == 0
+  - ESC4: low-priv principal has WriteDACL/WriteOwner/GenericAll/GenericWrite on template object
+  - ESC6: CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag
+  - ESC7: low-priv has ManageCA (→ can enable ESC6) or ManageCertificates on CA
+  - ESC8: Web Enrollment hint (no HTTP probe)
+  - `adpath adcs` команда — повний вивід + certipy next steps для кожного ESC типу
+  - `adpath enum` — summary ADCS без next steps (щоб не засмічувати вивід)
+- ✅ LAPS detection — `NoLAPSComputers` у Hygiene/Exposure module
+- ✅ GPP/MS14-025 detection — CSE GUIDs в gPCMachineExtensionNames/gPCUserExtensionNames (без SMB)
+- ✅ HTML звіт — ADCS tab (CA table, ESC6, template findings з Exploit/Fix accordion)
+- ✅ HTML звіт — Exposure tab (LAPS section з таблицею машин без LAPS)
+- ✅ HTML звіт — Users tab розширено: Email + Privileged Groups колонки
+- ✅ HTML звіт — Finding grouping в ACL tab (⊞ Group кнопка)
+- ✅ HTML звіт — Section tooltips (? hover) на всіх major секціях
+- ✅ HTML звіт — Accordion arrow fix (▶/▼ анімація)
+- ✅ Rename: HYGIENE → EXPOSURE скрізь (CLI + HTML)
+- ✅ CLI: next steps для ESC1-ESC8 з контекстними certipy командами
+- ✅ CLI banner відновлено (великі літери ADPATH)
+- ✅ -H/--hashes flag на всіх командах
+
+**Залишилось на v0.8:**
+- Trust attacks — enumeration forest/external trusts, SID filtering статус, cross-forest paths
+- GPO ACL — хто може модифікувати GPO objects (особливо linked до DC OU)
+- BloodHound JSON export — `--bloodhound` flag, сумісність з BH GUI
+- AdminSDHolder — кастомні ACE в template, orphaned AdminCount objects
+- Audit Policy / Blue Team — Advanced Audit налаштування, event log retention, AD Recycle Bin
+- Global search — єдиний пошуковий рядок по всіх tabs звіту з підсвіткою
+- Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
+- RootDSE enumeration без bind (domain, forest, AD version)
+- SMB signing / LDAP signing + channel binding статус
+- Protected Users group — чи DA/EA додані
+- ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
+- Enrollment rights перевірка (хто може enrolluvaty) як qualifier для ESC1
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -220,4 +248,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.6.0 — DCSync, hygiene, PSO, extended privileged paths, Hygiene tab в HTML*
+*Останнє оновлення: v0.7.0 — ADCS (ESC1-ESC8), LAPS, GPP detection, Exposure tab, ADCS tab в HTML, section tooltips, finding grouping*
