@@ -486,3 +486,26 @@ func domainToBaseDN(domain string) string {
 func (c *Client) GetDomain() string {
     return c.Domain
 }
+
+// ConfigurationDN повертає DN конфігураційного розділу AD
+// (CN=Configuration,DC=...) через RootDSE або обчислює з домену.
+func (c *Client) ConfigurationDN() (string, error) {
+    req := goldap.NewSearchRequest(
+        "",
+        goldap.ScopeBaseObject, goldap.NeverDerefAliases,
+        0, 0, false,
+        "(objectClass=*)",
+        []string{"configurationNamingContext"},
+        nil,
+    )
+    sr, err := c.conn.Search(req)
+    if err != nil || len(sr.Entries) == 0 {
+        // fallback
+        return "CN=Configuration," + c.BaseDN, nil
+    }
+    val := sr.Entries[0].GetAttributeValue("configurationNamingContext")
+    if val == "" {
+        return "CN=Configuration," + c.BaseDN, nil
+    }
+    return val, nil
+}

@@ -82,12 +82,18 @@ var gpoCmd = &cobra.Command{
 	RunE:  runGPO,
 }
 
+var adcsCmd = &cobra.Command{
+	Use:   "adcs",
+	Short: "Analyze Active Directory Certificate Services (ESC1-ESC8)",
+	RunE:  runADCS,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -108,6 +114,7 @@ func init() {
 	rootCmd.AddCommand(kerberosCmd)
 	rootCmd.AddCommand(delegationCmd)
 	rootCmd.AddCommand(gpoCmd)
+	rootCmd.AddCommand(adcsCmd)
 
 
 	rootCmd.Version = "0.7.0"
@@ -354,6 +361,27 @@ func runGPO(cmd *cobra.Command, args []string) error {
 	}
 
 	analysis.PrintGPOResult(gr)
+
+	return nil
+}
+
+// ============================================================
+// Логіка команди ADCS
+// ============================================================
+
+func runADCS(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client, err := connectAndBind()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	_, err = analysis.AnalyzeADCS(client)
+	if err != nil {
+		return fmt.Errorf("ADCS analysis error: %w", err)
+	}
 
 	return nil
 }

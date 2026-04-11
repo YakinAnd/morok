@@ -588,9 +588,21 @@ tr:hover td { background: #1a1f2e; }
 
 /* Section title */
 .section-title { font-size: 1.1rem; color: #e2e8f0; margin-bottom: 16px;
-  padding-bottom: 8px; border-bottom: 1px solid #2d3748; }
-.section-title span { color: #718096; font-size: 0.85rem; font-weight: 400;
-  margin-left: 8px; }
+  padding-bottom: 8px; border-bottom: 1px solid #2d3748; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.section-title span { color: #718096; font-size: 0.85rem; font-weight: 400; }
+
+/* Help icon tooltip */
+.help-icon { display:inline-flex; align-items:center; justify-content:center;
+  width:16px; height:16px; border-radius:50%; background:#2d3748; color:#a0aec0;
+  font-size:10px; font-weight:700; cursor:default; position:relative;
+  flex-shrink:0; margin-left:2px; }
+.help-icon::after { content: attr(data-tip);
+  display:none; position:absolute; left:50%; bottom:calc(100% + 8px);
+  transform:translateX(-50%); background:#1a202c; border:1px solid #4a5568;
+  color:#e2e8f0; font-size:0.78rem; font-weight:400; line-height:1.5;
+  padding:10px 14px; border-radius:6px; white-space:pre-wrap; width:300px;
+  z-index:100; pointer-events:none; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+.help-icon:hover::after { display:block; }
 
 /* Table filters */
 .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
@@ -783,6 +795,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <h2 class="section-title">
     Attack Paths to Privileged Groups
     <span>{{.Summary.AttackPathsCount}} path(s) found</span>
+    <span class="help-icon" data-tip="A chain of AD relationships (group memberships, ACL rights, delegation) that leads a low-privileged account to Domain Admins or another privileged group. Depth 1 = direct member. Depth 2+ = indirect via nested groups or ACL abuse. Shorter paths = higher priority.">?</span>
   </h2>
   {{if eq .Summary.AttackPathsCount 0}}
     <p style="color:#68d391">✓ No attack paths to Domain Admins found.</p>
@@ -1039,12 +1052,15 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
 
 <!-- KERBEROS TAB -->
 <div id="tab-kerberos" class="tab-pane">
-  <h2 class="section-title">Kerberos Attack Surface</h2>
+  <h2 class="section-title">Kerberos Attack Surface
+    <span class="help-icon" data-tip="Kerberos is the primary authentication protocol in AD. Misconfigurations allow offline password cracking (Kerberoasting, AS-REP roasting) without triggering lockouts or alerts — attacker gets a hash and cracks it locally.">?</span>
+  </h2>
   {{if .KerberosResult}}
 
   <h3 class="section-title" style="font-size:0.95rem; margin-top:16px">
     Kerberoastable Accounts
     <span>{{len .KerberosResult.KerberoastableAccounts}}</span>
+    <span class="help-icon" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
   </h3>
   {{if .KerberosResult.KerberoastableAccounts}}
   <div style="margin-bottom:8px">
@@ -1088,6 +1104,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
     AS-REP Roastable Accounts
     <span>{{len .KerberosResult.ASREPAccounts}}</span>
+    <span class="help-icon" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
   </h3>
   {{if .KerberosResult.ASREPAccounts}}
   <div style="margin-bottom:8px">
@@ -1134,6 +1151,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <h2 class="section-title">
     Dangerous ACL Permissions
     <span>{{.Summary.DangerousACLCount}} finding(s)</span>
+    <span class="help-icon" data-tip="Access Control Lists define who can do what to each AD object. Misconfigurations like GenericAll, WriteDACL or ForceChangePassword allow an attacker to take over accounts or escalate to Domain Admin without exploiting any software vulnerability — just abusing legitimate AD permissions.">?</span>
   </h2>
 
   {{if .ACLResult}}{{if .ACLResult.DCSyncFindings}}
@@ -1213,6 +1231,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <h2 class="section-title">
     Delegation Configurations
     <span>{{.Summary.DelegationCount}} finding(s)</span>
+    <span class="help-icon" data-tip="Delegation allows a service to impersonate a user when accessing other services. Unconstrained delegation is the most dangerous — any account authenticating to that machine gives up their Kerberos ticket, which the attacker can reuse. Constrained and RBCD are less severe but still abusable.">?</span>
   </h2>
   {{if .DelegationResult}}
   {{if .DelegationResult.Findings}}
@@ -1242,10 +1261,12 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
 
 <!-- EXPOSURE TAB -->
 <div id="tab-exposure" class="tab-pane">
-  <h2 class="section-title">Exposure &amp; Attack Surface</h2>
+  <h2 class="section-title">Exposure &amp; Attack Surface
+    <span class="help-icon" data-tip="Attack surface metrics: stale accounts are unused entry points, LAPS absence means shared local admin passwords enabling lateral movement, old krbtgt password enables persistent Golden Ticket attacks, descriptions often leak credentials or internal IP ranges.">?</span>
+  </h2>
 
   <!-- krbtgt -->
-  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Kerberos Ticket Granting Ticket</div>
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">Kerberos Ticket Granting Ticket <span class="help-icon" data-tip="The krbtgt account's password hash is used to sign all Kerberos tickets in the domain. If an attacker obtains this hash (e.g. via DCSync), they can forge Golden Tickets — valid for any user, including DA — that persist until the password is rotated TWICE. Microsoft recommends rotating every 180 days.">?</span></div>
   <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
     {{if .HygieneResult}}
     {{if .HygieneResult.KrbtgtAtRisk}}
@@ -1386,7 +1407,9 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
 
 <!-- GPO TAB -->
 <div id="tab-gpo" class="tab-pane">
-  <h2 class="section-title">Group Policy Analysis</h2>
+  <h2 class="section-title">Group Policy Analysis
+    <span class="help-icon" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
+  </h2>
   {{if .GPOResult}}
 
   {{if .GPOResult.DefaultPolicy}}
