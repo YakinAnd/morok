@@ -61,10 +61,24 @@ const (
 var gpoAttributes = []string{
 	"distinguishedName",
 	"displayName",
-	"name",            // GUID у форматі {GUID}
-	"gPCFileSysPath",  // шлях до SYSVOL
+	"name",                      // GUID у форматі {GUID}
+	"gPCFileSysPath",            // шлях до SYSVOL
+	"gPCMachineExtensionNames",  // CSE GUIDs для machine side
+	"gPCUserExtensionNames",     // CSE GUIDs для user side
 	"nTSecurityDescriptor",
 	"objectClass",
+}
+
+// gppCSEGuids — GUIDs Client Side Extensions що можуть містити cpassword
+// (Groups, Drives, Printers, ScheduledTasks, Services, DataSources)
+var gppCSEGuids = []string{
+	"AADCED64-746C-4633-A97C-D61349046527", // Groups (machine)
+	"91FBB303-0CD5-4055-BF42-E512A681B325", // Groups (user)
+	"5794DAFD-BE60-433f-88A2-1A31939AC01F", // Drives
+	"BC75B1ED-5833-4858-9BB8-CBF0B166DF9D", // Printers
+	"BDDBE5E0-4B0B-4261-9ED1-26E7DAB4B6CF", // ScheduledTasks
+	"A3F3E39B-5D83-4940-B954-28315B82F0A8", // ScheduledTasks (user)
+	"BA649533-96CF-4F53-B4FA-F69ADE6B6F39", // DataSources
 }
 
 var ouAttributes = []string{
@@ -159,11 +173,10 @@ func collectGPOs(client *adldap.Client) ([]GPOFinding, error) {
 			GUID: entry.GetAttributeValue("name"),
 		}
 
-		// перевіряємо чи є в SYSVOL path ознаки cpassword
-		sysvolPath := entry.GetAttributeValue("gPCFileSysPath")
-		if sysvolPath != "" {
-			gpo.HasCPassword = checkForCPassword(sysvolPath)
-		}
+		// перевіряємо CSE GUIDs на наявність GPP Preferences
+		machineCSE := entry.GetAttributeValue("gPCMachineExtensionNames")
+		userCSE    := entry.GetAttributeValue("gPCUserExtensionNames")
+		gpo.HasCPassword = checkForCPassword(machineCSE + userCSE)
 
 		if gpo.HasCPassword {
 			gpo.IsHighRisk = true
@@ -338,15 +351,20 @@ func assessPasswordPolicy(pp *PasswordPolicy, result *GPOResult) {
 // Перевірка cpassword
 // ============================================================
 
-// checkForCPassword перевіряє чи може GPO містити cpassword
-// В реальності треба читати XML файли з SYSVOL
-// Для MVP відмічаємо як потенційно вразливий
-func checkForCPassword(sysvolPath string) bool {
-	// GPO Preferences файли які можуть містити cpassword:
-	// Groups.xml, Services.xml, Scheduledtasks.xml,
-	// Datasources.xml, Printers.xml, Drives.xml
-	// Без доступу до SYSVOL не можемо перевірити напряму
-	// Повертаємо false — відмічатимемо тільки якщо є доступ
+// checkForCPassword перевіряє чи GPO використовує Preferences CSE,
+// що можуть містити cpassword (MS14-025 / GPP password exposure).
+// Перевірка через gPCMachineExtensionNames / gPCUserExtensionNames —
+// без доступу до SYSVOL, лише через LDAP.
+func checkForCPassword(cseNames string) bool {
+	if cseNames == "" {
+		return false
+	}
+	upper := strings.ToUpper(cseNames)
+	for _, guid := range gppCSEGuids {
+		if strings.Contains(upper, strings.ToUpper(guid)) {
+			return true
+		}
+	}
 	return false
 }
 

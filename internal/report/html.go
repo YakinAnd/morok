@@ -67,6 +67,8 @@ type Summary struct {
 	KrbtgtAtRisk            bool
 	KrbtgtPwdAgeDays        int
 	WeakPSOCount            int
+	// v0.7
+	NoLAPSCount             int
 }
 
 // GraphNode і GraphEdge для D3.js JSON
@@ -221,6 +223,7 @@ func buildSummary(
 		s.PasswordInDescCount = len(hr.PasswordInDesc)
 		s.KrbtgtAtRisk = hr.KrbtgtAtRisk
 		s.KrbtgtPwdAgeDays = hr.KrbtgtPwdAgeDays
+		s.NoLAPSCount = hr.NoLAPSCount
 	}
 
 	return s
@@ -676,6 +679,10 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
       <div class="value">{{if eq .Summary.KrbtgtPwdAgeDays 0}}?{{else}}{{.Summary.KrbtgtPwdAgeDays}}d{{end}}</div>
       <div class="label">Krbtgt Pwd Age</div>
     </div>
+    <div class="card {{if gt .Summary.NoLAPSCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'computers')" title="Computers without LAPS">
+      <div class="value">{{.Summary.NoLAPSCount}}</div>
+      <div class="label">No LAPS</div>
+    </div>
   </div>
 
   <!-- Policy & Configuration -->
@@ -1125,7 +1132,9 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
     </select>
     <span class="filter-count" id="cnt-acl"></span>
     <button onclick="document.getElementById('acl-search').value='';document.getElementById('acl-severity').value='';document.getElementById('acl-right').value='';filterACL()">Clear</button>
+    <button id="btn-group-acl" onclick="toggleGroupACL()" style="margin-left:8px">⊞ Group</button>
   </div>
+  <div id="acl-grouped" style="display:none"></div>
   <div id="acl-findings">
   {{range $i, $f := .ACLResult.Findings}}
   <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
@@ -1765,6 +1774,81 @@ function filterACL() {
   });
   const cnt = document.getElementById('cnt-acl');
   if (cnt) cnt.textContent = visible + ' / ' + cards.length;
+}
+
+let _aclGrouped = false;
+function toggleGroupACL() {
+  _aclGrouped = !_aclGrouped;
+  const btn     = document.getElementById('btn-group-acl');
+  const flat    = document.getElementById('acl-findings');
+  const grouped = document.getElementById('acl-grouped');
+  const bar     = document.querySelector('#tab-acl .filter-bar');
+  if (_aclGrouped) {
+    buildGroupedACL();
+    flat.style.display    = 'none';
+    grouped.style.display = '';
+    if (bar) bar.style.opacity = '0.4';
+    if (btn) btn.textContent = '\u2630 Flat';
+  } else {
+    flat.style.display    = '';
+    grouped.style.display = 'none';
+    if (bar) bar.style.opacity = '';
+    if (btn) btn.textContent = '\u229e Group';
+  }
+}
+
+function buildGroupedACL() {
+  const cards = document.querySelectorAll('#acl-findings .acl-card');
+  const groups = {};
+  const order  = [];
+  const sevOrder = { 'Critical': 0, 'High': 1, 'Medium': 2 };
+  cards.forEach(function(card) {
+    const right = card.dataset.right || 'Unknown';
+    const sev   = card.dataset.severity || 'Medium';
+    if (!groups[right]) { groups[right] = { cards: [], severity: sev }; order.push(right); }
+    groups[right].cards.push(card);
+  });
+  order.sort(function(a, b) {
+    return (sevOrder[groups[a].severity] ?? 9) - (sevOrder[groups[b].severity] ?? 9);
+  });
+
+  const container = document.getElementById('acl-grouped');
+  container.innerHTML = '';
+  order.forEach(function(right) {
+    const g     = groups[right];
+    const count = g.cards.length;
+    const sevClass = g.severity === 'Critical' ? 'badge-critical' : g.severity === 'High' ? 'badge-medium' : 'badge-ok';
+
+    const section = document.createElement('div');
+    section.style.cssText = 'margin-bottom:12px;border:1px solid #2d3748;border-radius:8px;overflow:hidden';
+
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 16px;background:#1a202c;cursor:pointer;user-select:none';
+    header.innerHTML =
+      '<span class="chevron" style="color:#718096;font-size:12px;min-width:10px">&#9658;</span>' +
+      '<span class="badge badge-critical" style="font-family:monospace">' + right + '</span>' +
+      '<span style="color:#e2e8f0;font-weight:600">' + count + ' finding' + (count !== 1 ? 's' : '') + '</span>' +
+      '<span class="badge ' + sevClass + '" style="margin-left:auto">' + g.severity + '</span>';
+
+    const body = document.createElement('div');
+    body.style.display = 'none';
+    body.style.padding = '8px';
+    g.cards.forEach(function(card) {
+      var clone = card.cloneNode(true);
+      clone.style.display = '';
+      body.appendChild(clone);
+    });
+
+    header.onclick = function() {
+      var open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : '';
+      header.querySelector('.chevron').innerHTML = open ? '&#9658;' : '&#9660;';
+    };
+
+    section.appendChild(header);
+    section.appendChild(body);
+    container.appendChild(section);
+  });
 }
 </script>
 

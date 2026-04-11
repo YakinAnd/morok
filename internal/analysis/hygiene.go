@@ -22,6 +22,8 @@ type HygieneResult struct {
 	KrbtgtPwdAgeDays  int
 	KrbtgtLastSet     string
 	KrbtgtAtRisk      bool // true if > 180 days
+	NoLAPSCount       int  // enabled computers without LAPS
+	TotalComputers    int  // total enabled computers
 }
 
 // DescriptionFinding is any AD object that has a non-empty description field.
@@ -84,10 +86,14 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		}
 	}
 
-	// ── stale computers ───────────────────────────────────────
+	// ── stale computers + LAPS ────────────────────────────────
 	for _, c := range result.Computers {
 		if !c.Enabled {
 			continue
+		}
+		hr.TotalComputers++
+		if !c.LAPSEnabled {
+			hr.NoLAPSCount++
 		}
 		if isStale(c.LastLogon, now, staleComputerDays) {
 			hr.StaleComputers = append(hr.StaleComputers, c)
@@ -155,4 +161,12 @@ func printHygieneResult(hr *HygieneResult) {
 		color.White("  %-28s %d", "stale computers (45d+)", 0)
 	}
 	color.White("  %-28s %d", "objects with description", len(hr.PasswordInDesc))
+	if hr.TotalComputers > 0 {
+		lapsVal := fmt.Sprintf("%d / %d computers", hr.NoLAPSCount, hr.TotalComputers)
+		if hr.NoLAPSCount > 0 {
+			color.Yellow("  %-28s %s", "no LAPS", lapsVal)
+		} else {
+			color.White("  %-28s %s", "no LAPS", lapsVal)
+		}
+	}
 }
