@@ -20,6 +20,7 @@ const (
 	ESC1 ADCSVulnType = "ESC1" // Enrollee supplies subject (SAN injection)
 	ESC2 ADCSVulnType = "ESC2" // Any Purpose / no EKU
 	ESC3 ADCSVulnType = "ESC3" // Certificate Request Agent EKU
+	ESC4 ADCSVulnType = "ESC4" // Low-priv principal has write permissions on template object
 	ESC6 ADCSVulnType = "ESC6" // CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag
 	ESC7 ADCSVulnType = "ESC7" // Low-priv principal has ManageCA / ManageCertificates on CA
 	ESC8 ADCSVulnType = "ESC8" // Web Enrollment endpoint active (NTLM relay possible)
@@ -200,6 +201,17 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 		if f != nil {
 			result.TemplateFindings = append(result.TemplateFindings, *f)
 		}
+		// ESC4: dangerous write permissions on template object
+		esc4 := checkESC4(e)
+		for _, f4 := range esc4 {
+			result.TemplateFindings = append(result.TemplateFindings, f4)
+		}
+	}
+
+	// ── 3. ESC7: ManageCA / ManageCertificates on CA ─────────
+	for _, e := range caEntries {
+		esc7Findings := checkESC7(e)
+		result.CAFindings = append(result.CAFindings, esc7Findings...)
 	}
 
 	printADCSResult(result, false)
@@ -301,6 +313,168 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		EKUs:            ekuDisplay,
 		Severity:        sev,
 	}
+}
+
+// ============================================================
+// ESC4 — dangerous write permissions on certificate template
+// ============================================================
+
+// wellKnownLowPrivSIDs — SIDs that represent low-privileged principals.
+// Domain Users suffix -513 is checked separately via hasSuffix.
+var wellKnownLowPrivSIDs = map[string]string{
+	"S-1-1-0":  "Everyone",
+	"S-1-5-11": "Authenticated Users",
+	"S-1-5-17": "IUSR",
+}
+
+// isLowPrivSID returns true if the SID belongs to a low-priv well-known group
+// or is a Domain Users SID (ends in -513).
+func isLowPrivSID(sid string) (string, bool) {
+	if name, ok := wellKnownLowPrivSIDs[sid]; ok {
+		return name, true
+	}
+	// Domain Users: S-1-5-21-...-513
+	if strings.HasSuffix(sid, "-513") {
+		return "Domain Users", true
+	}
+	return "", false
+}
+
+// checkESC4 checks if low-privileged principals have dangerous write
+// permissions on the certificate template object (WriteDACL, WriteOwner,
+// GenericAll, GenericWrite). Any of these allows modifying the template
+// to introduce ESC1.
+func checkESC4(e ldapEntry) []CertTemplateFinding {
+	type rawEntry interface {
+		GetRawAttributeValue(string) []byte
+		GetAttributeValue(string) string
+	}
+	re, ok := e.(rawEntry)
+	if !ok {
+		return nil
+	}
+
+	sdBytes := re.GetRawAttributeValue("nTSecurityDescriptor")
+	if len(sdBytes) == 0 {
+		return nil
+	}
+
+	aces, err := parseSecurityDescriptor(sdBytes)
+	if err != nil {
+		return nil
+	}
+
+	name := e.GetAttributeValue("cn")
+	var findings []CertTemplateFinding
+
+	for _, ace := range aces {
+		if ace.ACEType == 0x01 { // Deny ACE — skip
+			continue
+		}
+		principalName, lowPriv := isLowPrivSID(ace.SID)
+		if !lowPriv {
+			continue
+		}
+
+		mask := ace.AccessMask
+		dangerous := mask&ADS_RIGHT_GENERIC_ALL != 0 ||
+			mask&ADS_RIGHT_WRITE_DACL != 0 ||
+			mask&ADS_RIGHT_WRITE_OWNER != 0 ||
+			mask&ADS_RIGHT_GENERIC_WRITE != 0
+
+		if !dangerous {
+			continue
+		}
+
+		findings = append(findings, CertTemplateFinding{
+			TemplateName: name,
+			TemplateOID:  e.GetAttributeValue("msPKI-Cert-Template-OID"),
+			VulnTypes:    []ADCSVulnType{ESC4},
+			EnrollableBy: []string{principalName},
+			Severity:     "High",
+		})
+		break // одна знахідка на шаблон достатньо
+	}
+
+	return findings
+}
+
+// ============================================================
+// ESC7 — ManageCA / ManageCertificates on CA object
+// ============================================================
+
+// CA-specific access rights (from wincrypt.h)
+const (
+	caAccessManageCA           = 0x00000001 // CA Officer / Manager
+	caAccessManageCertificates = 0x00000002 // Certificate Manager
+	caAccessEnroll             = 0x00000100 // basic enroll
+)
+
+// checkESC7 checks if low-privileged principals have ManageCA or
+// ManageCertificates rights on the CA object. ManageCA allows changing
+// CA flags (e.g. set EDITF_ATTRIBUTESUBJECTALTNAME2 = instant ESC6).
+// ManageCertificates allows approving pending certificate requests.
+func checkESC7(e ldapEntry) []CAFinding {
+	type rawEntry interface {
+		GetRawAttributeValue(string) []byte
+		GetAttributeValue(string) string
+		DN() string
+	}
+	// go-ldap Entry — use type assertion to get raw bytes
+	type rawGetter interface {
+		GetRawAttributeValue(string) []byte
+		GetAttributeValue(string) string
+	}
+	re, ok := e.(rawGetter)
+	if !ok {
+		return nil
+	}
+
+	sdBytes := re.GetRawAttributeValue("nTSecurityDescriptor")
+	if len(sdBytes) == 0 {
+		return nil
+	}
+
+	aces, err := parseSecurityDescriptor(sdBytes)
+	if err != nil {
+		return nil
+	}
+
+	caName := re.GetAttributeValue("cn")
+	var findings []CAFinding
+	seenManageCA := false
+	seenManageCerts := false
+
+	for _, ace := range aces {
+		if ace.ACEType == 0x01 {
+			continue
+		}
+		principalName, lowPriv := isLowPrivSID(ace.SID)
+		if !lowPriv {
+			continue
+		}
+
+		if ace.AccessMask&caAccessManageCA != 0 && !seenManageCA {
+			findings = append(findings, CAFinding{
+				CAName:    caName,
+				VulnTypes: []ADCSVulnType{ESC7},
+				Details:   principalName + " has ManageCA right — can change CA flags (e.g. enable EDITF_ATTRIBUTESUBJECTALTNAME2 → ESC6 for all templates).",
+				Severity:  "Critical",
+			})
+			seenManageCA = true
+		}
+		if ace.AccessMask&caAccessManageCertificates != 0 && !seenManageCerts {
+			findings = append(findings, CAFinding{
+				CAName:    caName,
+				VulnTypes: []ADCSVulnType{ESC7},
+				Details:   principalName + " has ManageCertificates right — can approve any pending certificate request, bypassing manager approval.",
+				Severity:  "High",
+			})
+			seenManageCerts = true
+		}
+	}
+
+	return findings
 }
 
 // ============================================================
