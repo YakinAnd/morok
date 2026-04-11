@@ -39,6 +39,8 @@ type ReportData struct {
 	// v0.6
 	HygieneResult *analysis.HygieneResult
 	PSOResult     *analysis.PSOResult
+	// v0.7
+	UserPrivGroups map[string]string // user DN → comma-separated privileged group names
 }
 
 // Summary — короткий підсумок для executive section
@@ -125,9 +127,10 @@ func Generate(
 	ACLResult:        aclResult,
 	DelegationResult: dr,
 	GPOResult:        gr,
-	HygieneResult:   hr,
+	HygieneResult:    hr,
 	PSOResult:        psoResult,
 	ForestWide:       result.ForestWide,
+	UserPrivGroups:   buildUserPrivGroups(result),
 }
 
 	// парсимо шаблон
@@ -227,6 +230,43 @@ func buildSummary(
 	}
 
 	return s
+}
+
+// buildUserPrivGroups повертає map[userDN]→"DA, EA, ..." для кожного юзера
+// що є членом привілейованих груп.
+func buildUserPrivGroups(result *adldap.EnumerationResult) map[string]string {
+	privNames := map[string]bool{
+		"domain admins":              true,
+		"enterprise admins":          true,
+		"administrators":             true,
+		"backup operators":           true,
+		"account operators":          true,
+		"schema admins":              true,
+		"server operators":           true,
+		"print operators":            true,
+		"dnsadmins":                  true,
+		"group policy creator owners": true,
+	}
+	// DN групи → коротка назва
+	groupByDN := make(map[string]string, len(result.Groups))
+	for _, g := range result.Groups {
+		if privNames[strings.ToLower(g.SAMAccountName)] {
+			groupByDN[strings.ToLower(g.DN)] = g.SAMAccountName
+		}
+	}
+	out := make(map[string]string)
+	for _, u := range result.Users {
+		var found []string
+		for _, dn := range u.MemberOf {
+			if name, ok := groupByDN[strings.ToLower(dn)]; ok {
+				found = append(found, name)
+			}
+		}
+		if len(found) > 0 {
+			out[u.DN] = strings.Join(found, ", ")
+		}
+	}
+	return out
 }
 
 // ============================================================
@@ -845,8 +885,9 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
       <tr>
         <th class="sortable" onclick="sortTable(this)">Account</th>
         <th class="sortable" onclick="sortTable(this)">Display Name</th>
+        <th class="sortable" onclick="sortTable(this)">Email</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
-        <th class="sortable" onclick="sortTable(this)">Admin</th>
+        <th class="sortable" onclick="sortTable(this)">Privileged Groups</th>
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
@@ -859,9 +900,10 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
     <tr>
       <td class="mono">{{.SAMAccountName}}</td>
       <td>{{.DisplayName}}</td>
+      <td style="font-size:0.78rem;color:#a0aec0">{{.Mail}}</td>
       <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
           {{else}}<span class="badge" style="background:#2d3748;color:#718096">No</span>{{end}}</td>
-      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+      <td>{{with index $.UserPrivGroups .DN}}<span class="badge badge-critical" style="font-size:0.72rem">{{.}}</span>{{else}}—{{end}}</td>
       <td>{{if .SPNs}}<span class="badge badge-medium">Yes</span>{{else}}—{{end}}</td>
       <td>{{if .DontReqPreauth}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
       <td>{{if .PasswordNeverExpires}}<span class="badge badge-medium">Yes</span>{{else}}—{{end}}</td>
