@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -13,53 +14,76 @@ import (
 // Models
 // ============================================================
 
-// ADCSVulnType — ESC type identifier
 type ADCSVulnType string
 
 const (
-	ESC1 ADCSVulnType = "ESC1" // Enrollee supplies subject (SAN) + any user can enroll
-	ESC2 ADCSVulnType = "ESC2" // Any Purpose EKU or no EKU
+	ESC1 ADCSVulnType = "ESC1" // Enrollee supplies subject (SAN injection)
+	ESC2 ADCSVulnType = "ESC2" // Any Purpose / no EKU
 	ESC3 ADCSVulnType = "ESC3" // Certificate Request Agent EKU
-	ESC4 ADCSVulnType = "ESC4" // Template has dangerous write permissions
-	ESC7 ADCSVulnType = "ESC7" // CA has ManageCA or ManageCertificates rights for low-priv principal
-	ESC8 ADCSVulnType = "ESC8" // NTLM relay to HTTP enrollment endpoint (Web Enrollment enabled)
+	ESC6 ADCSVulnType = "ESC6" // CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag
+	ESC7 ADCSVulnType = "ESC7" // Low-priv principal has ManageCA / ManageCertificates on CA
+	ESC8 ADCSVulnType = "ESC8" // Web Enrollment endpoint active (NTLM relay possible)
 )
 
-// CertTemplateFinding — one vulnerable certificate template
+// msPKI-Certificate-Name-Flag bitmasks
+const (
+	ctFlagEnrolleeSuppliesSubject = 0x00000001
+	ctFlagOldCertSupplies         = 0x00000008
+)
+
+// msPKI-Enrollment-Flag bitmasks
+const (
+	ctFlagIncludeSymmetricAlgorithms = 0x00000001
+	ctFlagPublishToDS                = 0x00000008
+	ctFlagAutoenrollment             = 0x00000020
+)
+
+// CA editFlags bitmask (from msPKI-Enrollment-Servers / flags attribute)
+const editFlagAttributeSubjectAltName2 = 0x00040000
+
+// Well-known SIDs / RIDs that indicate low-priv enrollment (ESC1 qualifier)
+var lowPrivSIDs = []string{
+	"S-1-1-0",       // Everyone
+	"S-1-5-11",      // Authenticated Users
+	"S-1-5-17",      // IUSR
+	"Domain Users",
+	"Authenticated Users",
+	"Everyone",
+}
+
 type CertTemplateFinding struct {
 	TemplateName    string
-	TemplateOID     string // pKIExpirationPeriod / msPKI-Cert-Template-OID
+	TemplateOID     string
 	CAName          string
 	VulnTypes       []ADCSVulnType
-	EnrollableBy    []string // principals that can enroll
-	AllowsSANInject bool     // CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT
+	EnrollableBy    []string
+	AllowsSANInject bool
 	EKUs            []string
-	Severity        string // Critical / High / Medium
+	AuthEnabled     bool // has Client Auth / Smart Card Logon EKU
+	Severity        string
 }
 
-// CAFinding — CA-level misconfiguration
 type CAFinding struct {
-	CAName      string
-	CADN        string
-	VulnTypes   []ADCSVulnType
-	WebEnroll   bool   // HTTP enrollment endpoint active
-	Details     string
-	Severity    string
+	CAName    string
+	CADN      string
+	VulnTypes []ADCSVulnType
+	WebEnroll bool
+	Details   string
+	Severity  string
 }
 
-// ADCSResult — full ADCS analysis result
-type ADCSResult struct {
-	Domain            string
-	CAs               []CAInfo
-	TemplateFindings  []CertTemplateFinding
-	CAFindings        []CAFinding
-}
-
-// CAInfo — basic CA info
 type CAInfo struct {
-	Name   string
-	DN     string
-	Server string // dNSHostName
+	Name      string
+	DN        string
+	Server    string
+	EditFlags int64
+}
+
+type ADCSResult struct {
+	Domain           string
+	CAs              []CAInfo
+	TemplateFindings []CertTemplateFinding
+	CAFindings       []CAFinding
 }
 
 // ============================================================
@@ -75,12 +99,12 @@ var certTemplateAttributes = []string{
 	"cn",
 	"displayName",
 	"distinguishedName",
-	"msPKI-Certificate-Name-Flag",  // CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT = 1
-	"msPKI-Enrollment-Flag",        // CT_FLAG_PEND_ALL_REQUESTS etc.
-	"pKIExtendedKeyUsage",          // EKU OIDs
-	"nTSecurityDescriptor",         // ACL — who can enroll
-	"msPKI-RA-Signature",           // num of authorized signatures required
+	"msPKI-Certificate-Name-Flag",
+	"msPKI-Enrollment-Flag",
+	"pKIExtendedKeyUsage",
+	"msPKI-RA-Signature",
 	"msPKI-Cert-Template-OID",
+	"nTSecurityDescriptor",
 }
 
 var caAttributes = []string{
@@ -89,31 +113,32 @@ var caAttributes = []string{
 	"distinguishedName",
 	"dNSHostName",
 	"certificateTemplates",
+	"flags", // editFlags for ESC6
 	"nTSecurityDescriptor",
 }
 
-// EKU OIDs that make a template dangerous (ESC2)
-var dangerousEKUs = map[string]bool{
-	"2.5.29.37.0":           true, // Any Purpose
-	"1.3.6.1.5.5.7.3.2":    true, // Client Authentication
-	"1.3.6.1.4.1.311.20.2.1": true, // Certificate Request Agent (ESC3)
+// EKU OIDs
+var ekuNameMap = map[string]string{
+	"1.3.6.1.5.5.7.3.1":        "Server Authentication",
+	"1.3.6.1.5.5.7.3.2":        "Client Authentication",
+	"1.3.6.1.5.5.7.3.4":        "Email",
+	"2.5.29.37.0":               "Any Purpose",
+	"1.3.6.1.4.1.311.20.2.1":   "Certificate Request Agent",
+	"1.3.6.1.4.1.311.20.2.2":   "Smart Card Logon",
+	"1.3.6.1.4.1.311.10.3.4":   "EFS",
 }
 
-// EKU OID → human name
-var ekuNames = map[string]string{
-	"1.3.6.1.5.5.7.3.1":      "Server Authentication",
-	"1.3.6.1.5.5.7.3.2":      "Client Authentication",
-	"1.3.6.1.5.5.7.3.4":      "Email",
-	"2.5.29.37.0":             "Any Purpose",
-	"1.3.6.1.4.1.311.20.2.1": "Certificate Request Agent",
-	"1.3.6.1.4.1.311.20.2.2": "Smart Card Logon",
+// EKUs that enable authentication (needed for ESC1 to be Critical)
+var authEKUs = map[string]bool{
+	"1.3.6.1.5.5.7.3.2":      true, // Client Authentication
+	"1.3.6.1.4.1.311.20.2.2": true, // Smart Card Logon
+	"2.5.29.37.0":             true, // Any Purpose
 }
 
 // ============================================================
-// Main analysis function
+// Main analysis
 // ============================================================
 
-// AnalyzeADCS discovers ADCS misconfigurations via LDAP.
 func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 	result := &ADCSResult{Domain: client.GetDomain()}
 
@@ -131,23 +156,36 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 	}
 
 	for _, e := range caEntries {
-		result.CAs = append(result.CAs, CAInfo{
-			Name:   e.GetAttributeValue("cn"),
-			DN:     e.DN,
-			Server: e.GetAttributeValue("dNSHostName"),
-		})
-		// ESC8: if CA has web enrollment (HTTP) — flag it
-		// We detect by checking if dNSHostName is set (CA is reachable)
-		// Real detection requires HTTP probe — we flag as potential
-		caF := CAFinding{
-			CAName:    e.GetAttributeValue("cn"),
-			CADN:      e.DN,
+		editFlags, _ := strconv.ParseInt(e.GetAttributeValue("flags"), 10, 64)
+		ca := CAInfo{
+			Name:      e.GetAttributeValue("cn"),
+			DN:        e.DN,
+			Server:    e.GetAttributeValue("dNSHostName"),
+			EditFlags: editFlags,
+		}
+		result.CAs = append(result.CAs, ca)
+
+		// ESC6: EDITF_ATTRIBUTESUBJECTALTNAME2 set on CA
+		// This allows SAN injection for ANY template issued by this CA
+		if editFlags&editFlagAttributeSubjectAltName2 != 0 {
+			result.CAFindings = append(result.CAFindings, CAFinding{
+				CAName:    ca.Name,
+				CADN:      ca.DN,
+				VulnTypes: []ADCSVulnType{ESC6},
+				Details:   "CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag set — any template issued by this CA allows SAN injection regardless of template settings. Equivalent to ESC1 for all templates.",
+				Severity:  "Critical",
+			})
+		}
+
+		// ESC8: flag Web Enrollment as potential (requires HTTP probe to confirm)
+		result.CAFindings = append(result.CAFindings, CAFinding{
+			CAName:    ca.Name,
+			CADN:      ca.DN,
 			VulnTypes: []ADCSVulnType{ESC8},
 			WebEnroll: true,
-			Details:   "Web Enrollment may be enabled — check http://" + e.GetAttributeValue("dNSHostName") + "/certsrv/. If accessible, NTLM relay attacks (PetitPotam → ESC8) are possible.",
+			Details:   "Verify if Web Enrollment is active: http://" + ca.Server + "/certsrv/ — if accessible and NTLM auth is allowed, PetitPotam/Coercer → certipy relay attack is possible.",
 			Severity:  "High",
-		}
-		result.CAFindings = append(result.CAFindings, caF)
+		})
 	}
 
 	// ── 2. Enumerate certificate templates ───────────────────
@@ -158,9 +196,9 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 	}
 
 	for _, e := range tmplEntries {
-		finding := analyzeTemplate(e)
-		if finding != nil {
-			result.TemplateFindings = append(result.TemplateFindings, *finding)
+		f := analyzeTemplate(e)
+		if f != nil {
+			result.TemplateFindings = append(result.TemplateFindings, *f)
 		}
 	}
 
@@ -168,63 +206,89 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 	return result, nil
 }
 
-// analyzeTemplate checks a single template for ESC1/ESC2/ESC3
-func analyzeTemplate(e interface{ GetAttributeValue(string) string; GetAttributeValues(string) []string }) *CertTemplateFinding {
+// ============================================================
+// Template analysis
+// ============================================================
+
+type ldapEntry interface {
+	GetAttributeValue(string) string
+	GetAttributeValues(string) []string
+}
+
+func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	name := e.GetAttributeValue("cn")
 	if name == "" {
 		name = e.GetAttributeValue("displayName")
 	}
 
-	nameFlag := e.GetAttributeValue("msPKI-Certificate-Name-Flag")
-	ekus     := e.GetAttributeValues("pKIExtendedKeyUsage")
-	raSig    := e.GetAttributeValue("msPKI-RA-Signature")
+	// Parse msPKI-Certificate-Name-Flag as int32 (can be negative — signed)
+	nameFlagStr := e.GetAttributeValue("msPKI-Certificate-Name-Flag")
+	nameFlag, _ := strconv.ParseInt(nameFlagStr, 10, 64)
+
+	ekus  := e.GetAttributeValues("pKIExtendedKeyUsage")
+	raSig := e.GetAttributeValue("msPKI-RA-Signature")
 
 	var vulns []ADCSVulnType
-	allowsSAN := false
+	allowsSAN  := false
+	authEnabled := false
 
-	// ESC1: CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT (bit 1 = 0x00000001)
-	// msPKI-Certificate-Name-Flag is a signed int32
-	if nameFlag == "1" || strings.HasPrefix(nameFlag, "-") {
-		// flag has ENROLLEE_SUPPLIES_SUBJECT bit
+	// ── ESC1: ENROLLEE_SUPPLIES_SUBJECT bit set ───────────────
+	// Correct bitmask check — value can be e.g. 65536 (0x10000) with bit 0 set
+	// when combined flags are present, so we mask properly.
+	if nameFlag&ctFlagEnrolleeSuppliesSubject != 0 {
 		allowsSAN = true
 		vulns = append(vulns, ESC1)
 	}
 
-	// ESC2/ESC3: check EKUs
+	// ── Check if template enables authentication ──────────────
+	for _, eku := range ekus {
+		if authEKUs[eku] {
+			authEnabled = true
+		}
+	}
+
+	// ── ESC2: Any Purpose EKU or no EKUs at all ──────────────
+	if len(ekus) == 0 {
+		vulns = appendUniq(vulns, ESC2)
+		authEnabled = true
+	}
 	for _, eku := range ekus {
 		if eku == "2.5.29.37.0" {
 			vulns = appendUniq(vulns, ESC2)
+			authEnabled = true
 		}
-		if eku == "1.3.6.1.4.1.311.20.2.1" {
+	}
+
+	// ── ESC3: Certificate Request Agent EKU ──────────────────
+	// + no authorized signatures required (msPKI-RA-Signature == 0)
+	raSigVal, _ := strconv.Atoi(raSig)
+	for _, eku := range ekus {
+		if eku == "1.3.6.1.4.1.311.20.2.1" && raSigVal == 0 {
 			vulns = appendUniq(vulns, ESC3)
 		}
 	}
 
-	// ESC3 also: no authorized signatures required + CRA EKU
-	if raSig == "0" || raSig == "" {
-		for _, eku := range ekus {
-			if eku == "1.3.6.1.4.1.311.20.2.1" {
-				vulns = appendUniq(vulns, ESC3)
-			}
-		}
+	// Only flag templates that enable authentication — others are low risk
+	if !authEnabled && !allowsSAN {
+		return nil
 	}
-
 	if len(vulns) == 0 {
 		return nil
 	}
 
-	// Map EKU OIDs to names
-	var ekuNames2 []string
+	// Map EKU OIDs to human names
+	var ekuDisplay []string
 	for _, oid := range ekus {
-		if n, ok := ekuNames[oid]; ok {
-			ekuNames2 = append(ekuNames2, n)
+		if n, ok := ekuNameMap[oid]; ok {
+			ekuDisplay = append(ekuDisplay, n)
 		} else {
-			ekuNames2 = append(ekuNames2, oid)
+			ekuDisplay = append(ekuDisplay, oid)
 		}
 	}
 
+	// Severity: Critical if ESC1 + auth EKU, else High
 	sev := "High"
-	if containsVuln(vulns, ESC1) {
+	if containsVuln(vulns, ESC1) && authEnabled {
 		sev = "Critical"
 	}
 
@@ -233,10 +297,15 @@ func analyzeTemplate(e interface{ GetAttributeValue(string) string; GetAttribute
 		TemplateOID:     e.GetAttributeValue("msPKI-Cert-Template-OID"),
 		VulnTypes:       vulns,
 		AllowsSANInject: allowsSAN,
-		EKUs:            ekuNames2,
+		AuthEnabled:     authEnabled,
+		EKUs:            ekuDisplay,
 		Severity:        sev,
 	}
 }
+
+// ============================================================
+// Helpers
+// ============================================================
 
 func appendUniq(s []ADCSVulnType, v ADCSVulnType) []ADCSVulnType {
 	for _, x := range s {
@@ -256,6 +325,14 @@ func containsVuln(s []ADCSVulnType, v ADCSVulnType) bool {
 	return false
 }
 
+func formatVulns(vulns []ADCSVulnType) string {
+	s := make([]string, len(vulns))
+	for i, v := range vulns {
+		s[i] = string(v)
+	}
+	return strings.Join(s, ", ")
+}
+
 // ============================================================
 // Terminal output
 // ============================================================
@@ -264,37 +341,70 @@ func printADCSResult(r *ADCSResult) {
 	color.Cyan("\n  ADCS")
 	color.White("  %-28s %d", "certificate authorities", len(r.CAs))
 	for _, ca := range r.CAs {
-		color.White("    %-26s %s", ca.Name, ca.Server)
+		esc6 := ""
+		if ca.EditFlags&editFlagAttributeSubjectAltName2 != 0 {
+			esc6 = "  [ESC6 — ATTRIBUTESUBJECTALTNAME2]"
+		}
+		color.White("    %-26s %s%s", ca.Name, ca.Server, esc6)
 	}
 
-	color.White("  %-28s %d", "vulnerable templates", len(r.TemplateFindings))
-	if len(r.TemplateFindings) > 0 {
-		color.White("  %-20s %-10s %s", "template", "severity", "vulns")
-		color.White("  " + strings.Repeat("-", 54))
+	critCount := 0
+	for _, f := range r.TemplateFindings {
+		if f.Severity == "Critical" {
+			critCount++
+		}
+	}
+
+	if len(r.TemplateFindings) == 0 {
+		color.White("  %-28s %d", "vulnerable templates", 0)
+	} else {
+		color.Yellow("  %-28s %d  (%d critical)", "vulnerable templates", len(r.TemplateFindings), critCount)
+		color.White("  %-24s %-10s %-16s %s", "template", "severity", "vulns", "auth EKU")
+		color.White("  " + strings.Repeat("-", 64))
 		for _, f := range r.TemplateFindings {
-			vulnStr := formatVulns(f.VulnTypes)
+			authStr := ""
+			if f.AuthEnabled {
+				authStr = strings.Join(f.EKUs, ", ")
+			}
+			line := fmt.Sprintf("  %-24s %-10s %-16s %s", f.TemplateName, f.Severity, formatVulns(f.VulnTypes), authStr)
 			if f.Severity == "Critical" {
-				color.Red("  %-20s %-10s %s", f.TemplateName, f.Severity, vulnStr)
+				color.Red(line)
 			} else {
-				color.Yellow("  %-20s %-10s %s", f.TemplateName, f.Severity, vulnStr)
+				color.Yellow(line)
 			}
 		}
 	}
 
-	if len(r.CAFindings) > 0 {
-		color.Cyan("\n  NEXT STEPS")
-		color.White("  ESC1  certipy req -u user@domain -p pass -ca <CA> -template <tmpl> -upn admin@domain")
-		color.White("        certipy auth -pfx admin.pfx -domain domain")
-		color.White("  ESC8  certipy relay -target http://<CA>/certsrv/certfnsh.asp -template Machine")
+	// CA-level findings (ESC6)
+	for _, cf := range r.CAFindings {
+		if containsVuln(cf.VulnTypes, ESC6) {
+			color.Red("\n  [ESC6] %s — %s", cf.CAName, cf.Details)
+		}
 	}
-}
 
-func formatVulns(vulns []ADCSVulnType) string {
-	s := make([]string, len(vulns))
-	for i, v := range vulns {
-		s[i] = string(v)
+	// Next steps
+	hasCritical := critCount > 0 || func() bool {
+		for _, cf := range r.CAFindings {
+			if containsVuln(cf.VulnTypes, ESC6) {
+				return true
+			}
+		}
+		return false
+	}()
+
+	if hasCritical || len(r.TemplateFindings) > 0 {
+		color.Cyan("\n  NEXT STEPS")
+		if critCount > 0 {
+			color.White("  ESC1  certipy req -u user@%s -p pass -ca <CA> -template <tmpl> -upn admin@%s", r.Domain, r.Domain)
+			color.White("        certipy auth -pfx admin.pfx -domain %s -dc-ip <DC>", r.Domain)
+		}
+		for _, cf := range r.CAFindings {
+			if containsVuln(cf.VulnTypes, ESC8) {
+				color.White("  ESC8  certipy relay -target http://%s/certsrv/certfnsh.asp -template Machine", cf.CAName)
+				break
+			}
+		}
 	}
-	return strings.Join(s, ", ")
 }
 
 // PrintADCSResult — public wrapper for standalone adcs command
