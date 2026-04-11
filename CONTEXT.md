@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.5.0
+- **Поточна версія:** v0.6.0
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -177,37 +177,25 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - HTML звіт — D3.js граф перероблений: розмір ноди = кількість шляхів, tooltip при hover, підписи ребер, червоні стрілки для admin-шляхів, кнопка Reset Zoom
 - HTML звіт — вкладка Computers розширена: Domain, LAPS, Version, Created, Description
 
-### v0.6 TODO — Quick wins + critical gaps
-Базується на gap-аналізі vs netexec / bloodhound / certipy / pingcastle.
+### v0.6 ЗАВЕРШЕНО
+Протестовано на GOAD-Light. Результати: 5 attack paths, 12 stale users, DCSync built-ins excluded.
 
-**Kerberos / Auth без credentials:**
+- ✅ DCSync detection — перевірка обох replication GUID на domain object, виключення built-ins
+- ✅ Hygiene module (`internal/analysis/hygiene.go`) — stale users (90d), stale computers (45d), krbtgt age + Golden Ticket risk, passwords in description
+- ✅ PSO analysis (`internal/analysis/pso.go`) — Fine-Grained Password Policy (msDS-PasswordSettings), weak policy flags
+- ✅ Extended attack paths — BFS до всіх 8 привілейованих груп (DA, EA, Backup Ops, Account Ops, Server Ops, Print Ops, DNSAdmins, GPO Creator Owners)
+- ✅ HTML звіт — новий Hygiene tab, DCSync секція в ACL tab, TargetGroup badge на кожному attack path
+- ✅ ldap: `SearchBase()` для PSO, `SearchGC()` для forest-wide запитів
+
+**Залишились на v0.7 (з оригінального v0.6 TODO):**
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
 - RootDSE enumeration без bind (domain, forest, AD version)
-
-**Критичні ACL gaps:**
-- DCSync rights — DS-Replication-Get-Changes + DS-Replication-Get-Changes-All на domain object → secretsdump
-- Passwords in description/info/comment атрибутах юзерів
-
-**GPO / SYSVOL:**
-- GPP passwords (MS14-025) — cpassword в SYSVOL\...\Groups.xml (AES ключ публічний)
-- Fine-Grained Password Policy (PSO) — `msDS-PasswordSettings` контейнер
-
-**Privileged Groups — розширити attack paths за межі Domain Admins:**
-- Enterprise Admins, Backup Operators (NTDS.dit), DNSAdmins (DLL injection), Account Operators, Server Operators, Print Operators
-
-**Network / Protocol:**
+- GPP passwords (MS14-025) — cpassword в SYSVOL\...\Groups.xml
 - SMB signing перевірка — якщо не required → NTLM relay можливий
 - LDAP signing + channel binding статус
-
-**Blue Team checks:**
-- Stale accounts (90+ днів без логіну, enabled)
-- Stale computers (45+ днів)
-- Krbtgt password age (>180 днів → Golden Ticket ризик)
 - Protected Users group — чи DA/EA додані
-
-**Report infrastructure:**
 - Summary finding grouping — 72 ACL findings → "1 Critical: ACL Privilege Escalation"
-- Offline KB (`internal/kb/findings.go`) — map[finding_type]KBEntry замість switch-case в html.go
+- Offline KB (`internal/kb/findings.go`) — map[finding_type]KBEntry
 - LAPS readability — хто може читати ms-MCS-AdmPwd; машини без LAPS
 
 ### v0.7 TODO — Advanced attacks
@@ -229,4 +217,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.5.0 — roadmap v0.6/v0.7 визначено (gap-аналіз vs netexec/certipy/bloodhound)*
+*Останнє оновлення: v0.6.0 — DCSync, hygiene, PSO, extended privileged paths, Hygiene tab в HTML*
