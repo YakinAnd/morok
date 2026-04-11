@@ -592,13 +592,13 @@ tr:hover td { background: #1a1f2e; }
   <!-- Attack Surface -->
   <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Attack Surface</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:20px">
-    <div class="card {{if gt .Summary.AttackPathsCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'paths')" title="View Attack Paths">
+    <div class="card {{if gt .Summary.AttackPathsCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'paths')" title="View Attack Paths to privileged groups">
       <div class="value">{{.Summary.AttackPathsCount}}</div>
-      <div class="label">Attack Paths to DA</div>
+      <div class="label">Attack Paths</div>
     </div>
-    <div class="card {{if gt .Summary.CriticalCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'paths')" title="View Critical Paths">
+    <div class="card {{if gt .Summary.CriticalCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'paths')" title="Short paths (depth ≤ 2) are easiest to exploit">
       <div class="value">{{.Summary.CriticalCount}}</div>
-      <div class="label">Critical Paths (depth ≤ 2)</div>
+      <div class="label">Short Paths (≤2 hops)</div>
     </div>
     <div class="card {{if gt .Summary.KerberoastableCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'kerberos')" title="View Kerberoastable accounts">
       <div class="value">{{.Summary.KerberoastableCount}}</div>
