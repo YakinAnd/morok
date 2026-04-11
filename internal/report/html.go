@@ -595,7 +595,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <button onclick="showTab('kerberos')">Kerberos</button>
   <button onclick="showTab('acl')">ACL ({{.Summary.DangerousACLCount}})</button>
   <button onclick="showTab('delegation')">Delegation ({{.Summary.DelegationCount}})</button>
-  <button onclick="showTab('hygiene')">Hygiene</button>
+  <button onclick="showTab('exposure')">Exposure</button>
   <button onclick="showTab('gpo')">GPO</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
@@ -648,8 +648,8 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
     </div>
   </div>
 
-  <!-- Account Hygiene -->
-  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Account Hygiene</div>
+  <!-- Exposure -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Exposure</div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:20px">
     <div class="card {{if gt .Summary.PasswordNeverExpires 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'users')" title="View users with non-expiring passwords">
       <div class="value">{{.Summary.PasswordNeverExpires}}</div>
@@ -667,15 +667,15 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
       <div class="value">{{.Summary.TotalComputers}}</div>
       <div class="label">Computers</div>
     </div>
-    <div class="card {{if gt .Summary.StaleUsersCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View stale accounts">
+    <div class="card {{if gt .Summary.StaleUsersCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'exposure')" title="View stale accounts">
       <div class="value">{{.Summary.StaleUsersCount}}</div>
       <div class="label">Stale Users (90d)</div>
     </div>
-    <div class="card {{if gt .Summary.PasswordInDescCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View all object descriptions">
+    <div class="card {{if gt .Summary.PasswordInDescCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'exposure')" title="View all object descriptions">
       <div class="value">{{.Summary.PasswordInDescCount}}</div>
       <div class="label">Have Description</div>
     </div>
-    <div class="card {{if .Summary.KrbtgtAtRisk}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View krbtgt status">
+    <div class="card {{if .Summary.KrbtgtAtRisk}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'exposure')" title="View krbtgt status">
       <div class="value">{{if eq .Summary.KrbtgtPwdAgeDays 0}}?{{else}}{{.Summary.KrbtgtPwdAgeDays}}d{{end}}</div>
       <div class="label">Krbtgt Pwd Age</div>
     </div>
@@ -1194,9 +1194,9 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   {{else}}<p style="color:#718096">Delegation data not available.</p>{{end}}
 </div>
 
-<!-- HYGIENE TAB -->
-<div id="tab-hygiene" class="tab-pane">
-  <h2 class="section-title">AD Hygiene &amp; Blue Team Checks</h2>
+<!-- EXPOSURE TAB -->
+<div id="tab-exposure" class="tab-pane">
+  <h2 class="section-title">Exposure &amp; Attack Surface</h2>
 
   <!-- krbtgt -->
   <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Kerberos Ticket Granting Ticket</div>
