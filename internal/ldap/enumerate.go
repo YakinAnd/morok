@@ -404,7 +404,7 @@ func (c *Client) printQuickFindings(result *EnumerationResult) {
 	color.Cyan("\n  QUICK FINDINGS")
 	printFinding("kerberoastable", kerberoastable)
 	printFinding("AS-REP roastable", asrep)
-	printFinding("admins (adminCount=1)", adminUsers)
+	printFinding("privileged accts (SDProp)", adminUsers)
 	printFinding("password never expires", pwdNeverExpires)
 	printFinding("unconstrained delegation", unconstrainedDeleg)
 }

@@ -362,8 +362,15 @@ func runGPO(cmd *cobra.Command, args []string) error {
 // ============================================================
 
 func printBanner() {
-	color.Cyan("adpath v0.6  //  AD Attack Path Enumerator")
-	color.White(strings.Repeat("─", 44))
+	color.Cyan(`    _      ____    ____      _      _____   _   _`)
+	color.Cyan(`   / \    |  _ \  |  _ \    / \    |_   _| | | | |`)
+	color.Cyan(`  / _ \   | | | | | |_) |  / _ \     | |   | |_| |`)
+	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
+	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
+	color.White(``)
+	color.White(`  v0.6.2  //  AD Attack Path Enumerator`)
+	color.White(`  github.com/YakinAnd/adpath`)
+	color.White(`  ` + strings.Repeat("─", 40))
 }
 
 // ============================================================

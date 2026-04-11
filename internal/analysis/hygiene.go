@@ -132,7 +132,7 @@ func isStale(lastLogon string, now time.Time, thresholdDays int) bool {
 }
 
 func printHygieneResult(hr *HygieneResult) {
-	color.Cyan("\n  HYGIENE")
+	color.Cyan("\n  EXPOSURE")
 
 	krbtgtAge := "N/A"
 	if hr.KrbtgtPwdAgeDays > 0 {
