@@ -207,6 +207,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - **Audit Policy / Blue Team** — Advanced Audit налаштування, event log retention, AD Recycle Bin
 - **Global search** — єдиний пошуковий рядок по всіх tabs звіту (users, groups, computers, ACL, paths) з підсвіткою результатів і переходом між вкладками
 - **Finding grouping** — групування findings за категорією/ознакою: замість "72 ACL findings" показувати згруповано "GenericAll (12), WriteDACL (8), ForceChangePassword (3)..." з можливістю розгорнути кожну групу
+- **Section tooltips** — знак `?` біля заголовків розділів (Kerberos TGT, Dangerous ACL Permissions, DCSync і т.д.) з hover-підказкою що пояснює розділ і чому він важливий для безпеки; корисно для клієнтів і джуніорів в команді
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
