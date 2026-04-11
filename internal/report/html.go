@@ -855,24 +855,28 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <h2 class="section-title">Users <span>{{.Summary.TotalUsers}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
-    <select data-col="2" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="3" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Enabled: all</option>
       <option value="Yes">Enabled only</option>
       <option value="No">Disabled only</option>
     </select>
-    <select data-col="3" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
-      <option value="">Admin: all</option>
-      <option value="Yes">Admins only</option>
+    <select data-col="4" data-match="notempty" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Privileged: all</option>
+      <option value="Domain Admins">Domain Admins</option>
+      <option value="Enterprise Admins">Enterprise Admins</option>
+      <option value="Administrators">Administrators</option>
+      <option value="Backup Operators">Backup Operators</option>
+      <option value="__notempty__">Any privileged</option>
     </select>
-    <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Kerberoastable: all</option>
       <option value="Yes">Yes</option>
     </select>
-    <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">AS-REP: all</option>
       <option value="Yes">Yes</option>
     </select>
-    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Pwd Exp: all</option>
       <option value="Yes">Never expires</option>
     </select>
@@ -1791,6 +1795,12 @@ function filterTable(tableId, countId) {
         const cell = row.cells[col]?.textContent?.trim() ?? '';
         if (sel.dataset.match === 'exact') {
           if (cell !== sel.value) show = false;
+        } else if (sel.dataset.match === 'notempty') {
+          if (sel.value === '__notempty__') {
+            if (cell === '' || cell === '—') show = false;
+          } else {
+            if (!cell.toLowerCase().includes(sel.value.toLowerCase())) show = false;
+          }
         } else {
           if (!cell.toLowerCase().includes(sel.value.toLowerCase())) show = false;
         }
