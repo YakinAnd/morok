@@ -22,8 +22,9 @@ type HygieneResult struct {
 	KrbtgtPwdAgeDays  int
 	KrbtgtLastSet     string
 	KrbtgtAtRisk      bool // true if > 180 days
-	NoLAPSCount       int  // enabled computers without LAPS
-	TotalComputers    int  // total enabled computers
+	NoLAPSCount       int                  // enabled computers without LAPS
+	TotalComputers    int                  // total enabled computers
+	NoLAPSComputers   []adldap.LDAPComputer // enabled computers without LAPS
 }
 
 // DescriptionFinding is any AD object that has a non-empty description field.
@@ -94,6 +95,7 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		hr.TotalComputers++
 		if !c.LAPSEnabled {
 			hr.NoLAPSCount++
+			hr.NoLAPSComputers = append(hr.NoLAPSComputers, c)
 		}
 		if isStale(c.LastLogon, now, staleComputerDays) {
 			hr.StaleComputers = append(hr.StaleComputers, c)

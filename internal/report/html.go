@@ -1287,6 +1287,32 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   </div>
   {{else}}<p style="color:#68d391">✓ No stale computers found.</p>{{end}}{{end}}
 
+  <!-- LAPS -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-top:24px;margin-bottom:8px">Computers Without LAPS</div>
+  {{if .HygieneResult}}
+  {{if gt .Summary.NoLAPSCount 0}}
+  <div class="path-card" style="margin-bottom:12px;padding:12px 16px">
+    <span class="badge badge-medium" style="margin-bottom:8px;display:inline-block">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} computers have no LAPS</span>
+    <div style="color:#a0aec0;font-size:0.85rem;margin-bottom:10px">Local Administrator Password Solution not deployed — local admin passwords may be identical across machines, enabling lateral movement.</div>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Computer</th><th>OS</th><th>Domain</th><th>Last Logon</th></tr></thead>
+    <tbody>
+    {{range .HygieneResult.NoLAPSComputers}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td>{{.OperatingSystem}}</td>
+      <td style="font-size:0.78rem;color:#718096">{{.Domain}}</td>
+      <td class="mono" style="color:#a0aec0">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391">✓ All enabled computers have LAPS deployed.</p>{{end}}
+  {{end}}
+
   <!-- PSO -->
   {{if .PSOResult}}{{if .PSOResult.PSOs}}
   <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-top:24px;margin-bottom:8px">Fine-Grained Password Policy (PSO)</div>
