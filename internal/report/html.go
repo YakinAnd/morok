@@ -567,6 +567,12 @@ tr:hover td { background: #1a1f2e; }
   background: #2d3748; border: none; border-radius: 6px; color: #a0aec0;
   padding: 6px 12px; font-size: 0.78rem; cursor: pointer; }
 .filter-bar button:hover { background: #4a5568; color: #e2e8f0; }
+
+/* Sortable table headers */
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: #e2e8f0; background: #252b3b; }
+th.sort-asc::after  { content: ' ▲'; color: #63b3ed; }
+th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
 </style>
 </head>
 <body>
@@ -649,7 +655,7 @@ tr:hover td { background: #1a1f2e; }
     </div>
     <div class="card {{if gt .Summary.AdminCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'users')" title="View admin-flagged users">
       <div class="value">{{.Summary.AdminCount}}</div>
-      <div class="label">AdminCount = 1</div>
+      <div class="label">Admins</div>
     </div>
     <div class="card" onclick="showTabByClick(event,'users')" title="View all users">
       <div class="value">{{.Summary.EnabledUsers}}</div>
@@ -663,9 +669,9 @@ tr:hover td { background: #1a1f2e; }
       <div class="value">{{.Summary.StaleUsersCount}}</div>
       <div class="label">Stale Users (90d)</div>
     </div>
-    <div class="card {{if gt .Summary.PasswordInDescCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View password leaks">
+    <div class="card {{if gt .Summary.PasswordInDescCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View all object descriptions">
       <div class="value">{{.Summary.PasswordInDescCount}}</div>
-      <div class="label">Pwd in Description</div>
+      <div class="label">Have Description</div>
     </div>
     <div class="card {{if .Summary.KrbtgtAtRisk}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View krbtgt status">
       <div class="value">{{if eq .Summary.KrbtgtPwdAgeDays 0}}?{{else}}{{.Summary.KrbtgtPwdAgeDays}}d{{end}}</div>
@@ -802,7 +808,7 @@ tr:hover td { background: #1a1f2e; }
 <div id="tab-users" class="tab-pane">
   <h2 class="section-title">Users <span>{{.Summary.TotalUsers}} total</span></h2>
   <div class="filter-bar">
-    <input type="text" placeholder="Search account..." data-col="0" oninput="filterTable('tbl-users','cnt-users')">
+    <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
     <select data-col="2" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Enabled: all</option>
       <option value="Yes">Enabled only</option>
@@ -810,7 +816,7 @@ tr:hover td { background: #1a1f2e; }
     </select>
     <select data-col="3" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Admin: all</option>
-      <option value="Yes">AdminCount = 1</option>
+      <option value="Yes">Admins only</option>
     </select>
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Kerberoastable: all</option>
@@ -831,15 +837,15 @@ tr:hover td { background: #1a1f2e; }
   <table id="tbl-users">
     <thead>
       <tr>
-        <th>Account</th>
-        <th>Display Name</th>
-        <th>Enabled</th>
-        <th>Admin</th>
-        <th>Kerberoastable</th>
-        <th>AS-REP</th>
-        <th>Pwd Never Exp</th>
-        <th>Last Logon</th>
-        <th>Pwd Last Set</th>
+        <th class="sortable" onclick="sortTable(this)">Account</th>
+        <th class="sortable" onclick="sortTable(this)">Display Name</th>
+        <th class="sortable" onclick="sortTable(this)">Enabled</th>
+        <th class="sortable" onclick="sortTable(this)">Admin</th>
+        <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
+        <th class="sortable" onclick="sortTable(this)">AS-REP</th>
+        <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
+        <th class="sortable" onclick="sortTable(this)">Last Logon</th>
+        <th class="sortable" onclick="sortTable(this)">Pwd Last Set</th>
       </tr>
     </thead>
     <tbody>
@@ -866,10 +872,18 @@ tr:hover td { background: #1a1f2e; }
 <div id="tab-groups" class="tab-pane">
   <h2 class="section-title">Groups <span>{{.Summary.TotalGroups}} total</span></h2>
   <div class="filter-bar">
-    <input type="text" placeholder="Search group..." data-col="0" oninput="filterTable('tbl-groups','cnt-groups')">
+    <input type="text" placeholder="Search groups..." oninput="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="1" onchange="filterTable('tbl-groups','cnt-groups')">
+      <option value="">Type: all</option>
+      <option value="Security">Security</option>
+      <option value="Distribution">Distribution</option>
+      <option value="Global">Global</option>
+      <option value="Universal">Universal</option>
+      <option value="Local">Local</option>
+    </select>
     <select data-col="3" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Admin: all</option>
-      <option value="Yes">AdminCount = 1</option>
+      <option value="Yes">Admins only</option>
     </select>
     <span class="filter-count" id="cnt-groups"></span>
     <button onclick="clearFilters('tbl-groups','cnt-groups')">Clear</button>
@@ -878,10 +892,10 @@ tr:hover td { background: #1a1f2e; }
   <table id="tbl-groups">
     <thead>
       <tr>
-        <th>Name</th>
-        <th>Type</th>
-        <th>Members</th>
-        <th>AdminCount</th>
+        <th class="sortable" onclick="sortTable(this)">Name</th>
+        <th class="sortable" onclick="sortTable(this)">Type</th>
+        <th class="sortable" onclick="sortTable(this)">Members</th>
+        <th class="sortable" onclick="sortTable(this)">Admin</th>
         <th>Description</th>
       </tr>
     </thead>
@@ -907,8 +921,7 @@ tr:hover td { background: #1a1f2e; }
     <span>{{.Summary.TotalComputers}} total{{if .ForestWide}} — forest-wide{{end}}</span>
   </h2>
   <div class="filter-bar">
-    <input type="text" placeholder="Search computer..." data-col="0" oninput="filterTable('tbl-computers','cnt-computers')">
-    <input type="text" placeholder="OS..." data-col="2" oninput="filterTable('tbl-computers','cnt-computers')">
+    <input type="text" placeholder="Search computers..." oninput="filterTable('tbl-computers','cnt-computers')">
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-computers','cnt-computers')">
       <option value="">Enabled: all</option>
       <option value="Yes">Enabled only</option>
@@ -926,15 +939,15 @@ tr:hover td { background: #1a1f2e; }
   <table id="tbl-computers">
     <thead>
       <tr>
-        <th>Name</th>
-        <th>Domain</th>
-        <th>OS</th>
-        <th>Version</th>
-        <th>Enabled</th>
-        <th>LAPS</th>
-        <th>Uncons. Deleg.</th>
-        <th>Last Logon</th>
-        <th>Created</th>
+        <th class="sortable" onclick="sortTable(this)">Name</th>
+        <th class="sortable" onclick="sortTable(this)">Domain</th>
+        <th class="sortable" onclick="sortTable(this)">OS</th>
+        <th class="sortable" onclick="sortTable(this)">Version</th>
+        <th class="sortable" onclick="sortTable(this)">Enabled</th>
+        <th class="sortable" onclick="sortTable(this)">LAPS</th>
+        <th class="sortable" onclick="sortTable(this)">Uncons. Deleg.</th>
+        <th class="sortable" onclick="sortTable(this)">Last Logon</th>
+        <th class="sortable" onclick="sortTable(this)">Created</th>
         <th>Description</th>
       </tr>
     </thead>
@@ -1194,35 +1207,36 @@ tr:hover td { background: #1a1f2e; }
     {{end}}
   </div>
 
-  <!-- passwords in description -->
-  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Passwords in Description</div>
+  <!-- descriptions -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Description Notes — Users / Computers / Groups</div>
+  <p style="color:#718096;font-size:0.8rem;margin-bottom:10px">All AD objects with a non-empty description are listed. Admins often leave credentials, IP addresses, or other sensitive information in these fields.</p>
   {{if .HygieneResult}}{{if .HygieneResult.PasswordInDesc}}
-  <div style="margin-bottom:8px">
-    <button class="acc-toggle" onclick="toggleAcc(this)" style="background:#2a1a1a;color:#fc8181;margin-bottom:4px">
-      ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix — Cleartext Credentials
-    </button>
-    <div class="acc-body">
-      <div class="acc-label">Exploit</div>
-      <span class="acc-cmd">Use credentials found in description to authenticate: net use \\DC\IPC$ /user:domain\user &lt;password&gt;</span>
-      <div class="acc-label" style="margin-top:10px">Fix</div>
-      <div style="color:#a0aec0">Remove passwords from all AD object description/info fields. Audit with: <span class="acc-cmd">Get-ADUser -Filter * -Properties Description | Where {$_.Description -match "pass"}</span></div>
-    </div>
+  <div class="filter-bar">
+    <input type="text" placeholder="Search..." oninput="filterTable('tbl-desc','cnt-desc')">
+    <select data-col="1" onchange="filterTable('tbl-desc','cnt-desc')">
+      <option value="">Type: all</option>
+      <option value="user">user</option>
+      <option value="computer">computer</option>
+      <option value="group">group</option>
+    </select>
+    <span class="filter-count" id="cnt-desc"></span>
+    <button onclick="clearFilters('tbl-desc','cnt-desc')">Clear</button>
   </div>
   <div class="table-wrap">
-  <table>
-    <thead><tr><th>Account</th><th>Type</th><th>Description (potential password)</th></tr></thead>
+  <table id="tbl-desc">
+    <thead><tr><th>Account</th><th>Type</th><th>Description</th></tr></thead>
     <tbody>
     {{range .HygieneResult.PasswordInDesc}}
     <tr>
       <td class="mono">{{.SAMAccountName}}</td>
       <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.ObjectType}}</span></td>
-      <td style="color:#fc8181;font-family:monospace;font-size:0.8rem">{{.Description}}</td>
+      <td style="font-family:monospace;font-size:0.8rem;color:#e2e8f0">{{.Description}}</td>
     </tr>
     {{end}}
     </tbody>
   </table>
   </div>
-  {{else}}<p style="color:#68d391;margin-bottom:20px">✓ No passwords found in description attributes.</p>{{end}}{{end}}
+  {{else}}<p style="color:#68d391;margin-bottom:20px">✓ No description attributes found.</p>{{end}}{{end}}
 
   <!-- stale accounts -->
   <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Stale User Accounts (90+ days no logon, enabled)</div>
@@ -1535,7 +1549,7 @@ function initGraph() {
         '<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px">' + d.label + '</div>' +
         '<div style="color:#718096;font-size:0.75rem;word-break:break-all">' + d.id + '</div>' +
         '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
-        (d.adminCount ? '<span style="background:#742a2a;color:#fc8181;padding:2px 6px;border-radius:3px;font-size:11px">AdminCount</span>' : '') +
+        (d.adminCount ? '<span style="background:#742a2a;color:#fc8181;padding:2px 6px;border-radius:3px;font-size:11px">Admin</span>' : '') +
         (d.kerberoastable ? '<span style="background:#744210;color:#f6ad55;padding:2px 6px;border-radius:3px;font-size:11px">Kerberoastable</span>' : '') +
         (d.asrepRoastable ? '<span style="background:#742a2a;color:#feb2b2;padding:2px 6px;border-radius:3px;font-size:11px">AS-REP</span>' : '') +
         '<span style="background:#2d3748;color:#a0aec0;padding:2px 6px;border-radius:3px;font-size:11px">' + d.type + '</span>' +
@@ -1596,37 +1610,125 @@ function nodeColor(d) {
   return '#63b3ed';
 }
 
+// ── Table sorting ─────────────────────────────────────────────
+// Cycle: none → asc (▲) → desc (▼) → none (original order restored)
+function sortTable(th) {
+  const table = th.closest('table');
+  const tbody = table.tBodies[0];
+  const ths   = Array.from(th.closest('tr').querySelectorAll('th.sortable'));
+  const col   = ths.indexOf(th);
+
+  // save original order once per table
+  if (!table._origOrder) {
+    table._origOrder = Array.from(tbody.rows).map(r => r);
+  }
+
+  // determine next state: none→asc, asc→desc, desc→none
+  const wasAsc  = th.classList.contains('sort-asc');
+  const wasDesc = th.classList.contains('sort-desc');
+
+  // reset all headers
+  ths.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
+
+  if (!wasAsc && !wasDesc) {
+    // none → asc
+    th.classList.add('sort-asc');
+    const rows = Array.from(tbody.rows).sort((a, b) => cmp(a, b, col, true));
+    rows.forEach(r => tbody.appendChild(r));
+  } else if (wasAsc) {
+    // asc → desc
+    th.classList.add('sort-desc');
+    const rows = Array.from(tbody.rows).sort((a, b) => cmp(a, b, col, false));
+    rows.forEach(r => tbody.appendChild(r));
+  } else {
+    // desc → none: restore original order
+    table._origOrder.forEach(r => tbody.appendChild(r));
+  }
+}
+
+function cmp(a, b, col, asc) {
+  const ta = a.cells[col]?.textContent?.trim() ?? '';
+  const tb = b.cells[col]?.textContent?.trim() ?? '';
+  const na = parseFloat(ta), nb = parseFloat(tb);
+  if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+  return asc ? ta.localeCompare(tb) : tb.localeCompare(ta);
+}
+
+// ── Table filters ─────────────────────────────────────────────
+// ── Highlight helpers ─────────────────────────────────────────
+function highlightCell(cell, query) {
+  // restore original innerHTML before re-highlighting
+  if (cell._origHTML !== undefined) cell.innerHTML = cell._origHTML;
+  else cell._origHTML = cell.innerHTML;
+  if (!query) return;
+  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  // only walk text nodes to avoid breaking badge HTML
+  const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  nodes.forEach(tn => {
+    if (!re.test(tn.textContent)) return;
+    re.lastIndex = 0;
+    const wrap = document.createElement('span');
+    wrap.innerHTML = tn.textContent.replace(re,
+      m => '<mark style="background:#f6e05e;color:#1a202c;border-radius:2px;padding:0 1px">' + m + '</mark>');
+    tn.parentNode.replaceChild(wrap, tn);
+  });
+}
+
+function restoreCell(cell) {
+  if (cell._origHTML !== undefined) {
+    cell.innerHTML = cell._origHTML;
+  }
+}
+
 // ── Table filters ─────────────────────────────────────────────
 function filterTable(tableId, countId) {
   const table = document.getElementById(tableId);
   if (!table) return;
-  const bar = table.previousElementSibling; // .filter-bar
-  const inputs  = bar ? bar.querySelectorAll('input[type=text]')  : [];
+  const wrap = table.closest('.table-wrap');
+  const bar  = wrap ? wrap.previousElementSibling : table.previousElementSibling;
+
+  // single search input — searches ALL columns
+  const searchInput = bar ? bar.querySelector('input[type=text]') : null;
+  const query = searchInput ? searchInput.value.trim() : '';
+  const queryLow = query.toLowerCase();
+
+  // dropdown filters — still column-specific
   const selects = bar ? bar.querySelectorAll('select') : [];
+
   const rows = table.tBodies[0].rows;
   let visible = 0;
 
   for (const row of rows) {
     let show = true;
-    // text inputs — check against column by data-col index
-    inputs.forEach(inp => {
-      const col = parseInt(inp.dataset.col ?? '0');
-      const val = (row.cells[col]?.textContent ?? '').toLowerCase();
-      if (!val.includes(inp.value.toLowerCase())) show = false;
-    });
-    // selects — data-col + optional data-match for exact cell text
-    selects.forEach(sel => {
-      if (!sel.value) return;
-      const col = parseInt(sel.dataset.col ?? '0');
-      const cell = row.cells[col]?.textContent?.trim() ?? '';
-      if (sel.dataset.match === 'exact') {
-        if (cell !== sel.value) show = false;
-      } else {
-        if (!cell.toLowerCase().includes(sel.value.toLowerCase())) show = false;
-      }
-    });
+
+    // text: check against full row text
+    if (queryLow && !row.textContent.toLowerCase().includes(queryLow)) show = false;
+
+    // dropdowns
+    if (show) {
+      selects.forEach(sel => {
+        if (!sel.value) return;
+        const col  = parseInt(sel.dataset.col ?? '0');
+        const cell = row.cells[col]?.textContent?.trim() ?? '';
+        if (sel.dataset.match === 'exact') {
+          if (cell !== sel.value) show = false;
+        } else {
+          if (!cell.toLowerCase().includes(sel.value.toLowerCase())) show = false;
+        }
+      });
+    }
+
     row.style.display = show ? '' : 'none';
     if (show) visible++;
+
+    // highlight / restore each cell
+    Array.from(row.cells).forEach(cell => {
+      if (show && queryLow) highlightCell(cell, query);
+      else restoreCell(cell);
+    });
   }
 
   if (countId) {
@@ -1638,7 +1740,8 @@ function filterTable(tableId, countId) {
 function clearFilters(tableId, countId) {
   const table = document.getElementById(tableId);
   if (!table) return;
-  const bar = table.previousElementSibling;
+  const wrap = table.closest('.table-wrap');
+  const bar  = wrap ? wrap.previousElementSibling : table.previousElementSibling;
   if (bar) {
     bar.querySelectorAll('input[type=text]').forEach(i => i.value = '');
     bar.querySelectorAll('select').forEach(s => s.value = '');

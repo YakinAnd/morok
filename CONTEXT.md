@@ -206,6 +206,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - **AdminSDHolder** — кастомні ACE в template, orphaned AdminCount objects
 - **Audit Policy / Blue Team** — Advanced Audit налаштування, event log retention, AD Recycle Bin
 - **Global search** — єдиний пошуковий рядок по всіх tabs звіту (users, groups, computers, ACL, paths) з підсвіткою результатів і переходом між вкладками
+- **Finding grouping** — групування findings за категорією/ознакою: замість "72 ACL findings" показувати згруповано "GenericAll (12), WriteDACL (8), ForceChangePassword (3)..." з можливістю розгорнути кожну групу
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо

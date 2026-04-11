@@ -23,12 +23,16 @@ type HygieneResult struct {
 	KrbtgtAtRisk      bool // true if > 180 days
 }
 
-// PasswordInDescFinding is a user/computer with a potential password in description
-type PasswordInDescFinding struct {
+// DescriptionFinding is any AD object that has a non-empty description field.
+// All descriptions are collected — the analyst decides what is interesting.
+type DescriptionFinding struct {
 	SAMAccountName string
-	ObjectType     string // "user" or "computer"
+	ObjectType     string // "user", "computer", or "group"
 	Description    string
 }
+
+// PasswordInDescFinding is an alias kept for backward compat with html template.
+type PasswordInDescFinding = DescriptionFinding
 
 const (
 	staleUserDays     = 90
@@ -36,11 +40,6 @@ const (
 	krbtgtMaxAgeDays  = 180
 )
 
-// passwordKeywords — simple heuristic for description scanning
-var passwordKeywords = []string{
-	"pass", "pwd", "password", "passwd", "secret", "cred",
-	"motdepasse", "пароль", "p@ss",
-}
 
 // ============================================================
 // Analysis
@@ -76,9 +75,8 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 			hr.StaleUsers = append(hr.StaleUsers, u)
 		}
 
-		// password in description
-		if hasSuspiciousPassword(u.Description) {
-			hr.PasswordInDesc = append(hr.PasswordInDesc, PasswordInDescFinding{
+		if u.Description != "" {
+			hr.PasswordInDesc = append(hr.PasswordInDesc, DescriptionFinding{
 				SAMAccountName: u.SAMAccountName,
 				ObjectType:     "user",
 				Description:    u.Description,
@@ -94,11 +92,22 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		if isStale(c.LastLogon, now, staleComputerDays) {
 			hr.StaleComputers = append(hr.StaleComputers, c)
 		}
-		if hasSuspiciousPassword(c.Description) {
-			hr.PasswordInDesc = append(hr.PasswordInDesc, PasswordInDescFinding{
+		if c.Description != "" {
+			hr.PasswordInDesc = append(hr.PasswordInDesc, DescriptionFinding{
 				SAMAccountName: c.SAMAccountName,
 				ObjectType:     "computer",
 				Description:    c.Description,
+			})
+		}
+	}
+
+	// ── groups with description ───────────────────────────────
+	for _, g := range result.Groups {
+		if g.Description != "" {
+			hr.PasswordInDesc = append(hr.PasswordInDesc, DescriptionFinding{
+				SAMAccountName: g.SAMAccountName,
+				ObjectType:     "group",
+				Description:    g.Description,
 			})
 		}
 	}
@@ -120,19 +129,6 @@ func isStale(lastLogon string, now time.Time, thresholdDays int) bool {
 		return false
 	}
 	return now.Sub(t) > time.Duration(thresholdDays)*24*time.Hour
-}
-
-func hasSuspiciousPassword(desc string) bool {
-	if desc == "" {
-		return false
-	}
-	lower := strings.ToLower(desc)
-	for _, kw := range passwordKeywords {
-		if strings.Contains(lower, kw) {
-			return true
-		}
-	}
-	return false
 }
 
 func printHygieneResult(hr *HygieneResult) {
@@ -157,13 +153,10 @@ func printHygieneResult(hr *HygieneResult) {
 		color.Green("[+] No stale computers")
 	}
 
-	// passwords in description
+	// descriptions
 	if len(hr.PasswordInDesc) > 0 {
-		color.Red("[!] Potential passwords in description attribute: %d", len(hr.PasswordInDesc))
-		for _, f := range hr.PasswordInDesc {
-			color.Yellow("    [%s] %s: %q", f.ObjectType, f.SAMAccountName, f.Description)
-		}
+		color.Yellow("[*] Objects with description attribute: %d — review in HTML report", len(hr.PasswordInDesc))
 	} else {
-		color.Green("[+] No passwords found in description attributes")
+		color.Green("[+] No description attributes found")
 	}
 }
