@@ -40,7 +40,8 @@ type ReportData struct {
 	HygieneResult *analysis.HygieneResult
 	PSOResult     *analysis.PSOResult
 	// v0.7
-	UserPrivGroups map[string]string // user DN → comma-separated privileged group names
+	UserPrivGroups map[string]string   // user DN → comma-separated privileged group names
+	ADCSResult     *analysis.ADCSResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -71,6 +72,8 @@ type Summary struct {
 	WeakPSOCount            int
 	// v0.7
 	NoLAPSCount             int
+	ADCSTemplateCount       int
+	ADCSCriticalCount       int
 }
 
 // GraphNode і GraphEdge для D3.js JSON
@@ -110,6 +113,7 @@ func Generate(
 	gr *analysis.GPOResult,
 	hr *analysis.HygieneResult,
 	psoResult *analysis.PSOResult,
+	adcsResult *analysis.ADCSResult,
 	authMethod string,
 ) error {
 
@@ -121,7 +125,7 @@ func Generate(
 	Groups:           result.Groups,
 	Computers:        result.Computers,
 	AttackPaths:      paths,
-	Summary:          buildSummary(result, paths, kr, aclResult, dr, gr, hr),
+	Summary:          buildSummary(result, paths, kr, aclResult, dr, gr, hr, adcsResult),
 	GraphJSON:        template.JS(buildD3JSON(g, paths)),
 	KerberosResult:   kr,
 	ACLResult:        aclResult,
@@ -129,6 +133,7 @@ func Generate(
 	GPOResult:        gr,
 	HygieneResult:    hr,
 	PSOResult:        psoResult,
+	ADCSResult:       adcsResult,
 	ForestWide:       result.ForestWide,
 	UserPrivGroups:   buildUserPrivGroups(result),
 }
@@ -167,6 +172,7 @@ func buildSummary(
 	dr *analysis.DelegationResult,
 	gr *analysis.GPOResult,
 	hr *analysis.HygieneResult,
+	adcsResult *analysis.ADCSResult,
 ) Summary {
 	s := Summary{
 		TotalUsers:       len(result.Users),
@@ -227,6 +233,15 @@ func buildSummary(
 		s.KrbtgtAtRisk = hr.KrbtgtAtRisk
 		s.KrbtgtPwdAgeDays = hr.KrbtgtPwdAgeDays
 		s.NoLAPSCount = hr.NoLAPSCount
+	}
+
+	if adcsResult != nil {
+		s.ADCSTemplateCount = len(adcsResult.TemplateFindings)
+		for _, f := range adcsResult.TemplateFindings {
+			if f.Severity == "Critical" {
+				s.ADCSCriticalCount++
+			}
+		}
 	}
 
 	return s
@@ -649,6 +664,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <button onclick="showTab('delegation')">Delegation ({{.Summary.DelegationCount}})</button>
   <button onclick="showTab('exposure')">Exposure</button>
   <button onclick="showTab('gpo')">GPO</button>
+  <button onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -734,6 +750,10 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
     <div class="card {{if gt .Summary.NoLAPSCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'computers')" title="Computers without LAPS">
       <div class="value">{{.Summary.NoLAPSCount}}</div>
       <div class="label">No LAPS</div>
+    </div>
+    <div class="card {{if gt .Summary.ADCSCriticalCount 0}}critical{{else if gt .Summary.ADCSTemplateCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'adcs')" title="Vulnerable certificate templates">
+      <div class="value">{{.Summary.ADCSTemplateCount}}</div>
+      <div class="label">ADCS Vulns</div>
     </div>
   </div>
 
@@ -1465,6 +1485,91 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   {{end}}
 
   {{else}}<p style="color:#718096">GPO data not available.</p>{{end}}
+</div>
+
+<!-- ADCS TAB -->
+<div id="tab-adcs" class="tab-pane">
+  <h2 class="section-title">
+    Active Directory Certificate Services
+    <span class="help-icon" data-tip="ADCS misconfigurations allow attackers to forge certificates and authenticate as any domain user including Domain Admins. ESC1: attacker controls Subject Alternative Name → impersonate DA. ESC6: CA-level flag allows SAN injection for all templates. ESC8: NTLM relay to HTTP enrollment endpoint.">?</span>
+  </h2>
+
+  {{if .ADCSResult}}
+
+  <!-- CAs -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Certificate Authorities</div>
+  {{if .ADCSResult.CAs}}
+  <div class="table-wrap" style="margin-bottom:20px">
+  <table>
+    <thead><tr><th>CA Name</th><th>Server</th><th>ESC6</th><th>ESC8 (check)</th></tr></thead>
+    <tbody>
+    {{range .ADCSResult.CAs}}
+    <tr>
+      <td class="mono">{{.Name}}</td>
+      <td class="mono" style="color:#a0aec0">{{.Server}}</td>
+      <td>{{if gt .EditFlags 262143}}<span class="badge badge-critical">YES</span>{{else}}—{{end}}</td>
+      <td style="font-size:0.78rem;color:#718096">http://{{.Server}}/certsrv/</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#718096">No CAs found.</p>{{end}}
+
+  <!-- CA Findings (ESC6) -->
+  {{range .ADCSResult.CAFindings}}
+  {{if eq (index .VulnTypes 0) "ESC6"}}
+  <div class="path-card" style="margin-bottom:10px;border-color:#e53e3e">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+      <span class="badge badge-critical">Critical</span>
+      <span class="badge badge-critical" style="font-family:monospace">ESC6</span>
+      <span class="mono" style="color:#e2e8f0">{{.CAName}}</span>
+    </div>
+    <div style="padding:8px 16px">
+      <div style="color:#a0aec0;font-size:0.85rem;margin-bottom:8px">{{.Details}}</div>
+      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;Exploit &nbsp;/&nbsp; Fix</button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit</div>
+        <span class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca {{.CAName}} -template User -upn admin@{{$.ADCSResult.Domain}}</span>
+        <span class="acc-cmd" style="margin-top:4px">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</span>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:#a0aec0">Run: <code>certutil -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2</code> on CA, then restart CertSvc.</div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+  {{end}}
+
+  <!-- Template Findings -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:8px">Vulnerable Templates ({{.Summary.ADCSTemplateCount}})</div>
+  {{if .ADCSResult.TemplateFindings}}
+  {{range .ADCSResult.TemplateFindings}}
+  <div class="path-card" style="margin-bottom:10px">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+      <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span>
+      {{range .VulnTypes}}<span class="badge badge-critical" style="font-family:monospace">{{.}}</span>{{end}}
+      <span class="mono" style="color:#e2e8f0">{{.TemplateName}}</span>
+      {{if .EKUs}}<span class="badge" style="background:#2d3748;color:#a0aec0;margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
+    </div>
+    <div style="padding:0 16px">
+      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;Exploit &nbsp;/&nbsp; Fix</button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit ({{range $i,$v := .VulnTypes}}{{if $i}}, {{end}}{{$v}}{{end}})</div>
+        {{if .AllowsSANInject}}
+        <span class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{$.ADCSResult.Domain}}</span>
+        <span class="acc-cmd" style="margin-top:4px">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</span>
+        {{else}}
+        <span class="acc-cmd">certipy find -u user@{{$.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</span>
+        {{end}}
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:#a0aec0">Remove CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT from template, restrict enrollment to specific groups, require CA manager approval, or disable the template if unused.</div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+  {{else}}<p style="color:#68d391">✓ No vulnerable certificate templates found.</p>{{end}}
+
+  {{else}}<p style="color:#718096">ADCS data not available — run with full enum or use adpath adcs command.</p>{{end}}
 </div>
 
 </div><!-- /content -->

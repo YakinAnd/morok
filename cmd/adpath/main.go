@@ -248,6 +248,12 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		psoResult = nil
 	}
 
+	adcsResult, err := analysis.AnalyzeADCS(client)
+	if err != nil {
+		color.Yellow("  adcs analysis failed: %v", err)
+		adcsResult = nil
+	}
+
 	authMethod := "Password"
 	switch {
 	case ccachePath != "":
@@ -258,7 +264,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 
