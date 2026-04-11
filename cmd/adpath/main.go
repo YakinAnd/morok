@@ -52,7 +52,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		color.Cyan("adpath v0.6.0")
+		color.Cyan("adpath v0.6.2")
 		color.White("AD Attack Path Enumerator")
 		color.White("https://github.com/YakinAnd/adpath")
 	},
@@ -109,7 +109,7 @@ func init() {
 	rootCmd.AddCommand(gpoCmd)
 
 
-	rootCmd.Version = "0.6.0"
+	rootCmd.Version = "0.6.2"
 }
 
 // ============================================================
