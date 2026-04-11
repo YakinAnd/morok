@@ -56,9 +56,10 @@ type Graph struct {
 
 // AttackPath — один знайдений шлях атаки
 type AttackPath struct {
-	Nodes []Node
-	Edges []Edge
-	Depth int
+	Nodes       []Node
+	Edges       []Edge
+	Depth       int
+	TargetGroup string // e.g. "Domain Admins", "Backup Operators"
 }
 
 // ============================================================

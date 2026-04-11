@@ -180,14 +180,12 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	nodes, edges := g.Stats()
 	color.Blue("[*] Graph: %d nodes, %d edges", nodes, edges)
 
-	// ── пошук attack paths ────────────────────────────────────
-	paths := g.FindPathsToDA(maxDepth)
+	// ── пошук attack paths (всі привілейовані групи) ─────────
+	paths := g.FindPathsToPrivilegedGroups(maxDepth)
 	g.PrintPaths(paths)
 
 	// ── HTML звіт (опціонально) ───────────────────────────────
-	// ── HTML звіт (опціонально) ───────────────────────────────
 	if reportPath != "" {
-		// збираємо додаткові дані для звіту
 		kr := analysis.AnalyzeKerberos(result)
 
 		aclResult, err := analysis.AnalyzeACL(client, result)
@@ -208,6 +206,14 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			gr = nil
 		}
 
+		hr := analysis.AnalyzeHygiene(result)
+
+		psoResult, err := analysis.AnalyzePSO(client)
+		if err != nil {
+			color.Yellow("[!] PSO analysis failed: %v", err)
+			psoResult = nil
+		}
+
 		authMethod := "Password"
 		switch {
 		case ccachePath != "":
@@ -218,7 +224,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			authMethod = "Anonymous"
 		}
 
-		if err := report.Generate(reportPath, result, g, paths, kr, aclResult, dr, gr, authMethod); err != nil {
+		if err := report.Generate(reportPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, authMethod); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
 	}

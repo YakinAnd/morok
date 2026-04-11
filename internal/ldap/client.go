@@ -253,6 +253,27 @@ func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, er
 	return allEntries, nil
 }
 
+// SearchBase performs a search with an explicit base DN (overrides c.BaseDN).
+func (c *Client) SearchBase(baseDN, filter string, attributes []string) ([]*goldap.Entry, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	searchReq := goldap.NewSearchRequest(
+		baseDN,
+		goldap.ScopeWholeSubtree,
+		goldap.NeverDerefAliases,
+		0, 30, false,
+		filter,
+		attributes,
+		nil,
+	)
+	result, err := c.conn.Search(searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("search failed [base: %s, filter: %s]: %w", baseDN, filter, err)
+	}
+	return result.Entries, nil
+}
+
 // SearchGC connects to Global Catalog (port 3268) and searches the entire forest.
 // Returns all objects across all domains in the forest.
 // Supports password and NTLM hash auth; Kerberos ccache not yet supported.

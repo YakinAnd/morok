@@ -18,13 +18,26 @@ import (
 type ACLRight string
 
 const (
-	RightGenericAll         ACLRight = "GenericAll"
-	RightWriteDACL          ACLRight = "WriteDACL"
-	RightWriteOwner         ACLRight = "WriteOwner"
-	RightGenericWrite       ACLRight = "GenericWrite"
+	RightGenericAll          ACLRight = "GenericAll"
+	RightWriteDACL           ACLRight = "WriteDACL"
+	RightWriteOwner          ACLRight = "WriteOwner"
+	RightGenericWrite        ACLRight = "GenericWrite"
 	RightForceChangePassword ACLRight = "ForceChangePassword"
-	RightAddMember          ACLRight = "AddMember"
+	RightAddMember           ACLRight = "AddMember"
 )
+
+// Replication right GUIDs — both required for DCSync
+const (
+	guidDSReplicationGetChanges    = "1131f6aa-9c07-11d1-f79f-00c04fc2dcd2"
+	guidDSReplicationGetChangesAll = "1131f6ad-9c07-11d1-f79f-00c04fc2dcd2"
+)
+
+// DCSyncFinding — principal that has full DCSync rights on the domain object
+type DCSyncFinding struct {
+	PrincipalName string
+	PrincipalType string
+	PrincipalDN   string
+}
 
 // ACLFinding — одна небезпечна ACL знахідка
 type ACLFinding struct {
@@ -45,8 +58,9 @@ type ACLFinding struct {
 
 // ACLResult — результат ACL аналізу
 type ACLResult struct {
-	Domain   string
-	Findings []ACLFinding
+	Domain        string
+	Findings      []ACLFinding
+	DCSyncFindings []DCSyncFinding
 }
 
 // ============================================================
@@ -116,10 +130,94 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLRe
 	// фільтруємо стандартні системні права
 	aclResult.Findings = filterSystemACL(aclResult.Findings)
 
+	// DCSync: scan domain object for replication rights
+	aclResult.DCSyncFindings = checkDCSync(entries, nameMap, client.GetBaseDN())
+
+	if len(aclResult.DCSyncFindings) > 0 {
+		color.Red("[!] DCSync rights found on %d principal(s) — secretsdump possible!", len(aclResult.DCSyncFindings))
+		for _, f := range aclResult.DCSyncFindings {
+			color.Red("    [%s] %s", f.PrincipalType, f.PrincipalName)
+		}
+	}
 
 	color.Green("[+] Found %d dangerous ACL findings", len(aclResult.Findings))
 
 	return aclResult, nil
+}
+
+// checkDCSync finds principals with both DS-Replication-Get-Changes and
+// DS-Replication-Get-Changes-All on the domain object (= DCSync capable).
+func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN string) []DCSyncFinding {
+	// find the domain object entry
+	var domainEntry *goldap.Entry
+	for _, e := range entries {
+		if strings.EqualFold(e.DN, baseDN) {
+			domainEntry = e
+			break
+		}
+	}
+	if domainEntry == nil {
+		return nil
+	}
+
+	sdBytes := domainEntry.GetRawAttributeValue("nTSecurityDescriptor")
+	if len(sdBytes) == 0 {
+		return nil
+	}
+
+	aces, err := parseSecurityDescriptor(sdBytes)
+	if err != nil {
+		return nil
+	}
+
+	// track which replication GUIDs each SID has
+	type replRights struct{ getChanges, getChangesAll bool }
+	sidRights := make(map[string]*replRights)
+
+	for _, ace := range aces {
+		if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+			continue // deny ACE
+		}
+		if ace.AccessMask&ADS_RIGHT_DS_CONTROL_ACCESS == 0 {
+			continue
+		}
+		guid := strings.ToLower(ace.ObjectType)
+		switch guid {
+		case guidDSReplicationGetChanges:
+			if sidRights[ace.SID] == nil {
+				sidRights[ace.SID] = &replRights{}
+			}
+			sidRights[ace.SID].getChanges = true
+		case guidDSReplicationGetChangesAll:
+			if sidRights[ace.SID] == nil {
+				sidRights[ace.SID] = &replRights{}
+			}
+			sidRights[ace.SID].getChangesAll = true
+		}
+	}
+
+	var findings []DCSyncFinding
+	for sid, rights := range sidRights {
+		if !rights.getChanges || !rights.getChangesAll {
+			continue
+		}
+		info, ok := nameMap[sid]
+		if !ok {
+			continue
+		}
+		// skip built-in DC/DA accounts that legitimately have DCSync
+		name := strings.ToLower(info.Name)
+		if name == "domain controllers" || name == "enterprise domain controllers" ||
+			name == "administrators" || name == "enterprise admins" {
+			continue
+		}
+		findings = append(findings, DCSyncFinding{
+			PrincipalName: info.Name,
+			PrincipalType: info.Type,
+			PrincipalDN:   info.DN,
+		})
+	}
+	return findings
 }
 
 

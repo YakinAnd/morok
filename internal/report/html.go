@@ -36,6 +36,9 @@ type ReportData struct {
 	// v0.3
 	DelegationResult *analysis.DelegationResult
 	GPOResult        *analysis.GPOResult
+	// v0.6
+	HygieneResult *analysis.HygieneResult
+	PSOResult     *analysis.PSOResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -53,9 +56,17 @@ type Summary struct {
 	CriticalCount           int
 	// v0.2
 	DangerousACLCount       int
+	DCSyncCount             int
 	// v0.3
 	DelegationCount         int
 	WeakPasswordPolicy      bool
+	// v0.6
+	StaleUsersCount         int
+	StaleComputersCount     int
+	PasswordInDescCount     int
+	KrbtgtAtRisk            bool
+	KrbtgtPwdAgeDays        int
+	WeakPSOCount            int
 }
 
 // GraphNode і GraphEdge для D3.js JSON
@@ -93,6 +104,8 @@ func Generate(
 	aclResult *analysis.ACLResult,
 	dr *analysis.DelegationResult,
 	gr *analysis.GPOResult,
+	hr *analysis.HygieneResult,
+	psoResult *analysis.PSOResult,
 	authMethod string,
 ) error {
 	color.Blue("[*] Generating HTML report...")
@@ -105,12 +118,14 @@ func Generate(
 	Groups:           result.Groups,
 	Computers:        result.Computers,
 	AttackPaths:      paths,
-	Summary:          buildSummary(result, paths, kr, aclResult, dr, gr),
+	Summary:          buildSummary(result, paths, kr, aclResult, dr, gr, hr),
 	GraphJSON:        template.JS(buildD3JSON(g, paths)),
 	KerberosResult:   kr,
 	ACLResult:        aclResult,
 	DelegationResult: dr,
 	GPOResult:        gr,
+	HygieneResult:   hr,
+	PSOResult:        psoResult,
 	ForestWide:       result.ForestWide,
 }
 
@@ -147,6 +162,7 @@ func buildSummary(
 	aclResult *analysis.ACLResult,
 	dr *analysis.DelegationResult,
 	gr *analysis.GPOResult,
+	hr *analysis.HygieneResult,
 ) Summary {
 	s := Summary{
 		TotalUsers:       len(result.Users),
@@ -188,6 +204,7 @@ func buildSummary(
 
 	if aclResult != nil {
 		s.DangerousACLCount = len(aclResult.Findings)
+		s.DCSyncCount = len(aclResult.DCSyncFindings)
 	}
 
 	if dr != nil {
@@ -197,6 +214,14 @@ func buildSummary(
 	if gr != nil && gr.DefaultPolicy != nil {
 		pp := gr.DefaultPolicy
 		s.WeakPasswordPolicy = pp.MinLength < 8 || !pp.Complexity || pp.LockoutThreshold == 0
+	}
+
+	if hr != nil {
+		s.StaleUsersCount = len(hr.StaleUsers)
+		s.StaleComputersCount = len(hr.StaleComputers)
+		s.PasswordInDescCount = len(hr.PasswordInDesc)
+		s.KrbtgtAtRisk = hr.KrbtgtAtRisk
+		s.KrbtgtPwdAgeDays = hr.KrbtgtPwdAgeDays
 	}
 
 	return s
@@ -544,6 +569,7 @@ tr:hover td { background: #1a1f2e; }
   <button onclick="showTab('kerberos')">Kerberos</button>
   <button onclick="showTab('acl')">ACL ({{.Summary.DangerousACLCount}})</button>
   <button onclick="showTab('delegation')">Delegation ({{.Summary.DelegationCount}})</button>
+  <button onclick="showTab('hygiene')">Hygiene</button>
   <button onclick="showTab('gpo')">GPO</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
@@ -590,6 +616,10 @@ tr:hover td { background: #1a1f2e; }
       <div class="value">{{.Summary.DangerousACLCount}}</div>
       <div class="label">Dangerous ACLs</div>
     </div>
+    <div class="card {{if gt .Summary.DCSyncCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'acl')" title="View DCSync findings">
+      <div class="value">{{.Summary.DCSyncCount}}</div>
+      <div class="label">DCSync Rights</div>
+    </div>
   </div>
 
   <!-- Account Hygiene -->
@@ -610,6 +640,18 @@ tr:hover td { background: #1a1f2e; }
     <div class="card" onclick="showTabByClick(event,'computers')" title="View computers">
       <div class="value">{{.Summary.TotalComputers}}</div>
       <div class="label">Computers</div>
+    </div>
+    <div class="card {{if gt .Summary.StaleUsersCount 0}}warning{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View stale accounts">
+      <div class="value">{{.Summary.StaleUsersCount}}</div>
+      <div class="label">Stale Users (90d)</div>
+    </div>
+    <div class="card {{if gt .Summary.PasswordInDescCount 0}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View password leaks">
+      <div class="value">{{.Summary.PasswordInDescCount}}</div>
+      <div class="label">Pwd in Description</div>
+    </div>
+    <div class="card {{if .Summary.KrbtgtAtRisk}}critical{{else}}ok{{end}}" onclick="showTabByClick(event,'hygiene')" title="View krbtgt status">
+      <div class="value">{{if eq .Summary.KrbtgtPwdAgeDays 0}}?{{else}}{{.Summary.KrbtgtPwdAgeDays}}d{{end}}</div>
+      <div class="label">Krbtgt Pwd Age</div>
     </div>
   </div>
 
@@ -669,7 +711,7 @@ tr:hover td { background: #1a1f2e; }
 <!-- ATTACK PATHS TAB -->
 <div id="tab-paths" class="tab-pane">
   <h2 class="section-title">
-    Attack Paths to Domain Admins
+    Attack Paths to Privileged Groups
     <span>{{.Summary.AttackPathsCount}} path(s) found</span>
   </h2>
   {{if eq .Summary.AttackPathsCount 0}}
@@ -681,6 +723,9 @@ tr:hover td { background: #1a1f2e; }
       <span class="badge {{pathSeverityClass $path.Depth}}">
         {{pathSeverity $path.Depth}}
       </span>
+      {{if $path.TargetGroup}}
+      <span class="badge" style="background:#2d3748;color:#fc8181">→ {{$path.TargetGroup}}</span>
+      {{end}}
       <span style="color:#718096; font-size:0.85rem">
         Path {{inc $i}} &nbsp;|&nbsp; Depth: {{$path.Depth}}
       </span>
@@ -956,6 +1001,28 @@ tr:hover td { background: #1a1f2e; }
     Dangerous ACL Permissions
     <span>{{.Summary.DangerousACLCount}} finding(s)</span>
   </h2>
+
+  {{if .ACLResult}}{{if .ACLResult.DCSyncFindings}}
+  <div style="background:#2d1515;border:1px solid #e53e3e;border-radius:8px;padding:16px;margin-bottom:20px">
+    <div style="font-size:0.9rem;font-weight:600;color:#fc8181;margin-bottom:10px">
+      ☠ DCSync Rights Detected — {{len .ACLResult.DCSyncFindings}} principal(s) can dump all domain password hashes
+    </div>
+    {{range .ACLResult.DCSyncFindings}}
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #742a2a">
+      <span class="badge badge-critical">{{.PrincipalType}}</span>
+      <span class="mono">{{.PrincipalName}}</span>
+    </div>
+    {{end}}
+    <button class="acc-toggle" onclick="toggleAcc(this)" style="margin-top:10px">▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix</button>
+    <div class="acc-body">
+      <div class="acc-label">Exploit</div>
+      <span class="acc-cmd">secretsdump.py domain/user:pass@DC -just-dc-ntlm</span>
+      <span class="acc-cmd" style="margin-top:4px">secretsdump.py -hashes :&lt;NThash&gt; domain/user@DC -just-dc-ntlm</span>
+      <div class="acc-label" style="margin-top:10px">Fix</div>
+      <div style="color:#a0aec0">Remove DS-Replication-Get-Changes-All from non-DC accounts. Run: <span class="acc-cmd">Get-ObjectAcl -DistinguishedName "DC=domain,DC=local" | ? {$_.ActiveDirectoryRights -match "Replication"}</span> to audit. Only Domain Controllers and Administrators should have DCSync rights.</div>
+    </div>
+  </div>
+  {{end}}{{end}}
   {{if .ACLResult}}
   {{if .ACLResult.Findings}}
   {{range $i, $f := .ACLResult.Findings}}
@@ -1013,6 +1080,123 @@ tr:hover td { background: #1a1f2e; }
   {{end}}
   {{else}}<p style="color:#68d391">✓ No dangerous delegation configurations.</p>{{end}}
   {{else}}<p style="color:#718096">Delegation data not available.</p>{{end}}
+</div>
+
+<!-- HYGIENE TAB -->
+<div id="tab-hygiene" class="tab-pane">
+  <h2 class="section-title">AD Hygiene &amp; Blue Team Checks</h2>
+
+  <!-- krbtgt -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Kerberos Ticket Granting Ticket</div>
+  <div style="background:#1a1f2e;border:1px solid #2d3748;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    {{if .HygieneResult}}
+    {{if .HygieneResult.KrbtgtAtRisk}}
+    <span class="badge badge-critical">⚠ Golden Ticket Risk</span>
+    <span style="color:#fc8181;font-size:0.9rem">krbtgt password last changed <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days ago</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
+    <div style="width:100%;font-size:0.8rem;color:#718096;margin-top:4px">Recommendation: reset krbtgt password twice (interval &gt;10h) to invalidate all existing Kerberos tickets</div>
+    {{else if gt .HygieneResult.KrbtgtPwdAgeDays 0}}
+    <span class="badge badge-ok">✓ OK</span>
+    <span style="color:#68d391;font-size:0.9rem">krbtgt password age: <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
+    {{else}}
+    <span style="color:#718096;font-size:0.85rem">krbtgt data not available</span>
+    {{end}}
+    {{end}}
+  </div>
+
+  <!-- passwords in description -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Passwords in Description</div>
+  {{if .HygieneResult}}{{if .HygieneResult.PasswordInDesc}}
+  <div style="margin-bottom:8px">
+    <button class="acc-toggle" onclick="toggleAcc(this)" style="background:#2a1a1a;color:#fc8181;margin-bottom:4px">
+      ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix — Cleartext Credentials
+    </button>
+    <div class="acc-body">
+      <div class="acc-label">Exploit</div>
+      <span class="acc-cmd">Use credentials found in description to authenticate: net use \\DC\IPC$ /user:domain\user &lt;password&gt;</span>
+      <div class="acc-label" style="margin-top:10px">Fix</div>
+      <div style="color:#a0aec0">Remove passwords from all AD object description/info fields. Audit with: <span class="acc-cmd">Get-ADUser -Filter * -Properties Description | Where {$_.Description -match "pass"}</span></div>
+    </div>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Account</th><th>Type</th><th>Description (potential password)</th></tr></thead>
+    <tbody>
+    {{range .HygieneResult.PasswordInDesc}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td><span class="badge" style="background:#2d3748;color:#a0aec0">{{.ObjectType}}</span></td>
+      <td style="color:#fc8181;font-family:monospace;font-size:0.8rem">{{.Description}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391;margin-bottom:20px">✓ No passwords found in description attributes.</p>{{end}}{{end}}
+
+  <!-- stale accounts -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Stale User Accounts (90+ days no logon, enabled)</div>
+  {{if .HygieneResult}}{{if .HygieneResult.StaleUsers}}
+  <div class="table-wrap" style="margin-bottom:20px">
+  <table>
+    <thead><tr><th>Account</th><th>Display Name</th><th>Last Logon</th><th>Pwd Last Set</th><th>AdminCount</th></tr></thead>
+    <tbody>
+    {{range .HygieneResult.StaleUsers}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td>{{.DisplayName}}</td>
+      <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+      <td class="mono">{{.PasswordLastSet}}</td>
+      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391;margin-bottom:20px">✓ No stale user accounts found.</p>{{end}}{{end}}
+
+  <!-- stale computers -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Stale Computers (45+ days no logon, enabled)</div>
+  {{if .HygieneResult}}{{if .HygieneResult.StaleComputers}}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Computer</th><th>OS</th><th>Last Logon</th><th>Domain</th></tr></thead>
+    <tbody>
+    {{range .HygieneResult.StaleComputers}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td>{{.OperatingSystem}}</td>
+      <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+      <td style="font-size:0.78rem;color:#718096">{{.Domain}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}<p style="color:#68d391">✓ No stale computers found.</p>{{end}}{{end}}
+
+  <!-- PSO -->
+  {{if .PSOResult}}{{if .PSOResult.PSOs}}
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-top:24px;margin-bottom:8px">Fine-Grained Password Policy (PSO)</div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>PSO Name</th><th>Precedence</th><th>Min Length</th><th>Complexity</th><th>Lockout</th><th>Max Age</th><th>Applies To</th><th>Status</th></tr></thead>
+    <tbody>
+    {{range .PSOResult.PSOs}}
+    <tr>
+      <td class="mono">{{.Name}}</td>
+      <td>{{.Precedence}}</td>
+      <td>{{.MinLength}}</td>
+      <td>{{if .Complexity}}<span class="badge badge-ok">ON</span>{{else}}<span class="badge badge-critical">OFF</span>{{end}}</td>
+      <td>{{if eq .LockoutThreshold 0}}<span class="badge badge-critical">∞</span>{{else}}{{.LockoutThreshold}}{{end}}</td>
+      <td>{{if eq .MaxAgeDays 0}}<span class="badge badge-critical">Never</span>{{else}}{{.MaxAgeDays}}d{{end}}</td>
+      <td style="font-size:0.78rem;color:#a0aec0">{{joinSPNs .AppliesTo}}</td>
+      <td>{{if .IsWeak}}<span class="badge badge-critical">Weak</span>{{else}}<span class="badge badge-ok">OK</span>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}{{end}}
 </div>
 
 <!-- GPO TAB -->

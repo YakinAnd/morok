@@ -10,47 +10,74 @@ import (
 // BFS пошук attack paths
 // ============================================================
 
-// FindPathsToDA знаходить всі шляхи від будь-якого вузла до Domain Admins
-func (g *Graph) FindPathsToDA(maxDepth int) []AttackPath {
-	color.Blue("[*] Searching for attack paths to Domain Admins...")
+// privilegedGroups lists all high-value AD groups to search paths to.
+var privilegedGroups = []string{
+	"Domain Admins",
+	"Enterprise Admins",
+	"Backup Operators",
+	"Account Operators",
+	"Server Operators",
+	"Print Operators",
+	"DNSAdmins",
+	"Group Policy Creator Owners",
+}
 
-	// знаходимо DN групи Domain Admins
-	daDN := g.findDomainAdmins()
-	if daDN == "" {
-		color.Yellow("[!] Domain Admins group not found in graph")
-		return nil
-	}
+// FindPathsToDA знаходить шляхи до Domain Admins (backward compat).
+func (g *Graph) FindPathsToDA(maxDepth int) []AttackPath {
+	return g.findPathsToGroup("Domain Admins", maxDepth, 200)
+}
+
+// FindPathsToPrivilegedGroups знаходить шляхи до всіх привілейованих груп.
+func (g *Graph) FindPathsToPrivilegedGroups(maxDepth int) []AttackPath {
+	color.Blue("[*] Searching for attack paths to privileged groups...")
 
 	if maxDepth <= 0 {
 		maxDepth = 10
 	}
 
-	var allPaths []AttackPath
+	var all []AttackPath
+	for _, groupName := range privilegedGroups {
+		paths := g.findPathsToGroup(groupName, maxDepth, 50)
+		all = append(all, paths...)
+	}
 
-	// запускаємо BFS від кожного увімкненого не-DA вузла
+	if len(all) == 0 {
+		color.Green("[+] No attack paths to privileged groups found")
+	} else {
+		color.Red("[!] Found %d attack path(s) to privileged groups", len(all))
+	}
+	return all
+}
+
+// findPathsToGroup is the common BFS runner for a named group.
+func (g *Graph) findPathsToGroup(groupName string, maxDepth, limit int) []AttackPath {
+	targetDN := g.findBySAM(groupName)
+	if targetDN == "" {
+		return nil
+	}
+
+	var allPaths []AttackPath
 	for dn, node := range g.Nodes {
-		// пропускаємо сам DA і відключені акаунти
-		if strings.EqualFold(dn, daDN) {
+		if strings.EqualFold(dn, targetDN) {
 			continue
 		}
 		if !node.Enabled && node.Type != NodeGroup {
 			continue
 		}
-
-		paths := g.bfs(dn, daDN, maxDepth)
+		paths := g.bfs(dn, targetDN, maxDepth)
+		for i := range paths {
+			paths[i].TargetGroup = groupName
+		}
 		allPaths = append(allPaths, paths...)
-
-		// захист від переповнення: не більше 200 шляхів
-		if len(allPaths) >= 200 {
-			color.Yellow("[!] Over 200 attack paths found, truncating results")
+		if len(allPaths) >= limit {
 			break
 		}
 	}
 
-	if len(allPaths) == 0 {
-		color.Green("[+] No direct attack paths to Domain Admins found")
-	} else {
+	if len(allPaths) > 0 && groupName == "Domain Admins" {
 		color.Red("[!] Found %d attack path(s) to Domain Admins", len(allPaths))
+	} else if len(allPaths) > 0 {
+		color.Yellow("[!] Found %d attack path(s) to %s", len(allPaths), groupName)
 	}
 
 	return allPaths
@@ -220,10 +247,14 @@ func (g *Graph) PrintPaths(paths []AttackPath) {
 		return
 	}
 
-	color.Red("\n[!] Attack Paths to Domain Admins:\n")
+	color.Red("\n[!] Attack Paths to Privileged Groups:\n")
 
 	for i, path := range paths {
-		color.Yellow("  Path %d (depth: %d):", i+1, path.Depth)
+		target := path.TargetGroup
+		if target == "" {
+			target = "Domain Admins"
+		}
+		color.Yellow("  Path %d → %s (depth: %d):", i+1, target, path.Depth)
 
 		for j, node := range path.Nodes {
 			prefix := "  "
