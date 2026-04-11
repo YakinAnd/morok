@@ -177,13 +177,46 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - HTML звіт — D3.js граф перероблений: розмір ноди = кількість шляхів, tooltip при hover, підписи ребер, червоні стрілки для admin-шляхів, кнопка Reset Zoom
 - HTML звіт — вкладка Computers розширена: Domain, LAPS, Version, Created, Description
 
-### v0.6 TODO
-- **Unauthenticated recon 1**: Username enumeration через Kerberos AS-REQ (без credentials, тільки DC IP + domain + wordlist)
-  - `adpath enum-users -d domain --dc dc --wordlist users.txt`
-  - Розрізнення помилок: `PRINCIPAL_UNKNOWN` (не існує) vs `PREAUTH_REQUIRED` (існує)
-- **Unauthenticated recon 2**: RootDSE enumeration без bind (domain name, forest, AD version, functional level)
-- **Summary finding grouping**: зараз 72 ACL findings → в Summary має бути "1 Critical — ACL Privilege Escalation". Групувати raw findings в логічні issues для executive view; detail-вкладки залишаються з індивідуальними записами
-- **Offline KB (knowledge base)**: `internal/kb/findings.go` — єдиний map `finding_type → KBEntry{Exploit, Fix, CVSS, References}`. Поточні switch-case в html.go замінити на KB lookup. Повністю вбудований в бінарник, не потребує інтернету. Кожен новий модуль реєструє свої типи в KB.
+### v0.6 TODO — Quick wins + critical gaps
+Базується на gap-аналізі vs netexec / bloodhound / certipy / pingcastle.
+
+**Kerberos / Auth без credentials:**
+- Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
+- RootDSE enumeration без bind (domain, forest, AD version)
+
+**Критичні ACL gaps:**
+- DCSync rights — DS-Replication-Get-Changes + DS-Replication-Get-Changes-All на domain object → secretsdump
+- Passwords in description/info/comment атрибутах юзерів
+
+**GPO / SYSVOL:**
+- GPP passwords (MS14-025) — cpassword в SYSVOL\...\Groups.xml (AES ключ публічний)
+- Fine-Grained Password Policy (PSO) — `msDS-PasswordSettings` контейнер
+
+**Privileged Groups — розширити attack paths за межі Domain Admins:**
+- Enterprise Admins, Backup Operators (NTDS.dit), DNSAdmins (DLL injection), Account Operators, Server Operators, Print Operators
+
+**Network / Protocol:**
+- SMB signing перевірка — якщо не required → NTLM relay можливий
+- LDAP signing + channel binding статус
+
+**Blue Team checks:**
+- Stale accounts (90+ днів без логіну, enabled)
+- Stale computers (45+ днів)
+- Krbtgt password age (>180 днів → Golden Ticket ризик)
+- Protected Users group — чи DA/EA додані
+
+**Report infrastructure:**
+- Summary finding grouping — 72 ACL findings → "1 Critical: ACL Privilege Escalation"
+- Offline KB (`internal/kb/findings.go`) — map[finding_type]KBEntry замість switch-case в html.go
+- LAPS readability — хто може читати ms-MCS-AdmPwd; машини без LAPS
+
+### v0.7 TODO — Advanced attacks
+- **ADCS** (Certipy-style) — ESC1, ESC4, ESC7, ESC8 — нова команда `adpath adcs`
+- **Trust attacks** — enumeration forest/external trusts, SID filtering статус, cross-forest paths
+- **GPO ACL** — хто може модифікувати GPO objects (особливо linked до DC OU)
+- **BloodHound JSON export** — `--bloodhound` flag, сумісність з BH GUI
+- **AdminSDHolder** — кастомні ACE в template, orphaned AdminCount objects
+- **Audit Policy / Blue Team** — Advanced Audit налаштування, event log retention, AD Recycle Bin
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -196,4 +229,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.5.0 (forest-wide computers ✅, report UX ✅, accordion exploit/fix ✅)*
+*Останнє оновлення: v0.5.0 — roadmap v0.6/v0.7 визначено (gap-аналіз vs netexec/certipy/bloodhound)*
