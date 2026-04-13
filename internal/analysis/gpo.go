@@ -2,9 +2,11 @@ package analysis
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
- 	"strconv"
+
 	"github.com/fatih/color"
+	goldap "github.com/go-ldap/ldap/v3"
 
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 )
@@ -23,6 +25,18 @@ type GPOFinding struct {
 	HasCPassword    bool     // містить зашифровані паролі в Preferences
 	IsHighRisk      bool
 	RiskReasons     []string
+	ACLFindings     []GPOACLFinding // dangerous write ACEs on this GPO object
+}
+
+// GPOACLFinding — low-priv principal with write access to a GPO object.
+// WriteDACL/GenericAll on a GPO → can add scripts, logon tasks, etc.
+type GPOACLFinding struct {
+	GPOName       string
+	GPOLinkedTo   []string // OUs/Domain this GPO is linked to (scope of impact)
+	PrincipalName string
+	PrincipalSID  string
+	Rights        []string
+	Severity      string
 }
 
 // PasswordPolicy — налаштування парольної політики
@@ -39,6 +53,7 @@ type PasswordPolicy struct {
 type GPOResult struct {
 	Domain          string
 	GPOFindings     []GPOFinding
+	GPOACLFindings  []GPOACLFinding // all dangerous GPO ACL findings (flattened)
 	PasswordPolicy  *PasswordPolicy
 	DefaultPolicy   *PasswordPolicy
 }
@@ -132,14 +147,16 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 	}
 
 	// аналізуємо права на редагування GPO
+	emptyNameMap := make(map[string]nameInfo)
 	for i := range gpos {
-		analyzeGPOPermissions(client, &gpos[i])
+		analyzeGPOPermissions(client, &gpos[i], emptyNameMap)
 	}
 
 	// збираємо тільки знахідки з ризиками
 	for _, gpo := range gpos {
 		if gpo.IsHighRisk || len(gpo.EditableBy) > 0 {
 			result.GPOFindings = append(result.GPOFindings, gpo)
+			result.GPOACLFindings = append(result.GPOACLFindings, gpo.ACLFindings...)
 		}
 	}
 
@@ -272,21 +289,120 @@ func extractGUID(s string) string {
 // Аналіз прав на GPO
 // ============================================================
 
-// analyzeGPOPermissions перевіряє хто може редагувати GPO
-func analyzeGPOPermissions(client *adldap.Client, gpo *GPOFinding) {
-	// Шукаємо через ACL хто має права на цей GPO
-	// Використовуємо спрощений підхід через LDAP search
-	filter := fmt.Sprintf("(&(objectClass=groupPolicyContainer)(name=%s))", gpo.GUID)
-	attrs := []string{"distinguishedName", "nTSecurityDescriptor"}
-
-	entries, err := client.Search(filter, attrs)
-	if err != nil || len(entries) == 0 {
+// analyzeGPOPermissions checks who has dangerous write permissions on a GPO object.
+// Uses the SD control to fetch nTSecurityDescriptor, then parses for low-priv write ACEs.
+func analyzeGPOPermissions(client *adldap.Client, gpo *GPOFinding, nameMap map[string]nameInfo) {
+	conn := client.GetConn()
+	if conn == nil {
 		return
 	}
 
-	// Перевіряємо через відомі небезпечні права
-	// В повній реалізації тут був би парсинг nTSecurityDescriptor
-	// Для MVP перевіряємо через gPCFileSysPath права доступу
+	sdControl := goldap.NewControlString(
+		"1.2.840.113556.1.4.801",
+		true,
+		string([]byte{0x30, 0x03, 0x02, 0x01, 0x04}),
+	)
+
+	req := goldap.NewSearchRequest(
+		gpo.DN,
+		goldap.ScopeBaseObject, goldap.NeverDerefAliases,
+		0, 30, false,
+		"(objectClass=*)",
+		[]string{"nTSecurityDescriptor"},
+		[]goldap.Control{sdControl},
+	)
+	sr, err := conn.Search(req)
+	if err != nil || len(sr.Entries) == 0 {
+		return
+	}
+
+	sdBytes := sr.Entries[0].GetRawAttributeValue("nTSecurityDescriptor")
+	if len(sdBytes) == 0 {
+		return
+	}
+
+	aces, err := parseSecurityDescriptor(sdBytes)
+	if err != nil {
+		return
+	}
+
+	for _, ace := range aces {
+		if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+			continue
+		}
+		principalName, lowPriv := isLowPrivSID(ace.SID)
+		if !lowPriv {
+			// also check nameMap for non-builtin principals
+			if info, ok := nameMap[ace.SID]; ok {
+				// skip known admin groups
+				if isAdminGroup(info.Name) {
+					continue
+				}
+				principalName = info.Name
+				lowPriv = true
+			}
+		}
+		if !lowPriv {
+			continue
+		}
+
+		mask := ace.AccessMask
+		dangerous := mask&ADS_RIGHT_GENERIC_ALL != 0 ||
+			mask&ADS_RIGHT_WRITE_DACL != 0 ||
+			mask&ADS_RIGHT_WRITE_OWNER != 0 ||
+			mask&ADS_RIGHT_GENERIC_WRITE != 0
+
+		if !dangerous {
+			continue
+		}
+
+		var rights []string
+		if mask&ADS_RIGHT_GENERIC_ALL != 0 {
+			rights = append(rights, "GenericAll")
+		}
+		if mask&ADS_RIGHT_WRITE_DACL != 0 {
+			rights = append(rights, "WriteDACL")
+		}
+		if mask&ADS_RIGHT_WRITE_OWNER != 0 {
+			rights = append(rights, "WriteOwner")
+		}
+		if mask&ADS_RIGHT_GENERIC_WRITE != 0 {
+			rights = append(rights, "GenericWrite")
+		}
+
+		f := GPOACLFinding{
+			GPOName:       gpo.Name,
+			GPOLinkedTo:   gpo.LinkedTo,
+			PrincipalName: principalName,
+			PrincipalSID:  ace.SID,
+			Rights:        rights,
+			Severity:      "High",
+		}
+		// GPO linked to Domain or DC OU → Critical
+		for _, link := range gpo.LinkedTo {
+			if strings.EqualFold(link, "Domain") ||
+				strings.Contains(strings.ToLower(link), "domain controller") {
+				f.Severity = "Critical"
+				break
+			}
+		}
+
+		gpo.ACLFindings = append(gpo.ACLFindings, f)
+		if len(gpo.ACLFindings) == 1 {
+			gpo.IsHighRisk = true
+			gpo.EditableBy = append(gpo.EditableBy, principalName)
+		}
+	}
+}
+
+// isAdminGroup returns true for well-known built-in admin group names
+func isAdminGroup(name string) bool {
+	switch name {
+	case "Domain Admins", "Enterprise Admins", "Administrators",
+		"SYSTEM", "Group Policy Creator Owners", "Schema Admins":
+		return true
+	}
+	return false
 }
 
 // ============================================================

@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.7.0
+- **Поточна версія:** v0.8.1
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -223,19 +223,34 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ CLI banner відновлено (великі літери ADPATH)
 - ✅ -H/--hashes flag на всіх командах
 
-**Залишилось на v0.8:**
+### v0.8.1 ЗАВЕРШЕНО
+
+- ✅ Protected Users group (`internal/analysis/protected_users.go`) — перевірка DA/EA/Schema Admins в Protected Users; виводить список privileged accounts що не захищені (NTLM/RC4/delegation можливі)
+- ✅ RootDSE enumeration — `client.QueryRootDSE()` зчитує domain/forest/DC functional level/responding DC без auth; показується в CLI при `enum`
+- ✅ AdminSDHolder (`internal/analysis/adminsdholder.go`) — orphaned adminCount=1 (не в прив. групі), custom ACEs на CN=AdminSDHolder (persistence backdoor)
+- ✅ GPO ACL (`internal/analysis/gpo.go`) — реальний парсинг nTSecurityDescriptor кожного GPO через SD control; low-priv write = High, GPO linked to DC OU = Critical
+- ✅ Global search в HTML — рядок над табами, шукає по всіх tab-panes, підсвічує matches (`<mark class="gs-match">`), показує кількість per-tab, автоматично переходить на tab з найбільшою кількістю matches
+
+**Залишилось на v0.8.2+:**
 - Trust attacks — enumeration forest/external trusts, SID filtering статус, cross-forest paths
-- GPO ACL — хто може модифікувати GPO objects (особливо linked до DC OU)
 - BloodHound JSON export — `--bloodhound` flag, сумісність з BH GUI
-- AdminSDHolder — кастомні ACE в template, orphaned AdminCount objects
 - Audit Policy / Blue Team — Advanced Audit налаштування, event log retention, AD Recycle Bin
-- Global search — єдиний пошуковий рядок по всіх tabs звіту з підсвіткою
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
-- RootDSE enumeration без bind (domain, forest, AD version)
 - SMB signing / LDAP signing + channel binding статус
-- Protected Users group — чи DA/EA додані
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
-- Enrollment rights перевірка (хто може enrolluvaty) як qualifier для ESC1
+- Enrollment rights перевірка як qualifier для ESC1
+- Protected Users + AdminSDHolder результати в HTML звіт (зараз тільки CLI)
+
+### v0.9 TODO
+- **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080`, remote DNS за замовчуванням (DNS резолвінг на іншому кінці тунелю, не локально). Замінити LDAP dialer через `golang.org/x/net/proxy`. PTT з `--ccache` — not supported through proxy (задокументувати).
+- **Stealth mode** — `--stealth` flag: мінімальна кількість LDAP запитів, без SMB enumeration, без forest-wide GC queries, без додаткових round-trips. Важливо для реальних engagements де є SIEM/detection. Пріоритет: тільки критичні знахідки, менше шуму в логах.
+- **Shadow Credentials** — перевірка msDS-KeyCredentialLink: хто має право писати в цей атрибут на privileged об'єктах (DA, EA, DC computer accounts). Дозволяє отримати TGT без зміни пароля. Відносно новий вектор, certipy/pywhisker покривають exploit — ми покриваємо detection.
+
+### v0.9.1 TODO
+- **MITRE ATT&CK mapping** — автоматичні теги до кожного finding: "T1558.003 — Kerberoasting", "T1484.001 — GPO modification" і т.д. CISO і compliance teams люблять цю мову. В HTML звіті — badge біля кожного finding з посиланням на attack.mitre.org. Подумати над посиланнями на mitigation.
+
+### v0.9.2 TODO
+- **--scope фільтрація** — аудит не всього домену а конкретного OU, групи або користувача. `--scope "OU=Finance,DC=corp,DC=local"` підмінює base DN для LDAP queries. Великі середовища з тисячами об'єктів — пентестер хоче фокус на конкретній частині.
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -248,4 +263,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.7.0 — ADCS (ESC1-ESC8), LAPS, GPP detection, Exposure tab, ADCS tab в HTML, section tooltips, finding grouping*
+*Останнє оновлення: v0.8.1 — Protected Users, RootDSE, AdminSDHolder, GPO ACL, Global search HTML*

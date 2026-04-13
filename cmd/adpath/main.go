@@ -201,6 +201,17 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	}
 	defer client.Close()
 
+	// ── RootDSE (no auth required) ────────────────────────────
+	if rds, err := client.QueryRootDSE(); err == nil {
+		color.Cyan("\n  DOMAIN INFO")
+		color.White("  %-28s %s", "domain", rds.DefaultNamingContext)
+		color.White("  %-28s %s", "forest", rds.ForestNamingContext)
+		color.White("  %-28s %s  (%s)", "domain level",
+			rds.DomainFunctionality,
+			adldap.FunctionalityLevelName(rds.DomainFunctionality))
+		color.White("  %-28s %s", "responding DC", rds.ServerName)
+	}
+
 	// ── enumeration ───────────────────────────────────────────
 	result, err := client.EnumerateAll()
 	if err != nil {
@@ -241,6 +252,16 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	}
 
 	hr := analysis.AnalyzeHygiene(result)
+
+	puResult := analysis.AnalyzeProtectedUsers(result)
+	_ = puResult // passed to report in future
+
+	adminSDResult, err := analysis.AnalyzeAdminSDHolder(client, result)
+	if err != nil {
+		color.Yellow("  adminsdholder analysis failed: %v", err)
+		adminSDResult = nil
+	}
+	_ = adminSDResult // passed to report in future
 
 	psoResult, err := analysis.AnalyzePSO(client)
 	if err != nil {
@@ -407,7 +428,7 @@ func printBanner() {
 	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
 	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
 	color.White(``)
-	color.White(`  v0.7.0  //  AD Attack Path Enumerator made by Ma43t3`)
+	color.White(`  v0.7.0  //  AD Attack Path Enumerator made by M4t`)
 	color.White(`  ` + strings.Repeat("─", 40))
 }
 

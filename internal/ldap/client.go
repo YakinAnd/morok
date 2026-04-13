@@ -509,3 +509,81 @@ func (c *Client) ConfigurationDN() (string, error) {
     }
     return val, nil
 }
+
+// RootDSEInfo contains information readable from RootDSE without authentication.
+type RootDSEInfo struct {
+	DefaultNamingContext    string // e.g. DC=corp,DC=local
+	ForestNamingContext     string // e.g. DC=corp,DC=local
+	ConfigurationDN         string // CN=Configuration,...
+	SchemaDN                string // CN=Schema,...
+	DomainFunctionality    string // 0=2000, 2=2003, 3=2008, 4=2008R2, 5=2012, 6=2012R2, 7=2016+
+	ForestFunctionality    string
+	DomainControllerFunctionality string
+	ServerName             string // FQDN of responding DC
+	SupportedLDAPVersion   []string
+	SupportedSASLMechanisms []string
+}
+
+// functionalityLevel maps AD functional level integer to human name.
+var functionalityLevel = map[string]string{
+	"0": "Windows 2000",
+	"1": "Windows Server 2003 Mixed",
+	"2": "Windows Server 2003",
+	"3": "Windows Server 2008",
+	"4": "Windows Server 2008 R2",
+	"5": "Windows Server 2012",
+	"6": "Windows Server 2012 R2",
+	"7": "Windows Server 2016/2019/2022",
+}
+
+// QueryRootDSE reads RootDSE attributes — available without authentication.
+// Call after Connect() but before (or without) Bind().
+func (c *Client) QueryRootDSE() (*RootDSEInfo, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	req := goldap.NewSearchRequest(
+		"",
+		goldap.ScopeBaseObject, goldap.NeverDerefAliases,
+		0, 0, false,
+		"(objectClass=*)",
+		[]string{
+			"defaultNamingContext",
+			"rootDomainNamingContext",
+			"configurationNamingContext",
+			"schemaNamingContext",
+			"domainFunctionality",
+			"forestFunctionality",
+			"domainControllerFunctionality",
+			"dnsHostName",
+			"supportedLDAPVersion",
+			"supportedSASLMechanisms",
+		},
+		nil,
+	)
+	sr, err := c.conn.Search(req)
+	if err != nil || len(sr.Entries) == 0 {
+		return nil, fmt.Errorf("RootDSE query failed: %w", err)
+	}
+	e := sr.Entries[0]
+	return &RootDSEInfo{
+		DefaultNamingContext:           e.GetAttributeValue("defaultNamingContext"),
+		ForestNamingContext:            e.GetAttributeValue("rootDomainNamingContext"),
+		ConfigurationDN:                e.GetAttributeValue("configurationNamingContext"),
+		SchemaDN:                       e.GetAttributeValue("schemaNamingContext"),
+		DomainFunctionality:            e.GetAttributeValue("domainFunctionality"),
+		ForestFunctionality:            e.GetAttributeValue("forestFunctionality"),
+		DomainControllerFunctionality:  e.GetAttributeValue("domainControllerFunctionality"),
+		ServerName:                     e.GetAttributeValue("dnsHostName"),
+		SupportedLDAPVersion:           e.GetAttributeValues("supportedLDAPVersion"),
+		SupportedSASLMechanisms:        e.GetAttributeValues("supportedSASLMechanisms"),
+	}, nil
+}
+
+// FunctionalityLevelName returns human-readable name for a functionality level integer string.
+func FunctionalityLevelName(level string) string {
+	if name, ok := functionalityLevel[level]; ok {
+		return name
+	}
+	return "Unknown (level " + level + ")"
+}

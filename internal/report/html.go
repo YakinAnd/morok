@@ -511,9 +511,21 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; colo
 .header .meta { color: #718096; font-size: 0.85rem; margin-top: 4px; }
 .header .domain { color: #f6ad55; font-weight: 600; }
 
+/* Global search */
+.global-search-wrap { padding: 10px 40px; background: #1a1f2e; border-bottom: 1px solid #2d3748;
+  display: flex; align-items: center; gap: 12px; }
+.global-search-wrap input { flex: 1; max-width: 420px; padding: 7px 14px;
+  background: #0f1117; border: 1px solid #2d3748; border-radius: 6px;
+  color: #e2e8f0; font-size: 0.9rem; outline: none; }
+.global-search-wrap input:focus { border-color: #63b3ed; }
+.global-search-wrap input::placeholder { color: #4a5568; }
+#gs-results { font-size: 0.82rem; color: #718096; min-width: 120px; }
+.gs-match { background: #744210 !important; color: #fef3c7 !important;
+  border-radius: 2px; padding: 0 2px; }
+
 /* Nav tabs */
 .nav { display: flex; gap: 2px; padding: 0 40px;
-  background: #1a1f2e; border-bottom: 1px solid #2d3748; }
+  background: #1a1f2e; border-bottom: 1px solid #2d3748; flex-wrap: wrap; }
 .nav button { padding: 12px 20px; border: none; background: transparent;
   color: #718096; cursor: pointer; font-size: 0.9rem; border-bottom: 2px solid transparent;
   transition: all 0.2s; }
@@ -653,6 +665,14 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
     Auth: <span style="color:#68d391">{{.AuthMethod}}</span> &nbsp;|&nbsp;
     Generated: {{.GeneratedAt}}
   </div>
+</div>
+
+<div class="global-search-wrap">
+  <input id="gs-input" type="text" placeholder="🔍  Global search across all tabs..."
+    oninput="globalSearch(this.value)" autocomplete="off">
+  <span id="gs-results"></span>
+  <button onclick="clearGlobalSearch()" style="background:#2d3748;border:none;color:#a0aec0;
+    padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem">✕ Clear</button>
 </div>
 
 <div class="nav">
@@ -1981,6 +2001,84 @@ function filterACL() {
   });
   const cnt = document.getElementById('cnt-acl');
   if (cnt) cnt.textContent = visible + ' / ' + cards.length;
+}
+
+// ── Global search ─────────────────────────────────────────────
+// Searches all text in all tab-panes, highlights matches, shows result count.
+// Navigates to the tab with the most matches on Enter.
+let _gsMatches = []; // [{tabName, el, origHTML}]
+
+function globalSearch(query) {
+  // restore all previous highlights
+  _gsMatches.forEach(m => { if (m.el) m.el.innerHTML = m.origHTML; });
+  _gsMatches = [];
+
+  const q = query.trim();
+  if (!q) {
+    document.getElementById('gs-results').textContent = '';
+    return;
+  }
+
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('(' + escaped + ')', 'gi');
+
+  // count matches per tab
+  const tabCounts = {};
+  document.querySelectorAll('.tab-pane').forEach(pane => {
+    const tabName = pane.id.replace('tab-', '');
+    let count = 0;
+    // walk text nodes — highlight only leaf text
+    const walker = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => {
+        const p = n.parentElement;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        const tag = p.tagName;
+        if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+        if (!n.textContent.toLowerCase().includes(q.toLowerCase())) return NodeFilter.FILTER_SKIP;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(textNode => {
+      const span = textNode.parentElement;
+      if (!span || span.classList.contains('gs-match')) return;
+      const orig = span.innerHTML;
+      const highlighted = orig.replace(re, '<mark class="gs-match">$1</mark>');
+      if (highlighted !== orig) {
+        _gsMatches.push({ el: span, origHTML: orig });
+        span.innerHTML = highlighted;
+        count += (orig.match(re) || []).length;
+      }
+    });
+    if (count > 0) tabCounts[tabName] = count;
+  });
+
+  const total = Object.values(tabCounts).reduce((a, b) => a + b, 0);
+  const tabList = Object.entries(tabCounts).map(([t, c]) => t + '(' + c + ')').join(', ');
+  document.getElementById('gs-results').textContent =
+    total > 0 ? total + ' matches — ' + tabList : 'no matches';
+
+  // auto-navigate to tab with most matches
+  if (total > 0) {
+    const best = Object.entries(tabCounts).sort((a, b) => b[1] - a[1])[0][0];
+    const btn = document.querySelector('.nav button[onclick="showTab(\'' + best + '\')"]');
+    if (btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + best).classList.add('active');
+      btn.classList.add('active');
+      if (best === 'graph') initGraph();
+    }
+  }
+}
+
+function clearGlobalSearch() {
+  _gsMatches.forEach(m => { if (m.el) m.el.innerHTML = m.origHTML; });
+  _gsMatches = [];
+  const inp = document.getElementById('gs-input');
+  if (inp) inp.value = '';
+  document.getElementById('gs-results').textContent = '';
 }
 
 let _aclGrouped = false;
