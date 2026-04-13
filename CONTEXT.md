@@ -239,7 +239,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - SMB signing / LDAP signing + channel binding статус
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
 - Enrollment rights перевірка як qualifier для ESC1
-- Protected Users + AdminSDHolder результати в HTML звіт (зараз тільки CLI)
+- ✅ Protected Users + AdminSDHolder результати в HTML звіт (Exposure tab)
 
 ### v0.9 TODO
 - **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080`, remote DNS за замовчуванням (DNS резолвінг на іншому кінці тунелю, не локально). Замінити LDAP dialer через `golang.org/x/net/proxy`. PTT з `--ccache` — not supported through proxy (задокументувати).
@@ -263,4 +263,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.8.1 — Protected Users, RootDSE, AdminSDHolder, GPO ACL, Global search HTML*
+*Останнє оновлення: v0.8.1 — Protected Users, RootDSE, AdminSDHolder, GPO ACL, Global search. Протестовано на GOAD-Light: lord.varys backdoor ACE на AdminSDHolder, 3 DA поза Protected Users, 1 Critical ESC1 template.*
