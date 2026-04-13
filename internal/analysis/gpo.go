@@ -492,6 +492,7 @@ func checkForCPassword(cseNames string) bool {
 func PrintGPOResult(gr *GPOResult) {
 	printPasswordPolicyResult(gr)
 	printGPOFindings(gr)
+	printGPOACLFindings(gr)
 }
 
 func printPasswordPolicyResult(gr *GPOResult) {
@@ -566,4 +567,32 @@ func printGPOFindings(gr *GPOResult) {
 	color.Cyan("\n  next steps (gpo abuse):")
 	color.White("    pyGPOAbuse.py -f AddLocalAdmin -u <user> -p <pass> -d %s --dc-ip <DC>", gr.Domain)
 	color.White("    findstr /S /I cpassword \\\\%s\\SYSVOL\\%s\\Policies\\*.xml", gr.Domain, gr.Domain)
+}
+
+func printGPOACLFindings(gr *GPOResult) {
+	if len(gr.GPOACLFindings) == 0 {
+		return
+	}
+	color.Cyan("\n  GPO ACL FINDINGS")
+	color.White("  %-28s %-12s %-20s %s", "GPO", "severity", "principal", "rights")
+	color.White("  " + strings.Repeat("-", 72))
+	for _, f := range gr.GPOACLFindings {
+		linked := ""
+		if len(f.GPOLinkedTo) > 0 {
+			linked = "  [linked: " + strings.Join(f.GPOLinkedTo, ", ") + "]"
+		}
+		line := fmt.Sprintf("  %-28s %-12s %-20s %s%s",
+			f.GPOName, f.Severity, f.PrincipalName,
+			strings.Join(f.Rights, ", "), linked)
+		if f.Severity == "Critical" {
+			color.Red(line)
+		} else {
+			color.Yellow(line)
+		}
+	}
+	color.Cyan("\n  NEXT STEPS (GPO ACL)")
+	color.White("  # Modify GPO to add local admin:")
+	color.White("  pyGPOAbuse.py -f AddLocalAdmin -u '<principal>' -p '<pass>' -d %s --dc-ip <DC> --gpo-id '<GUID>'", gr.Domain)
+	color.White("  # Or add computer startup script:")
+	color.White("  pyGPOAbuse.py -f ComputerTask -u '<principal>' -p '<pass>' -d %s --dc-ip <DC> --task-name exec --command cmd.exe", gr.Domain)
 }

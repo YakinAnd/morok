@@ -254,14 +254,12 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	hr := analysis.AnalyzeHygiene(result)
 
 	puResult := analysis.AnalyzeProtectedUsers(result)
-	_ = puResult // passed to report in future
 
 	adminSDResult, err := analysis.AnalyzeAdminSDHolder(client, result)
 	if err != nil {
 		color.Yellow("  adminsdholder analysis failed: %v", err)
 		adminSDResult = nil
 	}
-	_ = adminSDResult // passed to report in future
 
 	psoResult, err := analysis.AnalyzePSO(client)
 	if err != nil {
@@ -288,7 +286,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 

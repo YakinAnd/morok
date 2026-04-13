@@ -42,6 +42,9 @@ type ReportData struct {
 	// v0.7
 	UserPrivGroups map[string]string   // user DN → comma-separated privileged group names
 	ADCSResult     *analysis.ADCSResult
+	// v0.8.1
+	ProtectedUsersResult *analysis.ProtectedUsersResult
+	AdminSDHolderResult  *analysis.AdminSDHolderResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -114,28 +117,32 @@ func Generate(
 	hr *analysis.HygieneResult,
 	psoResult *analysis.PSOResult,
 	adcsResult *analysis.ADCSResult,
+	puResult *analysis.ProtectedUsersResult,
+	adminSDResult *analysis.AdminSDHolderResult,
 	authMethod string,
 ) error {
 
 	data := ReportData{
-	Domain:           result.Domain,
-	GeneratedAt:      time.Now().Format("2006-01-02 15:04:05"),
-	AuthMethod:       authMethod,
-	Users:            result.Users,
-	Groups:           result.Groups,
-	Computers:        result.Computers,
-	AttackPaths:      paths,
-	Summary:          buildSummary(result, paths, kr, aclResult, dr, gr, hr, adcsResult),
-	GraphJSON:        template.JS(buildD3JSON(g, paths)),
-	KerberosResult:   kr,
-	ACLResult:        aclResult,
-	DelegationResult: dr,
-	GPOResult:        gr,
-	HygieneResult:    hr,
-	PSOResult:        psoResult,
-	ADCSResult:       adcsResult,
-	ForestWide:       result.ForestWide,
-	UserPrivGroups:   buildUserPrivGroups(result),
+	Domain:               result.Domain,
+	GeneratedAt:          time.Now().Format("2006-01-02 15:04:05"),
+	AuthMethod:           authMethod,
+	Users:                result.Users,
+	Groups:               result.Groups,
+	Computers:            result.Computers,
+	AttackPaths:          paths,
+	Summary:              buildSummary(result, paths, kr, aclResult, dr, gr, hr, adcsResult),
+	GraphJSON:            template.JS(buildD3JSON(g, paths)),
+	KerberosResult:       kr,
+	ACLResult:            aclResult,
+	DelegationResult:     dr,
+	GPOResult:            gr,
+	HygieneResult:        hr,
+	PSOResult:            psoResult,
+	ADCSResult:           adcsResult,
+	ForestWide:           result.ForestWide,
+	UserPrivGroups:       buildUserPrivGroups(result),
+	ProtectedUsersResult: puResult,
+	AdminSDHolderResult:  adminSDResult,
 }
 
 	// парсимо шаблон
@@ -1443,6 +1450,89 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   </table>
   </div>
   {{end}}{{end}}
+
+  <!-- Protected Users -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-top:28px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+    Protected Users Group
+    <span class="help-icon" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials — an attacker capturing their NTLM hash can relay or crack it.">?</span>
+  </div>
+  {{if .ProtectedUsersResult}}
+  {{if not .ProtectedUsersResult.ProtectedUsersExists}}
+  <p style="color:#fc8181;font-size:0.85rem;margin-bottom:16px">⚠ Protected Users group not found — may not exist in this domain.</p>
+  {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
+  <div class="path-card" style="margin-bottom:12px;padding:12px 16px">
+    <span class="badge badge-critical" style="margin-bottom:8px;display:inline-block">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged accounts not in Protected Users</span>
+    <div style="color:#a0aec0;font-size:0.8rem;margin-bottom:10px">NTLM auth, RC4 encryption, and unconstrained delegation are not blocked for these accounts.</div>
+  </div>
+  <div class="table-wrap" style="margin-bottom:20px">
+  <table>
+    <thead><tr><th>Account</th><th>Severity</th><th>Privileged Groups</th></tr></thead>
+    <tbody>
+    {{range .ProtectedUsersResult.PrivilegedNotProtected}}
+    <tr>
+      <td class="mono">{{.SAMAccountName}}</td>
+      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+      <td style="font-size:0.82rem;color:#a0aec0">{{joinSPNs .Groups}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p style="color:#68d391;margin-bottom:16px">✓ All privileged accounts are in Protected Users ({{len .ProtectedUsersResult.Members}} members).</p>
+  {{end}}
+  {{end}}
+
+  <!-- AdminSDHolder -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-top:8px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+    AdminSDHolder
+    <span class="help-icon" data-tip="AdminSDHolder (CN=AdminSDHolder,CN=System) is a template object whose ACL is copied to all protected objects every 60 minutes by SDProp. A custom ACE here is a persistence backdoor — attacker retains access even after password reset. Orphaned adminCount=1 accounts had their ACL hardened but are no longer monitored.">?</span>
+  </div>
+  {{if .AdminSDHolderResult}}
+  {{if .AdminSDHolderResult.CustomACEs}}
+  <div class="path-card" style="margin-bottom:12px;padding:12px 16px;border-color:#e53e3e">
+    <span class="badge badge-critical" style="margin-bottom:8px;display:inline-block">⚠ {{len .AdminSDHolderResult.CustomACEs}} backdoor ACE(s) on AdminSDHolder</span>
+    <div style="color:#fc8181;font-size:0.8rem;margin-bottom:10px">These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Principal</th><th>SID</th><th>Rights</th></tr></thead>
+      <tbody>
+      {{range .AdminSDHolderResult.CustomACEs}}
+      <tr>
+        <td class="mono" style="color:#fc8181">{{.PrincipalName}}</td>
+        <td class="mono" style="font-size:0.75rem;color:#718096">{{.PrincipalSID}}</td>
+        <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {{end}}
+  {{if .AdminSDHolderResult.OrphanedAdminCount}}
+  <div style="margin-bottom:16px">
+    <span class="badge badge-medium" style="margin-bottom:8px;display:inline-block">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned adminCount=1 account(s)</span>
+    <div style="color:#a0aec0;font-size:0.8rem;margin-bottom:8px">adminCount=1 but not in any privileged group — SDProp no longer manages these objects.</div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account</th><th>Status</th></tr></thead>
+      <tbody>
+      {{range .AdminSDHolderResult.OrphanedAdminCount}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td>{{if .Enabled}}<span class="badge badge-medium">enabled</span>{{else}}<span class="badge" style="background:#2d3748;color:#718096">disabled</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {{end}}
+  {{if and (not .AdminSDHolderResult.CustomACEs) (not .AdminSDHolderResult.OrphanedAdminCount)}}
+  <p style="color:#68d391;margin-bottom:16px">✓ No AdminSDHolder issues found.</p>
+  {{end}}
+  {{end}}
+
 </div>
 
 <!-- GPO TAB -->
@@ -1503,6 +1593,30 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   </table>
   </div>
   {{end}}
+
+  <!-- GPO ACL -->
+  {{if .GPOResult}}{{if .GPOResult.GPOACLFindings}}
+  <h3 class="section-title" style="font-size:0.95rem;margin-top:28px;display:flex;align-items:center;gap:6px">
+    GPO Write ACL Findings
+    <span class="help-icon" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
+  </h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>GPO</th><th>Severity</th><th>Principal</th><th>Rights</th><th>Linked To</th></tr></thead>
+    <tbody>
+    {{range .GPOResult.GPOACLFindings}}
+    <tr>
+      <td class="mono">{{.GPOName}}</td>
+      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+      <td class="mono">{{.PrincipalName}}</td>
+      <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
+      <td style="font-size:0.78rem;color:#a0aec0">{{joinSPNs .GPOLinkedTo}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{end}}{{end}}
 
   {{else}}<p style="color:#718096">GPO data not available.</p>{{end}}
 </div>
