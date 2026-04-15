@@ -256,6 +256,11 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 ### v0.9.2 TODO
 - **--scope фільтрація** — аудит не всього домену а конкретного OU, групи або користувача. `--scope "OU=Finance,DC=corp,DC=local"` підмінює base DN для LDAP queries. Великі середовища з тисячами об'єктів — пентестер хоче фокус на конкретній частині.
 
+### v0.9.3 TODO
+- **Anonymous LDAP check** — якщо anonymous bind читає більше ніж RootDSE → security finding (Medium): "Anonymous LDAP read enabled — unauthenticated enumeration possible". Показувати в CLI що доступно а що ні при роботі без credentials
+- **Username enumeration via Kerberos AS-REQ** — `adpath enum-users --wordlist users.txt`: без пароля, тільки доступ до мережі. Помилка `PRINCIPAL_UNKNOWN` vs `PREAUTH_REQUIRED` — дозволяє підтвердити існування акаунта
+- **Покращений anonymous вивід** — при anonymous bind чітко показати: RootDSE ✓, LDAP enumeration: skipped/partial + підказка "отримай будь-який доменний акаунт для повного enumeration"
+
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
 - Стаття, пости на r/netsec, UISGCON
