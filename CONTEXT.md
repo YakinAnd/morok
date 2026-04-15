@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.8.1
+- **Поточна версія:** v0.8.2
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -231,17 +231,21 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ GPO ACL (`internal/analysis/gpo.go`) — реальний парсинг nTSecurityDescriptor кожного GPO через SD control; low-priv write = High, GPO linked to DC OU = Critical
 - ✅ Global search в HTML — рядок над табами, шукає по всіх tab-panes, підсвічує matches (`<mark class="gs-match">`), показує кількість per-tab, автоматично переходить на tab з найбільшою кількістю matches
 
-**Залишилось на v0.8.2+:**
-- Trust attacks — enumeration forest/external trusts, SID filtering статус, cross-forest paths
+### v0.8.2 ЗАВЕРШЕНО
+
+- ✅ **Trust analysis** (`internal/analysis/trusts.go`) — enumeration `trustedDomain` об'єктів, SID filtering статус (ON/OFF/Internal), trust direction/type, Foreign Security Principals в привілейованих групах, `adpath trust` команда + HTML Trusts tab
+  - Within-forest trusts (parent-child, tree-root) — показуються як "Internal" (SID filtering OFF там нормально)
+  - Зовнішні трасти без SID filtering → High; bidirectional external без SID filter → Critical; RC4 → Low
+  - Next steps: ticketer.py SID history abuse команди контекстно для кожного ризикового трасту
+  - Протестовано на GOAD-Light: north.sevenkingdoms.local → Bidirectional, AD (Uplevel), Internal, Info ✅
+
+### v0.9 TODO
 - BloodHound JSON export — `--bloodhound` flag, сумісність з BH GUI
 - Audit Policy / Blue Team — Advanced Audit налаштування, event log retention, AD Recycle Bin
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
 - SMB signing / LDAP signing + channel binding статус
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
 - Enrollment rights перевірка як qualifier для ESC1
-- ✅ Protected Users + AdminSDHolder результати в HTML звіт (Exposure tab)
-
-### v0.9 TODO
 - **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080`, remote DNS за замовчуванням (DNS резолвінг на іншому кінці тунелю, не локально). Замінити LDAP dialer через `golang.org/x/net/proxy`. PTT з `--ccache` — not supported through proxy (задокументувати).
 - **Stealth mode** — `--stealth` flag: мінімальна кількість LDAP запитів, без SMB enumeration, без forest-wide GC queries, без додаткових round-trips. Важливо для реальних engagements де є SIEM/detection. Пріоритет: тільки критичні знахідки, менше шуму в логах.
 - **Shadow Credentials** — перевірка msDS-KeyCredentialLink: хто має право писати в цей атрибут на privileged об'єктах (DA, EA, DC computer accounts). Дозволяє отримати TGT без зміни пароля. Відносно новий вектор, certipy/pywhisker покривають exploit — ми покриваємо detection.
@@ -263,4 +267,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.8.1 — Protected Users, RootDSE, AdminSDHolder, GPO ACL, Global search. Протестовано на GOAD-Light: lord.varys backdoor ACE на AdminSDHolder, 3 DA поза Protected Users, 1 Critical ESC1 template.*
+*Останнє оновлення: v0.8.2 — Trust analysis: trustedDomain enumeration, SID filtering (Internal/ON/OFF), FSPs в привілейованих групах, HTML Trusts tab, `adpath trust` команда. Протестовано на GOAD-Light: north.sevenkingdoms.local Bidirectional/Internal/Info.*

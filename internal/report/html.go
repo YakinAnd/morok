@@ -45,6 +45,8 @@ type ReportData struct {
 	// v0.8.1
 	ProtectedUsersResult *analysis.ProtectedUsersResult
 	AdminSDHolderResult  *analysis.AdminSDHolderResult
+	// v0.8.2
+	TrustResult *analysis.TrustResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -119,6 +121,7 @@ func Generate(
 	adcsResult *analysis.ADCSResult,
 	puResult *analysis.ProtectedUsersResult,
 	adminSDResult *analysis.AdminSDHolderResult,
+	trustResult *analysis.TrustResult,
 	authMethod string,
 ) error {
 
@@ -143,6 +146,7 @@ func Generate(
 	UserPrivGroups:       buildUserPrivGroups(result),
 	ProtectedUsersResult: puResult,
 	AdminSDHolderResult:  adminSDResult,
+	TrustResult:          trustResult,
 }
 
 	// парсимо шаблон
@@ -692,6 +696,7 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <button onclick="showTab('exposure')">Exposure</button>
   <button onclick="showTab('gpo')">GPO</button>
   <button onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
+  <button onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -908,6 +913,90 @@ th.sort-desc::after { content: ' ▼'; color: #63b3ed; }
   <div style="margin-top:8px;font-size:0.75rem;color:#4a5568">
     Drag to pan · Scroll to zoom · Hover node for details · Node size = number of paths through it
   </div>
+</div>
+
+<!-- TRUSTS TAB -->
+<div id="tab-trusts" class="tab-pane">
+  <h2 class="section-title">Domain &amp; Forest Trusts
+    <span class="help-icon" data-tip="Domain trusts define authentication paths between domains. SID filtering disabled on a trust allows SID history abuse — an attacker in a trusted domain can forge SIDs to escalate privileges in this domain. Bidirectional forest trusts create lateral movement paths between forests. Foreign Security Principals (FSPs) are accounts from trusted domains added to local groups.">?</span>
+  </h2>
+
+  {{if .TrustResult}}
+
+  {{if not .TrustResult.Trusts}}
+  <p style="color:#718096;margin-bottom:20px">No trusts found — this may be a standalone domain.</p>
+  {{else}}
+
+  <!-- Trust table -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Configured Trusts</div>
+  <div class="table-wrap" style="margin-bottom:24px">
+  <table>
+    <thead>
+      <tr><th>Trusted Domain</th><th>NetBIOS</th><th>Direction</th><th>Type</th><th>SID Filtering</th><th>Severity</th><th>Risks</th></tr>
+    </thead>
+    <tbody>
+    {{range .TrustResult.Trusts}}
+    <tr>
+      <td class="mono">{{.Name}}</td>
+      <td class="mono" style="color:#718096">{{.FlatName}}</td>
+      <td>{{.Direction}}</td>
+      <td style="color:#a0aec0;font-size:0.82rem">{{.TrustType}}</td>
+      <td>
+        {{if .SIDFilteringOn}}
+          <span class="badge badge-ok">ON ✓</span>
+        {{else if .IsWithinForest}}
+          <span class="badge" style="background:#2d3748;color:#a0aec0">Internal</span>
+        {{else}}
+          <span class="badge badge-critical">OFF ⚠</span>
+        {{end}}
+      </td>
+      <td>
+        {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>
+        {{else if eq .Severity "High"}}<span class="badge badge-medium">High</span>
+        {{else if eq .Severity "Medium"}}<span class="badge" style="background:#744210;color:#fef3c7">Medium</span>
+        {{else}}<span class="badge" style="background:#2d3748;color:#a0aec0">Info</span>{{end}}
+      </td>
+      <td style="font-size:0.78rem;color:#fc8181">
+        {{range .Risks}}<div>⚠ {{.}}</div>{{end}}
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  {{end}}
+
+  <!-- Foreign Security Principals -->
+  <div style="font-size:11px;font-weight:500;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+    Foreign Security Principals in Privileged Groups
+    <span class="help-icon" data-tip="Foreign Security Principals (FSPs) are objects representing users or groups from trusted external domains. If an FSP is a member of a privileged local group (Domain Admins, Administrators), an attacker who compromises the external domain gains privilege in this domain too.">?</span>
+  </div>
+  {{if .TrustResult.FSPs}}
+  <div class="path-card" style="margin-bottom:12px;padding:12px 16px;border-color:#e53e3e">
+    <span class="badge badge-critical" style="margin-bottom:8px;display:inline-block">⚠ {{len .TrustResult.FSPs}} external principal(s) in privileged groups</span>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>External SID</th><th>Severity</th><th>Member of</th></tr></thead>
+    <tbody>
+    {{range .TrustResult.FSPs}}
+    <tr>
+      <td class="mono" style="font-size:0.8rem">{{.ExternalSID}}</td>
+      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+      <td style="font-size:0.82rem;color:#a0aec0">{{joinSPNs .MemberOfGroups}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  {{else}}
+  <p style="color:#68d391">✓ No foreign security principals found in privileged groups.</p>
+  {{end}}
+
+  {{else}}
+  <p style="color:#718096">Trust data not available.</p>
+  {{end}}
 </div>
 
 <!-- USERS TAB -->

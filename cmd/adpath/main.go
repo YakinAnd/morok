@@ -88,12 +88,18 @@ var adcsCmd = &cobra.Command{
 	RunE:  runADCS,
 }
 
+var trustCmd = &cobra.Command{
+	Use:   "trust",
+	Short: "Analyze domain/forest trusts and foreign security principals",
+	RunE:  runTrust,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -115,9 +121,9 @@ func init() {
 	rootCmd.AddCommand(delegationCmd)
 	rootCmd.AddCommand(gpoCmd)
 	rootCmd.AddCommand(adcsCmd)
+	rootCmd.AddCommand(trustCmd)
 
-
-	rootCmd.Version = "0.8.1"
+	rootCmd.Version = "0.8.2"
 }
 
 // ============================================================
@@ -261,6 +267,12 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		adminSDResult = nil
 	}
 
+	trustResult, err := analysis.AnalyzeTrusts(client, result)
+	if err != nil {
+		color.Yellow("  trust analysis failed: %v", err)
+		trustResult = nil
+	}
+
 	psoResult, err := analysis.AnalyzePSO(client)
 	if err != nil {
 		color.Yellow("  pso analysis failed: %v", err)
@@ -286,7 +298,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 
@@ -416,6 +428,32 @@ func runADCS(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
+// Логіка команди Trust
+// ============================================================
+
+func runTrust(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client, err := connectAndBind()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	result, err := client.EnumerateAll()
+	if err != nil {
+		return fmt.Errorf("enumeration error: %w", err)
+	}
+
+	r, err := analysis.AnalyzeTrusts(client, result)
+	if err != nil {
+		return fmt.Errorf("trust analysis error: %w", err)
+	}
+	_ = r
+	return nil
+}
+
+// ============================================================
 // Banner
 // ============================================================
 
@@ -426,7 +464,7 @@ func printBanner() {
 	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
 	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
 	color.White(``)
-	color.White(`  v0.8.1  //  AD Attack Path Enumerator made by M4t`)
+	color.White(`  v0.8.2  //  AD Attack Path Enumerator made by M4t`)
 	color.White(`  ` + strings.Repeat("─", 40))
 }
 
