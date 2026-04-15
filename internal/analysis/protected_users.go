@@ -125,7 +125,7 @@ func AnalyzeProtectedUsers(result *adldap.EnumerationResult) *ProtectedUsersResu
 		})
 	}
 
-	printProtectedUsersResult(r)
+	printProtectedUsersResult(r, false)
 	return r
 }
 
@@ -133,7 +133,7 @@ func AnalyzeProtectedUsers(result *adldap.EnumerationResult) *ProtectedUsersResu
 // Output
 // ============================================================
 
-func printProtectedUsersResult(r *ProtectedUsersResult) {
+func printProtectedUsersResult(r *ProtectedUsersResult, showNextSteps bool) {
 	color.Cyan("\n  PROTECTED USERS")
 
 	if !r.ProtectedUsersExists {
@@ -160,7 +160,14 @@ func printProtectedUsersResult(r *ProtectedUsersResult) {
 		}
 	}
 
-	color.Cyan("\n  NEXT STEPS (Protected Users)")
-	color.White("  Add privileged accounts to Protected Users to block NTLM, RC4, and delegation:")
-	color.White("  Add-ADGroupMember -Identity 'Protected Users' -Members '<samAccountName>'")
+	if showNextSteps {
+		color.Cyan("\n  NEXT STEPS (Protected Users)")
+		color.White("  Add privileged accounts to Protected Users to block NTLM, RC4, and delegation:")
+		color.White("  Add-ADGroupMember -Identity 'Protected Users' -Members '<samAccountName>'")
+	}
+}
+
+// PrintProtectedUsersResult — public wrapper for standalone use (shows next steps)
+func PrintProtectedUsersResult(r *ProtectedUsersResult) {
+	printProtectedUsersResult(r, true)
 }

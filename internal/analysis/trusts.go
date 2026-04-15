@@ -245,7 +245,7 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 		}
 	}
 
-	printTrustResult(r)
+	printTrustResult(r, false)
 	return r, nil
 }
 
@@ -271,7 +271,7 @@ func buildPrivGroupDNSet(result *adldap.EnumerationResult) map[string]string {
 // Output
 // ============================================================
 
-func printTrustResult(r *TrustResult) {
+func printTrustResult(r *TrustResult, showNextSteps bool) {
 	color.Cyan("\n  TRUSTS")
 
 	if len(r.Trusts) == 0 {
@@ -330,7 +330,7 @@ func printTrustResult(r *TrustResult) {
 			break
 		}
 	}
-	if hasRisky || len(r.FSPs) > 0 {
+	if showNextSteps && (hasRisky || len(r.FSPs) > 0) {
 		color.Cyan("\n  NEXT STEPS (Trust abuse)")
 		for _, t := range r.Trusts {
 			if !t.SIDFilteringOn && !t.IsWithinForest {
@@ -347,7 +347,7 @@ func printTrustResult(r *TrustResult) {
 	}
 }
 
-// PrintTrustResult — public wrapper for standalone trust command
+// PrintTrustResult — public wrapper for standalone trust command (shows next steps)
 func PrintTrustResult(r *TrustResult) {
-	printTrustResult(r)
+	printTrustResult(r, true)
 }

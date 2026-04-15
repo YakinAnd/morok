@@ -116,7 +116,7 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 		entries, err = searchWithSDControl(client, adminSDHolderDN)
 		if err != nil || len(entries) == 0 {
 			// no access to AdminSDHolder — still return orphaned findings
-			printAdminSDHolderResult(r)
+			printAdminSDHolderResult(r, false)
 			return r, nil
 		}
 	}
@@ -130,7 +130,7 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 		}
 	}
 
-	printAdminSDHolderResult(r)
+	printAdminSDHolderResult(r, false)
 	return r, nil
 }
 
@@ -244,7 +244,7 @@ func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []Admi
 // Output
 // ============================================================
 
-func printAdminSDHolderResult(r *AdminSDHolderResult) {
+func printAdminSDHolderResult(r *AdminSDHolderResult, showNextSteps bool) {
 	color.Cyan("\n  ADMINSDHOLDER")
 
 	if len(r.OrphanedAdminCount) == 0 && len(r.CustomACEs) == 0 {
@@ -271,10 +271,17 @@ func printAdminSDHolderResult(r *AdminSDHolderResult) {
 		for _, f := range r.CustomACEs {
 			color.Red("    %-24s %s  [%s]", f.PrincipalName, f.PrincipalSID, strings.Join(f.Rights, ", "))
 		}
-		color.Cyan("\n  NEXT STEPS")
-		color.White("  Remove backdoor ACE from AdminSDHolder:")
-		color.White("  $acl = Get-Acl 'AD:CN=AdminSDHolder,CN=System,<BaseDN>'")
-		color.White("  $acl.RemoveAccessRule(<rule>)")
-		color.White("  Set-Acl 'AD:CN=AdminSDHolder,CN=System,<BaseDN>' $acl")
+		if showNextSteps {
+			color.Cyan("\n  NEXT STEPS")
+			color.White("  Remove backdoor ACE from AdminSDHolder:")
+			color.White("  $acl = Get-Acl 'AD:CN=AdminSDHolder,CN=System,<BaseDN>'")
+			color.White("  $acl.RemoveAccessRule(<rule>)")
+			color.White("  Set-Acl 'AD:CN=AdminSDHolder,CN=System,<BaseDN>' $acl")
+		}
 	}
+}
+
+// PrintAdminSDHolderResult — public wrapper for standalone use (shows next steps)
+func PrintAdminSDHolderResult(r *AdminSDHolderResult) {
+	printAdminSDHolderResult(r, true)
 }
