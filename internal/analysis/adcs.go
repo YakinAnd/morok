@@ -118,6 +118,15 @@ var caAttributes = []string{
 	"nTSecurityDescriptor",
 }
 
+// Certificate extended right GUIDs (lowercase, no braces)
+const (
+	guidCertEnroll     = "0e10c968-78fb-11d2-90d4-00c04f79dc55"
+	guidCertAutoenroll = "a05b8cc2-17bc-4802-a710-e7c15ab866a2"
+)
+
+// ADS_RIGHT_DS_CONTROL_ACCESS — grants an extended right when combined with an Object ACE
+const adsRightControlAccess = 0x00000100
+
 // EKU OIDs
 var ekuNameMap = map[string]string{
 	"1.3.6.1.5.5.7.3.1":        "Server Authentication",
@@ -224,6 +233,7 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 type ldapEntry interface {
 	GetAttributeValue(string) string
 	GetAttributeValues(string) []string
+	GetRawAttributeValue(string) []byte
 }
 
 func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
@@ -297,10 +307,19 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		}
 	}
 
-	// Severity: Critical if ESC1 + auth EKU, else High
+	// Check who can actually enroll (ESC1 qualifier)
+	enrollableBy := checkEnrollmentRights(e)
+
+	// Severity: Critical if ESC1 + auth EKU + low-priv can enroll
+	//           Medium  if ESC1 + auth EKU but no low-priv enrollment (still misconfigured, but not immediately exploitable)
+	//           High    otherwise
 	sev := "High"
 	if containsVuln(vulns, ESC1) && authEnabled {
-		sev = "Critical"
+		if len(enrollableBy) > 0 {
+			sev = "Critical"
+		} else {
+			sev = "Medium"
+		}
 	}
 
 	return &CertTemplateFinding{
@@ -310,8 +329,55 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		AllowsSANInject: allowsSAN,
 		AuthEnabled:     authEnabled,
 		EKUs:            ekuDisplay,
+		EnrollableBy:    enrollableBy,
 		Severity:        sev,
 	}
+}
+
+// checkEnrollmentRights parses the template's DACL and returns a deduplicated list
+// of low-privileged principal names that have the Certificate-Enrollment extended right.
+// An empty result means only privileged accounts can enroll (ESC1 is not directly exploitable).
+func checkEnrollmentRights(e ldapEntry) []string {
+	sdBytes := e.GetRawAttributeValue("nTSecurityDescriptor")
+	if len(sdBytes) == 0 {
+		return nil
+	}
+
+	aces, err := parseSecurityDescriptor(sdBytes)
+	if err != nil {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	var result []string
+
+	for _, ace := range aces {
+		if ace.ACEType == 0x01 || ace.ACEType == 0x06 { // Deny ACEs — skip
+			continue
+		}
+		if ace.AccessMask&adsRightControlAccess == 0 {
+			continue
+		}
+
+		// Object ACE (0x05): only grant enrollment if ObjectType matches enrollment GUID
+		// Simple ACE (0x00): ADS_RIGHT_DS_CONTROL_ACCESS grants all extended rights → enrollment included
+		if ace.ACEType == 0x05 {
+			if ace.ObjectType != guidCertEnroll && ace.ObjectType != guidCertAutoenroll {
+				continue
+			}
+		}
+
+		name, lowPriv := isLowPrivSID(ace.SID)
+		if !lowPriv {
+			continue
+		}
+		if !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+
+	return result
 }
 
 // ============================================================
@@ -539,11 +605,17 @@ func printADCSResult(r *ADCSResult, showNextSteps bool) {
 			if f.AuthEnabled {
 				authStr = strings.Join(f.EKUs, ", ")
 			}
-			line := fmt.Sprintf("  %-24s %-10s %-16s %s", f.TemplateName, f.Severity, formatVulns(f.VulnTypes), authStr)
+			enrollStr := ""
+			if len(f.EnrollableBy) > 0 {
+				enrollStr = "  [enrollable by: " + strings.Join(f.EnrollableBy, ", ") + "]"
+			}
+			line := fmt.Sprintf("  %-24s %-10s %-16s %s%s", f.TemplateName, f.Severity, formatVulns(f.VulnTypes), authStr, enrollStr)
 			if f.Severity == "Critical" {
 				color.Red(line)
-			} else {
+			} else if f.Severity == "High" {
 				color.Yellow(line)
+			} else {
+				color.White(line)
 			}
 		}
 	}

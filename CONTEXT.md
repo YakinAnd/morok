@@ -245,7 +245,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
 - SMB signing / LDAP signing + channel binding статус
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
-- Enrollment rights перевірка як qualifier для ESC1
+- ✅ Enrollment rights перевірка як qualifier для ESC1 — DACL парсинг enrollment GUID, ESC1 Critical тільки якщо low-priv може записатись; інакше Medium
 - **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080`, remote DNS за замовчуванням (DNS резолвінг на іншому кінці тунелю, не локально). Замінити LDAP dialer через `golang.org/x/net/proxy`. PTT з `--ccache` — not supported through proxy (задокументувати).
 - **Stealth mode** — `--stealth` flag: мінімальна кількість LDAP запитів, без SMB enumeration, без forest-wide GC queries, без додаткових round-trips. Важливо для реальних engagements де є SIEM/detection. Пріоритет: тільки критичні знахідки, менше шуму в логах.
 - **Shadow Credentials** — перевірка msDS-KeyCredentialLink: хто має право писати в цей атрибут на privileged об'єктах (DA, EA, DC computer accounts). Дозволяє отримати TGT без зміни пароля. Відносно новий вектор, certipy/pywhisker покривають exploit — ми покриваємо detection.
