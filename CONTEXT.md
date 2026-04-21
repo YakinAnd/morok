@@ -248,7 +248,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ Enrollment rights перевірка як qualifier для ESC1 — DACL парсинг enrollment GUID, ESC1 Critical тільки якщо low-priv може записатись; інакше Medium
 - **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080`, remote DNS за замовчуванням (DNS резолвінг на іншому кінці тунелю, не локально). Замінити LDAP dialer через `golang.org/x/net/proxy`. PTT з `--ccache` — not supported through proxy (задокументувати).
 - **Stealth mode** — `--stealth` flag: мінімальна кількість LDAP запитів, без SMB enumeration, без forest-wide GC queries, без додаткових round-trips. Важливо для реальних engagements де є SIEM/detection. Пріоритет: тільки критичні знахідки, менше шуму в логах.
-- **Shadow Credentials** — перевірка msDS-KeyCredentialLink: хто має право писати в цей атрибут на privileged об'єктах (DA, EA, DC computer accounts). Дозволяє отримати TGT без зміни пароля. Відносно новий вектор, certipy/pywhisker покривають exploit — ми покриваємо detection.
+- ✅ **Shadow Credentials** — `internal/analysis/shadow_credentials.go`: DACL парсинг msDS-KeyCredentialLink (GUID 5b47d60f-...) на DA/EA/DC об'єктах; окрема команда `adpath shadow`; next steps з pywhisker/certipy
 
 ### v0.9.1 TODO
 - **MITRE ATT&CK mapping** — автоматичні теги до кожного finding: "T1558.003 — Kerberoasting", "T1484.001 — GPO modification" і т.д. CISO і compliance teams люблять цю мову. В HTML звіті — badge біля кожного finding з посиланням на attack.mitre.org. Подумати над посиланнями на mitigation.

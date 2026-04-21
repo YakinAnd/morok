@@ -96,12 +96,18 @@ var trustCmd = &cobra.Command{
 	RunE:  runTrust,
 }
 
+var shadowCmd = &cobra.Command{
+	Use:   "shadow",
+	Short: "Detect principals that can write msDS-KeyCredentialLink on privileged objects",
+	RunE:  runShadow,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -125,8 +131,9 @@ func init() {
 	rootCmd.AddCommand(gpoCmd)
 	rootCmd.AddCommand(adcsCmd)
 	rootCmd.AddCommand(trustCmd)
+	rootCmd.AddCommand(shadowCmd)
 
-	rootCmd.Version = "0.8.2"
+	rootCmd.Version = "0.9.0"
 }
 
 // ============================================================
@@ -290,6 +297,13 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	if adcsResult != nil {
 		analysis.PrintADCSResultSummary(adcsResult)
 	}
+
+	shadowResult, err := analysis.AnalyzeShadowCredentials(client, result)
+	if err != nil {
+		color.Yellow("  shadow credentials analysis failed: %v", err)
+		shadowResult = nil
+	}
+	analysis.AnalyzeShadowCredentialsSummary(shadowResult)
 
 	authMethod := "Password"
 	switch {
@@ -464,6 +478,28 @@ func runTrust(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("trust analysis error: %w", err)
 	}
 	_ = r
+	return nil
+}
+
+func runShadow(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client, err := connectAndBind()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	result, err := client.EnumerateAll()
+	if err != nil {
+		return fmt.Errorf("enumeration error: %w", err)
+	}
+
+	r, err := analysis.AnalyzeShadowCredentials(client, result)
+	if err != nil {
+		return fmt.Errorf("shadow credentials analysis error: %w", err)
+	}
+	analysis.PrintShadowCredentialsResult(r)
 	return nil
 }
 
