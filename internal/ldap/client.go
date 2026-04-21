@@ -572,8 +572,10 @@ type RootDSEInfo struct {
 	ForestFunctionality    string
 	DomainControllerFunctionality string
 	ServerName             string // FQDN of responding DC
-	SupportedLDAPVersion   []string
+	SupportedLDAPVersion    []string
 	SupportedSASLMechanisms []string
+	SupportedCapabilities   []string // OIDs, e.g. 1.2.840.113556.1.4.1791 = LDAP signing support
+	PlainLDAP               bool     // true if connection is on port 389 (not LDAPS)
 }
 
 // functionalityLevel maps AD functional level integer to human name.
@@ -610,6 +612,7 @@ func (c *Client) QueryRootDSE() (*RootDSEInfo, error) {
 			"dnsHostName",
 			"supportedLDAPVersion",
 			"supportedSASLMechanisms",
+			"supportedCapabilities",
 		},
 		nil,
 	)
@@ -627,8 +630,10 @@ func (c *Client) QueryRootDSE() (*RootDSEInfo, error) {
 		ForestFunctionality:            e.GetAttributeValue("forestFunctionality"),
 		DomainControllerFunctionality:  e.GetAttributeValue("domainControllerFunctionality"),
 		ServerName:                     e.GetAttributeValue("dnsHostName"),
-		SupportedLDAPVersion:           e.GetAttributeValues("supportedLDAPVersion"),
-		SupportedSASLMechanisms:        e.GetAttributeValues("supportedSASLMechanisms"),
+		SupportedLDAPVersion:    e.GetAttributeValues("supportedLDAPVersion"),
+		SupportedSASLMechanisms: e.GetAttributeValues("supportedSASLMechanisms"),
+		SupportedCapabilities:   e.GetAttributeValues("supportedCapabilities"),
+		PlainLDAP:               c.Port == 389,
 	}, nil
 }
 

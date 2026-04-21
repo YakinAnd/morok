@@ -49,6 +49,7 @@ type ReportData struct {
 	TrustResult *analysis.TrustResult
 	// v0.9.0
 	ShadowCredentialsResult *analysis.ShadowCredentialsResult
+	LDAPSecurityResult      *analysis.LDAPSecurityResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -126,7 +127,8 @@ func Generate(
 	puResult *analysis.ProtectedUsersResult,
 	adminSDResult *analysis.AdminSDHolderResult,
 	trustResult *analysis.TrustResult,
-	shadowResult *analysis.ShadowCredentialsResult,
+	shadowResult   *analysis.ShadowCredentialsResult,
+	ldapSecResult  *analysis.LDAPSecurityResult,
 	authMethod string,
 ) error {
 
@@ -153,6 +155,7 @@ func Generate(
 	AdminSDHolderResult:     adminSDResult,
 	TrustResult:             trustResult,
 	ShadowCredentialsResult: shadowResult,
+	LDAPSecurityResult:      ldapSecResult,
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -761,6 +764,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
   <button onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
   <button onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
+  <button onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -1906,6 +1910,53 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     {{end}}
   {{else}}
   <p style="color:var(--text-muted)">Shadow Credentials data not available.</p>
+  {{end}}
+</div>
+
+<!-- LDAP SECURITY TAB -->
+<div id="tab-ldapsec" class="tab-pane">
+  <div class="section-header">
+    LDAP Security
+    <span class="help-icon" data-tip="LDAP signing prevents man-in-the-middle attacks on LDAP traffic. If signing is not enforced, an attacker between the client and DC can read or modify LDAP requests. NTLM relay to LDAP (via PetitPotam/Coercer) is possible when signing and channel binding are not enforced.">?</span>
+  </div>
+  {{if .LDAPSecurityResult}}
+  <table class="data-table" style="margin-bottom:20px">
+    <thead><tr><th>Setting</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Transport</td>
+        <td>{{if .LDAPSecurityResult.PlainLDAP}}<span class="badge badge-medium">plain LDAP port 389</span>{{else}}<span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">LDAPS port 636</span>{{end}}</td>
+      </tr>
+      <tr>
+        <td>LDAP signing</td>
+        <td>{{if .LDAPSecurityResult.SigningEnforced}}<span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ enforced</span>{{else}}<span class="badge badge-medium">⚠ NOT enforced</span>{{end}}</td>
+      </tr>
+      <tr>
+        <td>SASL mechanisms</td>
+        <td class="mono" style="font-size:0.82rem">{{range $i,$m := .LDAPSecurityResult.SASLMechanisms}}{{if $i}}, {{end}}{{$m}}{{end}}</td>
+      </tr>
+      <tr>
+        <td>Capabilities (OIDs)</td>
+        <td class="mono" style="font-size:0.75rem">{{range $i,$c := .LDAPSecurityResult.Capabilities}}{{if $i}}<br>{{end}}{{$c}}{{end}}</td>
+      </tr>
+    </tbody>
+  </table>
+  {{if .LDAPSecurityResult.Findings}}
+  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Findings</div>
+  {{range .LDAPSecurityResult.Findings}}
+  <div class="path-card" style="margin-bottom:10px">
+    <div class="path-header">
+      <span class="badge {{if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
+      <span style="margin-left:8px">{{.Title}}</span>
+    </div>
+    <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
+  </div>
+  {{end}}
+  {{else}}
+  <p style="color:var(--color-ok)">✓ No LDAP security issues found.</p>
+  {{end}}
+  {{else}}
+  <p style="color:var(--text-muted)">LDAP security data not available.</p>
   {{end}}
 </div>
 

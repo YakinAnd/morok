@@ -229,6 +229,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	defer client.Close()
 
 	// ── RootDSE (no auth required) ────────────────────────────
+	var ldapSecResult *analysis.LDAPSecurityResult
 	if rds, err := client.QueryRootDSE(); err == nil {
 		color.Cyan("\n  DOMAIN INFO")
 		color.White("  %-28s %s", "domain", rds.DefaultNamingContext)
@@ -237,6 +238,8 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			rds.DomainFunctionality,
 			adldap.FunctionalityLevelName(rds.DomainFunctionality))
 		color.White("  %-28s %s", "responding DC", rds.ServerName)
+		ldapSecResult = analysis.AnalyzeLDAPSecurity(client, rds)
+		analysis.LDAPSecuritySummaryLine(ldapSecResult)
 	}
 
 	// ── enumeration ───────────────────────────────────────────
@@ -326,7 +329,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 

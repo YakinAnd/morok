@@ -243,7 +243,8 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ BloodHound JSON export — `--bloodhound` flag, сумісність з BH CE v5 (users/groups/computers/domains.json)
 - Audit Policy / Blue Team — Advanced Audit налаштування, event log retention, AD Recycle Bin
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
-- SMB signing / LDAP signing + channel binding статус
+- ✅ LDAP signing + channel binding статус — `internal/analysis/ldap_security.go`: перевірка plain vs LDAPS, supportedCapabilities OID (1.2.840.113556.1.4.1791), SASL механізми; HTML tab "LDAP Security"; summary рядок в enum
+- SMB signing статус — окрема задача (ADP-14), потребує SMB2 Negotiate парсинг
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
 - ✅ Enrollment rights перевірка як qualifier для ESC1 — DACL парсинг enrollment GUID, ESC1 Critical тільки якщо low-priv може записатись; інакше Medium
 - ✅ **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080` на всіх командах; DNS резолвиться на proxy-стороні; замінено LDAP dialer через `golang.org/x/net/proxy`; `--proxy + --ccache` — заблоковано з помилкою (PTT не підтримується через proxy)
