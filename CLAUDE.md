@@ -69,3 +69,19 @@ internal/report/
 - Use string parsing for Windows Security Descriptors
 - Break existing CLI interface (backward compat required)
 - Commit `.env` or any credentials
+
+## Linear Integration
+- Workspace: daily-workspace
+- Team: adpath
+- MCP server: linear-server (already configured)
+
+### Auto-create issues when:
+- `go test` fails → label: bug, priority: high
+- Found security/logic issue in code → label: bug
+- Infrastructure task needed → label: infra
+- Auto-detected by agent → label: auto-detected
+
+### Rules:
+- Check open Linear issues before starting work
+- Close issue in Linear after completing task
+- Always add label when creating issue
