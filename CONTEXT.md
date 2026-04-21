@@ -240,7 +240,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
   - Протестовано на GOAD-Light: north.sevenkingdoms.local → Bidirectional, AD (Uplevel), Internal, Info ✅
 
 ### v0.9 TODO
-- BloodHound JSON export — `--bloodhound` flag, сумісність з BH GUI
+- ✅ BloodHound JSON export — `--bloodhound` flag, сумісність з BH CE v5 (users/groups/computers/domains.json)
 - Audit Policy / Blue Team — Advanced Audit налаштування, event log retention, AD Recycle Bin
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
 - SMB signing / LDAP signing + channel binding статус

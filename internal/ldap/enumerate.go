@@ -210,7 +210,6 @@ func (c *Client) EnumerateGroups() ([]LDAPGroup, error) {
 		groups = append(groups, parseGroup(entry))
 	}
 	return groups, nil
-	return groups, nil
 }
 
 // EnumerateComputers збирає всі комп'ютери AD

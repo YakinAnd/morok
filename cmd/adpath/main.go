@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/YakinAnd/adpath/internal/analysis"
+	"github.com/YakinAnd/adpath/internal/bloodhound"
 	"github.com/YakinAnd/adpath/internal/graph"
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 	"github.com/YakinAnd/adpath/internal/report"
@@ -21,15 +22,16 @@ import (
 // ============================================================
 
 var (
-	domain     string
-	username   string
-	password   string
-	ntHash     string // --hash: NT hash for Pass-the-Hash
-	ccachePath string // --ccache: path to ccache file for Pass-the-Ticket
-	dc         string
-	reportPath string
-	maxDepth   int
-	verbose    bool
+	domain         string
+	username       string
+	password       string
+	ntHash         string // --hash: NT hash for Pass-the-Hash
+	ccachePath     string // --ccache: path to ccache file for Pass-the-Ticket
+	dc             string
+	reportPath     string
+	bloodhoundPath string // --bloodhound: output dir for BloodHound CE JSON
+	maxDepth       int
+	verbose        bool
 )
 
 // ============================================================
@@ -112,6 +114,7 @@ func init() {
 	}
 
 	enumCmd.Flags().StringVar(&reportPath, "report", "", "Save HTML report to file (e.g. report.html)")
+	enumCmd.Flags().StringVar(&bloodhoundPath, "bloodhound", "", "Export BloodHound CE JSON to directory (e.g. bh_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
 
 	rootCmd.AddCommand(aclCmd)
@@ -300,6 +303,17 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
+	}
+
+	if bloodhoundPath != "" {
+		if err := bloodhound.Export(bloodhoundPath, result); err != nil {
+			color.Yellow("  bloodhound export failed: %v", err)
+		} else {
+			color.Cyan("\n  BLOODHOUND EXPORT")
+			color.White("  %-28s %s", "output dir", bloodhoundPath)
+			color.White("  %-28s %s", "files", "users.json, groups.json, computers.json, domains.json")
+			color.White("  %-28s %s", "import", "BloodHound CE → Administration → File Ingest")
+		}
 	}
 
 	return nil
