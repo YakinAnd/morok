@@ -4,11 +4,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
 	goldap "github.com/go-ldap/ldap/v3"
+	"golang.org/x/net/proxy"
 )
 
 // Client зберігає параметри підключення та активне з'єднання
@@ -20,6 +22,7 @@ type Client struct {
 	Password   string
 	NTHash     string // NT hash for Pass-the-Hash (NTLM auth)
 	CcachePath string // path to ccache file for Pass-the-Ticket (Kerberos auth)
+	ProxyURL   string // SOCKS5 proxy, e.g. socks5://127.0.0.1:1080 (PTT not supported through proxy)
 	BaseDN     string
 	conn       *goldap.Conn
 	saslWrap   *saslConn // non-nil only for Kerberos ccache connections
@@ -76,21 +79,38 @@ func (c *Client) Connect() error {
 }
 
 // dialWithTimeout відкриває з'єднання з таймаутом.
+// Якщо ProxyURL встановлено — з'єднання йде через SOCKS5 proxy (DNS резолвиться на proxy-стороні).
 // Повертає go-ldap Conn, saslConn (для Kerberos wrapping), і помилку.
+// NOTE: PTT (Kerberos ccache) не підтримується через proxy — використовуй password або PTH.
 func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, *saslConn, error) {
 	timeout := 10 * time.Second
 
-	if useTLS {
-		tlsCfg := &tls.Config{
-			InsecureSkipVerify: true, // для пентесту прийнятно
-			ServerName:         c.Host,
-		}
-		conn, err := goldap.DialTLS("tcp", address, tlsCfg)
-		return conn, nil, err
+	dialer, err := c.buildDialer(timeout)
+	if err != nil {
+		return nil, nil, fmt.Errorf("proxy setup failed: %w", err)
 	}
 
-	// Створюємо saslConn-обгортку — passthrough до Activate()
-	netConn, err := net.DialTimeout("tcp", address, timeout)
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         c.Host,
+	}
+
+	if useTLS {
+		netConn, err := dialer.Dial("tcp", address)
+		if err != nil {
+			return nil, nil, err
+		}
+		tlsConn := tls.Client(netConn, tlsCfg)
+		if err := tlsConn.Handshake(); err != nil {
+			netConn.Close()
+			return nil, nil, fmt.Errorf("TLS handshake failed: %w", err)
+		}
+		conn := goldap.NewConn(tlsConn, true)
+		conn.Start()
+		return conn, nil, nil
+	}
+
+	netConn, err := dialer.Dial("tcp", address)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -99,6 +119,38 @@ func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, *sa
 	conn := goldap.NewConn(wrap, false)
 	conn.Start()
 	return conn, wrap, nil
+}
+
+// buildDialer повертає net.Dialer або SOCKS5 proxy dialer залежно від ProxyURL.
+func (c *Client) buildDialer(timeout time.Duration) (dialerIface, error) {
+	if c.ProxyURL == "" {
+		return &net.Dialer{Timeout: timeout}, nil
+	}
+
+	u, err := url.Parse(c.ProxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL %q: %w", c.ProxyURL, err)
+	}
+	if u.Scheme != "socks5" {
+		return nil, fmt.Errorf("unsupported proxy scheme %q (only socks5 supported)", u.Scheme)
+	}
+
+	var auth *proxy.Auth
+	if u.User != nil {
+		pass, _ := u.User.Password()
+		auth = &proxy.Auth{User: u.User.Username(), Password: pass}
+	}
+
+	d, err := proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
+	if err != nil {
+		return nil, fmt.Errorf("SOCKS5 dialer creation failed: %w", err)
+	}
+	return d, nil
+}
+
+// dialerIface is satisfied by both *net.Dialer and proxy.Dialer.
+type dialerIface interface {
+	Dial(network, addr string) (net.Conn, error)
 }
 
 // Bind виконує автентифікацію

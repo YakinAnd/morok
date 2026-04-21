@@ -27,6 +27,7 @@ var (
 	password       string
 	ntHash         string // --hash: NT hash for Pass-the-Hash
 	ccachePath     string // --ccache: path to ccache file for Pass-the-Ticket
+	proxyURL       string // --proxy: SOCKS5 proxy URL (PTT not supported through proxy)
 	dc             string
 	reportPath     string
 	bloodhoundPath string // --bloodhound: output dir for BloodHound CE JSON
@@ -115,6 +116,7 @@ func init() {
 		cmd.Flags().StringVarP(&ntHash, "hashes", "H", "", "NT hash for Pass-the-Hash (e.g. aad3b435...)")
 		cmd.Flags().StringVar(&ccachePath, "ccache", "", "Path to Kerberos ccache file for Pass-the-Ticket")
 		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
+		cmd.Flags().StringVar(&proxyURL, "proxy", "", "SOCKS5 proxy URL (e.g. socks5://127.0.0.1:1080) — PTT/ccache not supported through proxy")
 		cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 		cmd.MarkFlagRequired("domain")
 	}
@@ -172,6 +174,15 @@ func connectAndBind() (*adldap.Client, error) {
 	client := adldap.NewClient(domain, username, password, dc, verbose)
 	client.NTHash = ntHash
 	client.CcachePath = ccachePath
+	client.ProxyURL = proxyURL
+
+	if proxyURL != "" && ccachePath != "" {
+		return nil, fmt.Errorf("--proxy and --ccache cannot be used together: Kerberos ccache is not supported through SOCKS5 proxy")
+	}
+
+	if proxyURL != "" {
+		color.White("  proxy             %s", proxyURL)
+	}
 
 	if err := client.Connect(); err != nil {
 		return nil, fmt.Errorf("connection error: %w", err)
