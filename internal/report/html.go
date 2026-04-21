@@ -47,6 +47,8 @@ type ReportData struct {
 	AdminSDHolderResult  *analysis.AdminSDHolderResult
 	// v0.8.2
 	TrustResult *analysis.TrustResult
+	// v0.9.0
+	ShadowCredentialsResult *analysis.ShadowCredentialsResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -79,6 +81,8 @@ type Summary struct {
 	NoLAPSCount             int
 	ADCSTemplateCount       int
 	ADCSCriticalCount       int
+	// v0.9.0
+	ShadowCredCount         int
 }
 
 // GraphNode і GraphEdge для D3.js JSON
@@ -122,6 +126,7 @@ func Generate(
 	puResult *analysis.ProtectedUsersResult,
 	adminSDResult *analysis.AdminSDHolderResult,
 	trustResult *analysis.TrustResult,
+	shadowResult *analysis.ShadowCredentialsResult,
 	authMethod string,
 ) error {
 
@@ -144,10 +149,14 @@ func Generate(
 	ADCSResult:           adcsResult,
 	ForestWide:           result.ForestWide,
 	UserPrivGroups:       buildUserPrivGroups(result),
-	ProtectedUsersResult: puResult,
-	AdminSDHolderResult:  adminSDResult,
-	TrustResult:          trustResult,
+	ProtectedUsersResult:    puResult,
+	AdminSDHolderResult:     adminSDResult,
+	TrustResult:             trustResult,
+	ShadowCredentialsResult: shadowResult,
 }
+	if shadowResult != nil {
+		data.Summary.ShadowCredCount = len(shadowResult.Findings)
+	}
 
 	// парсимо шаблон
 	tmpl, err := template.New("report").Funcs(templateFuncs()).Parse(htmlTemplate)
@@ -751,6 +760,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button onclick="showTab('gpo')">GPO</button>
   <button onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
   <button onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
+  <button onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -1824,8 +1834,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span>
-      {{range .VulnTypes}}<span class="badge badge-critical" style="font-family:monospace">{{.}}</span>{{end}}
+      {{range .VulnTypes}}<span class="badge {{if eq $.Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
       <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
+      {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
       {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
     </div>
     <div style="padding:0 16px">
@@ -1847,6 +1858,54 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{else}}<p style="color:var(--color-ok)">✓ No vulnerable certificate templates found.</p>{{end}}
 
   {{else}}<p style="color:var(--text-muted)">ADCS data not available — run with full enum or use adpath adcs command.</p>{{end}}
+</div>
+
+<!-- SHADOW CREDENTIALS TAB -->
+<div id="tab-shadow" class="tab-pane">
+  <div class="section-header">
+    Shadow Credentials
+    <span class="help-icon" data-tip="Shadow Credentials: writing msDS-KeyCredentialLink on a privileged object allows obtaining a TGT without knowing or changing the password. Exploitable via pywhisker or certipy shadow.">?</span>
+  </div>
+  {{if .ShadowCredentialsResult}}
+    {{if .ShadowCredentialsResult.Findings}}
+    <div style="margin-bottom:16px">
+      <span class="badge badge-critical">{{len .ShadowCredentialsResult.Findings}} dangerous write ACEs found</span>
+    </div>
+    <table class="data-table">
+      <thead><tr>
+        <th>Principal</th>
+        <th>Type</th>
+        <th>Target</th>
+        <th>Target Type</th>
+        <th>Right</th>
+        <th>Severity</th>
+      </tr></thead>
+      <tbody>
+      {{range .ShadowCredentialsResult.Findings}}
+      <tr>
+        <td class="mono">{{.PrincipalName}}</td>
+        <td>{{.PrincipalType}}</td>
+        <td class="mono">{{.TargetName}}</td>
+        <td>{{.TargetType}}</td>
+        <td><span class="badge badge-medium" style="font-family:monospace;font-size:0.75rem">{{.Right}}</span></td>
+        <td><span class="badge badge-critical">{{.Severity}}</span></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    <div class="path-card" style="margin-top:16px">
+      <div class="path-header">Next Steps — exploit with pywhisker / certipy</div>
+      <div style="padding:12px 16px">
+        <span class="acc-cmd">pywhisker -d {{.ShadowCredentialsResult.Domain}} -u '&lt;principal&gt;' -p '&lt;pass&gt;' --target '&lt;target&gt;' --action add</span>
+        <span class="acc-cmd" style="margin-top:4px">certipy shadow auto -u '&lt;principal&gt;@{{.ShadowCredentialsResult.Domain}}' -p '&lt;pass&gt;' -account '&lt;target&gt;'</span>
+      </div>
+    </div>
+    {{else}}
+    <p style="color:var(--color-ok)">✓ No dangerous write ACEs on msDS-KeyCredentialLink found.</p>
+    {{end}}
+  {{else}}
+  <p style="color:var(--text-muted)">Shadow Credentials data not available.</p>
+  {{end}}
 </div>
 
 </div><!-- /content -->

@@ -315,7 +315,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 
