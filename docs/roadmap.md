@@ -1,27 +1,47 @@
 # Roadmap
 
+## Current: v0.9.4
+
+### v0.9.4
+- **Audit Policy / Blue Team** — `adpath audit` command; AD Recycle Bin check, legacy `auditingPolicy` attribute parse (9 categories), `ms-DS-MachineAccountQuota`; HTML Audit tab; High if no audit, Medium if Recycle Bin disabled or MAQ > 0
+- **Unit tests** — `go test ./...` coverage: audit parsing, LDAP security, full HTML report render with fake data
+
+### v0.9.3
+- **Anonymous LDAP check** — `ProbeAnonymousRead()` detects if anonymous bind can read AD objects beyond RootDSE; Medium finding "Anonymous LDAP read enabled"
+- **Improved anonymous output** — CLI shows "RootDSE ✓ readable" + hint when no credentials provided
+
+### v0.9.2
+- **`--scope` filtering** — override base DN for scoped OU/container audits on all commands
+
+### v0.9.1 / v0.9.0
+- **Shadow Credentials** — `adpath shadow`; DACL parse for `msDS-KeyCredentialLink` write on DA/EA/DC objects; HTML Shadow Creds tab
+- **BloodHound CE v5 export** — `--bloodhound` flag; users/groups/computers/domains.json
+- **ADCS enrollment rights** — ESC1 Critical only if low-priv principal can actually enroll; Medium otherwise
+- **HTML fixes** — severity badge fix, EnrollableBy badge
+
+### v0.9.0
+- **SOCKS5 proxy** — `--proxy socks5://host:port`; remote DNS; TLS-over-SOCKS5; PTT+proxy blocked
+- **LDAP signing + channel binding** — `internal/analysis/ldap_security.go`; OID check; SASL over plain LDAP; HTML LDAP Security tab
+
+---
+
 ## Released
 
-### v0.8.3 (current)
-- Light/dark theme toggle in HTML report (persisted to localStorage)
-- Next steps suppressed in `enum` output — shown only in standalone commands
-
 ### v0.8.2
-- Trust analysis — `trustedDomain` enumeration, SID filtering status, Foreign Security Principals
-- `adpath trust` standalone command
-- HTML Trusts tab
+- Trust analysis — `trustedDomain` enumeration, SID filtering, FSPs in privileged groups, `adpath trust`, HTML Trusts tab
 
 ### v0.8.1
-- Protected Users group check — privileged accounts not in group
-- RootDSE enumeration without auth — domain, forest, functional level, responding DC
-- AdminSDHolder analysis — orphaned adminCount=1, backdoor ACEs
-- GPO ACL analysis — real SD parsing, write access on GPOs
-- Global search bar in HTML report
+- Protected Users group check
+- RootDSE enumeration without authentication
+- AdminSDHolder — orphaned adminCount=1, backdoor ACEs
+- GPO ACL analysis — real nTSecurityDescriptor parsing
+- Global search in HTML report
 
 ### v0.7
-- ADCS module — ESC1–ESC8 detection with certipy next steps
+- ADCS module — ESC1–ESC8 with certipy next steps
 - LAPS coverage detection
 - GPP/MS14-025 detection via CSE GUIDs
+- HTML: ADCS tab, Exposure tab, finding grouping, section tooltips
 
 ### v0.6
 - DCSync detection
@@ -30,42 +50,38 @@
 - Extended attack paths to 8 privileged groups
 
 ### v0.5
-- Forest-wide computer enumeration via Global Catalog
+- Forest-wide computer enumeration via Global Catalog (port 3268)
+- Clickable summary cards in HTML
+- D3.js graph redesign: node size = path count, edge labels, tooltips, red admin arrows
 
 ### v0.4
-- Pass-the-Hash (NTLM)
-- Pass-the-Ticket (Kerberos ccache)
+- Pass-the-Hash (NTLM) — `--hashes` flag
+- Pass-the-Ticket (Kerberos ccache) — `--ccache` flag; SPNEGO/GSSAPI implementation
 
 ### v0.3
 - Delegation checks (unconstrained, constrained, RBCD)
-- GPO enumeration + password policy
+- GPO enumeration + password policy audit
 
 ### v0.2
-- Kerberoasting / AS-REP roasting detection
-- Dangerous ACL analysis
+- `adpath kerberos` — Kerberoasting / AS-REP detection
+- `adpath acl` — dangerous ACL analysis with bloodyAD hints
 
 ### v0.1
-- LDAP enumeration, attack paths, HTML report
+- LDAP connection + authentication
+- User/group/computer enumeration
+- BFS attack paths to Domain Admins
+- CLI output with colors
+- HTML report with D3.js graph
 
 ---
 
 ## Planned
 
-### v0.9
-- **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080` with remote DNS resolution
-- **Stealth mode** — `--stealth`: minimal LDAP queries, no GC/SMB, reduced noise for engagements with SIEM
-- **Shadow Credentials** — detect write access to `msDS-KeyCredentialLink` on privileged objects
-
-### v0.9.1
-- **MITRE ATT&CK mapping** — technique badges on every finding with links to attack.mitre.org
-
-### v0.9.2
-- **--scope filtering** — limit enumeration to a specific OU: `--scope "OU=Finance,DC=corp,DC=local"`
-
-### v0.9.3
-- **Anonymous LDAP check** — detect if anonymous bind exposes more than RootDSE (security finding)
-- **Username enumeration** — `adpath enum-users --wordlist users.txt` via Kerberos AS-REQ without credentials
+### Next
+- **Username enumeration via Kerberos AS-REQ** — `adpath enum-users --wordlist users.txt`; PRINCIPAL_UNKNOWN vs PREAUTH_REQUIRED without credentials
+- **MITRE ATT&CK mapping** — technique tags (T1558.003, T1484.001, etc.) on each finding; badge with link to attack.mitre.org in HTML report
 
 ### v1.0 — Public release
 - README with demo GIF
-- Blog post, r/netsec, conference presentations
+- Blog post, r/netsec, conference (UISGCON)
+- Pre-built binaries for Linux/macOS/Windows

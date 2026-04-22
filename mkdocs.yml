@@ -1,5 +1,5 @@
 site_name: adpath
-site_description: Active Directory Attack Path Enumerator
+site_description: Active Directory Attack Path Enumerator — lightweight CLI for AD security analysis
 site_url: https://yakinand.github.io/adpath
 repo_url: https://github.com/YakinAnd/adpath
 repo_name: YakinAnd/adpath
@@ -53,6 +53,7 @@ nav:
     - Installation: getting-started/install.md
     - Authentication: getting-started/auth.md
     - Quick Start: getting-started/quickstart.md
+    - Proxy & Scope: getting-started/proxy-scope.md
   - Commands:
     - enum: commands/enum.md
     - kerberos: commands/kerberos.md
@@ -61,11 +62,18 @@ nav:
     - gpo: commands/gpo.md
     - adcs: commands/adcs.md
     - trust: commands/trust.md
+    - shadow: commands/shadow.md
+    - audit: commands/audit.md
+  - HTML Report:
+    - Overview: report/overview.md
+    - Tabs reference: report/tabs.md
   - Attack Techniques:
     - Kerberoasting: techniques/kerberoasting.md
     - AS-REP Roasting: techniques/asreproasting.md
     - ACL Abuse: techniques/acl-abuse.md
     - Delegation Abuse: techniques/delegation.md
-    - ADCS (ESC1-ESC8): techniques/adcs.md
+    - ADCS (ESC1–ESC8): techniques/adcs.md
     - Trust Attacks: techniques/trusts.md
+    - Shadow Credentials: techniques/shadow-credentials.md
+    - LDAP Relay: techniques/ldap-relay.md
   - Roadmap: roadmap.md

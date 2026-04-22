@@ -2,42 +2,56 @@
 
 ## 1. Full enumeration
 
-The `enum` command runs all checks and generates an HTML report.
+The `enum` command runs all analysis modules and generates an HTML report.
 
 ```bash
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-Output includes:
+CLI output:
 
-- Domain info (functional level, forest, responding DC)
-- Collected objects (users, groups, computers)
-- Attack paths to privileged groups
-- Kerberoastable / AS-REP roastable accounts
-- Dangerous ACLs
-- Delegation misconfigurations
-- GPO findings
-- ADCS vulnerabilities (ESC1–ESC8)
-- Protected Users coverage
-- AdminSDHolder backdoor ACEs
-- Domain trust configuration
+```
+  DOMAIN INFO
+  domain                       DC=corp,DC=local
+  forest                       DC=corp,DC=local
+  domain level                 7  (Windows Server 2016/2019/2022)
+  responding DC                dc01.corp.local
 
-```bash
-# Save report to a specific path
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --report /tmp/corp_report.html
+  GRAPH
+  nodes        47
+  edges        123
+
+  ATTACK PATHS
+  [CRITICAL] jdoe → MemberOf → IT Admins → MemberOf → Domain Admins  (depth 2)
+
+  KERBEROS
+  kerberoastable               3
+  as-rep roastable             1
+
+  ACL
+  dangerous ACLs               12
+  DCSync rights                2
+  ...
+
+  report saved to: corp_2026-04-22_10-00-00.html
 ```
 
-The report is a self-contained HTML file with a dark/light theme toggle and a global search bar.
-
-## 2. Targeted checks
-
-Run individual modules when you only need specific data:
+## 2. Save to specific path
 
 ```bash
-# Kerberoastable + AS-REP roastable accounts
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+  --report /tmp/corp_report.html
+```
+
+## 3. Targeted checks
+
+Run individual modules when you need specific data. Standalone commands show **full output** including exploit next steps — `enum` only shows a summary.
+
+```bash
+# Kerberoastable + AS-REP roastable accounts (with hashcat commands)
 adpath kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
-# Dangerous ACLs (GenericAll, WriteDACL, DCSync...)
+# Dangerous ACLs
 adpath acl -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Delegation misconfigurations
@@ -46,19 +60,56 @@ adpath delegation -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 # GPO analysis + password policy
 adpath gpo -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
-# ADCS (ESC1–ESC8)
+# ADCS — ESC1 through ESC8
 adpath adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Domain trusts + Foreign Security Principals
 adpath trust -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+
+# Shadow Credentials
+adpath shadow -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+
+# Audit policy + AD Recycle Bin
+adpath audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-Standalone commands print full output including next steps (exploit commands). The `enum` command shows a summary without next steps to keep output clean.
+## 4. BloodHound CE export
 
-## 3. Low-privilege account
+Generate JSON files compatible with BloodHound Community Edition v5:
 
-adpath works with any valid domain account. You do not need Domain Admin or local admin rights for enumeration — AD's default security model allows all authenticated users to read most LDAP attributes.
+```bash
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+  --bloodhound ./bh_out/
+```
+
+Import via: **BloodHound CE → Administration → File Ingest**
+
+## 5. Scoped enumeration
+
+Audit only a specific OU or container instead of the entire domain. Useful for large environments or when you want to focus on a specific business unit.
+
+```bash
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+  --scope "OU=Finance,DC=corp,DC=local"
+```
+
+## 6. Low-privilege account
+
+adpath works with **any valid domain account**. AD's default security model allows all authenticated users to read most LDAP attributes — you do not need Domain Admin or local admin rights for enumeration.
 
 ```bash
 adpath enum -d corp.local -u helpdesk -p 'Summer2024!' --dc 10.0.0.1
 ```
+
+## 7. Pivoting through SOCKS5
+
+Route all LDAP traffic through a proxy — useful when the DC is only reachable via a pivot:
+
+```bash
+# Start your SOCKS5 proxy (e.g. via SSH tunnel or Chisel)
+# Then run adpath with --proxy
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+  --proxy socks5://127.0.0.1:1080
+```
+
+DNS is resolved on the proxy side (remote DNS). See [Proxy & Scope](proxy-scope.md) for details.
