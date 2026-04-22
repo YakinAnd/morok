@@ -1,8 +1,15 @@
 # Roadmap
 
-## Current: v0.9.4
+## Current: v0.9.5
+
+### v0.9.5
+- **`adpath users`** — targeted user enumeration with colored table (AS-REP red, adminCount yellow, disabled dim); columns: username, display name, enabled, adminCount, AS-REP, pwd-never-expires, last logon, SPN count
+- **`adpath computers`** — targeted computer enumeration via forest-wide GC; table: hostname, full OS + version, enabled; summary shows LAPS count and unconstrained delegation count
+- **CLI table improvements** — ADCS vulnerable templates and Protected Users findings now use aligned column tables with separator lines
+- **Bug fix** — `OBJECTS COLLECTED` and `QUICK FINDINGS` sections now only appear in `enum`, not in targeted commands (acl, shadow, trust, etc.)
 
 ### v0.9.4
+- **MITRE ATT&CK mapping** — 17 technique keys, purple T-code badges in HTML report on section headers and per-row findings; all badges link to attack.mitre.org
 - **Audit Policy / Blue Team** — `adpath audit` command; AD Recycle Bin check, legacy `auditingPolicy` attribute parse (9 categories), `ms-DS-MachineAccountQuota`; HTML Audit tab; High if no audit, Medium if Recycle Bin disabled or MAQ > 0
 - **Unit tests** — `go test ./...` coverage: audit parsing, LDAP security, full HTML report render with fake data
 

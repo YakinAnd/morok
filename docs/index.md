@@ -11,7 +11,7 @@ adpath is a lightweight, single-binary CLI tool for enumerating Active Directory
  / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |
 /_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|
 
-  v0.9.4  //  AD Attack Path Enumerator
+  v0.9.5  //  AD Attack Path Enumerator
 ```
 
 ---
@@ -109,4 +109,6 @@ Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/a
 | `trust` | Domain/forest trust analysis, Foreign Security Principals |
 | `shadow` | Shadow Credentials — write access to msDS-KeyCredentialLink |
 | `audit` | Audit policy, AD Recycle Bin, machine account quota |
+| `users` | Enumerate AD users — summary table with AS-REP, adminCount, last logon |
+| `computers` | Enumerate AD computers — forest-wide, OS, LAPS, delegation summary |
 | `version` | Print version |

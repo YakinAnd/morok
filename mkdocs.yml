@@ -66,6 +66,8 @@ nav:
     - trust: commands/trust.md
     - shadow: commands/shadow.md
     - audit: commands/audit.md
+    - users: commands/users.md
+    - computers: commands/computers.md
   - HTML Report:
     - Overview: report/overview.md
     - Tabs reference: report/tabs.md

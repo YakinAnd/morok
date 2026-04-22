@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.9.4
+- **Поточна версія:** v0.9.5
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -101,6 +101,12 @@ golang.org/x/net/proxy                  # --proxy SOCKS5
 
 # Автентифікація: Pass-the-Ticket
 ./adpath enum -d corp.local --ccache /tmp/admin.ccache --dc kingslanding.sevenkingdoms.local
+
+# Тільки користувачі (targeted)
+./adpath users -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Тільки комп'ютери (targeted, forest-wide GC)
+./adpath computers -d corp.local -u admin -p Pass --dc 10.0.0.1
 
 # Версія
 ./adpath version
@@ -329,6 +335,14 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **HTML report — SVG logo** — adpath graph icon у header (7 outer nodes + spokes + center); light/dark theme adaptive
 - ✅ **--json flag** — перейменовано з --bloodhound; docs оновлено; BH CE v5 сумісність задокументована
 - ✅ **MkDocs Material docs** — повна документація на `docs/`; auto-deploy вимкнено (workflow_dispatch); приватна до публічного релізу
+- ✅ **MITRE ATT&CK mapping** (`internal/analysis/mitre.go`) — 17 ключів, purple T-code badges в HTML звіті
+
+### v0.9.5 ЗАВЕРШЕНО
+
+- ✅ **`adpath users`** — targeted enumeration тільки юзерів; зведення + colored table (AS-REP червоний, adminCount жовтий, disabled dim); колонки: username, display name, enabled, adminCount, AS-REP, pwd-never-expires, last logon, SPN count
+- ✅ **`adpath computers`** — targeted enumeration тільки комп'ютерів; forest-wide GC (як `enum`); зведення LAPS/delegation + таблиця: hostname, OS (з версією), enabled; dynamic column widths
+- ✅ **CLI table improvements** — ADCS vulnerable templates і Protected Users findings тепер відображаються у вирівняних таблицях з заголовками та separator line
+- ✅ **Bug fix** — `OBJECTS COLLECTED` і `QUICK FINDINGS` виводяться тільки в `enum`, не в targeted командах (acl, shadow, trust тощо); `EnumerateAll()` більше не друкує автоматично
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -341,4 +355,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.4 — Spinner, MITRE ATT&CK mapping, SVG logo, --json rename, MkDocs docs.*
+*Останнє оновлення: v0.9.5 — adpath users/computers, CLI table improvements, OBJECTS COLLECTED fix.*
