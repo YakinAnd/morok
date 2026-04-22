@@ -79,10 +79,6 @@ adpath users -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 adpath computers -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-`adpath users` highlights AS-REP roastable accounts in red, adminCount=1 in yellow, disabled accounts are dimmed.
-
-`adpath computers` uses forest-wide Global Catalog enumeration — shows hosts from all domains in the forest.
-
 ## 4. JSON export
 
 Export AD objects as JSON files (users, groups, computers, domains):
