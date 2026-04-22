@@ -26,9 +26,25 @@ adpath/
 │   │   ├── kerberos.go             # Kerberoastable + AS-REP roastable detection
 │   │   ├── acl.go                  # Dangerous ACL (GenericAll, WriteDACL, ForceChangePassword...)
 │   │   ├── delegation.go           # Unconstrained, Constrained, RBCD delegation
-│   │   └── gpo.go                  # GPO enumeration + password policy audit
+│   │   ├── gpo.go                  # GPO enumeration + password policy audit
+│   │   ├── adcs.go                 # ADCS ESC1-ESC8 detection
+│   │   ├── trusts.go               # Domain/forest trust analysis + SID filtering
+│   │   ├── shadow_credentials.go   # msDS-KeyCredentialLink write ACE detection
+│   │   ├── ldap_security.go        # LDAP signing/channel binding/anonymous check
+│   │   ├── audit.go                # AD Recycle Bin, auditingPolicy, MAQ
+│   │   ├── mitre.go                # MITRE ATT&CK technique mapping (17 keys)
+│   │   ├── hygiene.go              # Stale accounts, krbtgt age, LAPS, GPP
+│   │   ├── adminsdholder.go        # AdminSDHolder orphans + custom ACEs
+│   │   ├── protected_users.go      # Protected Users group membership check
+│   │   └── pso.go                  # Fine-Grained Password Policy (PSO)
+│   ├── spinner/
+│   │   └── spinner.go              # CLI spinner — adpath logo rotating during analysis
+│   ├── bloodhound/                 # BloodHound CE v5 JSON export
 │   └── report/
 │       └── html.go                 # Single-file HTML звіт з D3.js графом
+├── docs/                           # MkDocs Material documentation (private, workflow_dispatch)
+│   └── assets/logo.svg             # SVG graph icon (7 spokes + center node)
+└── mkdocs.yml                      # MkDocs config
 ```
 
 ## Залежності
@@ -37,6 +53,9 @@ github.com/go-ldap/ldap/v3
 github.com/spf13/cobra
 github.com/fatih/color
 github.com/olekukonko/tablewriter
+github.com/anthropics/anthropic-sdk-go  # --ai-report (Pro)
+github.com/joho/godotenv
+golang.org/x/net/proxy                  # --proxy SOCKS5
 ```
 
 ---
@@ -45,7 +64,13 @@ github.com/olekukonko/tablewriter
 
 ```bash
 # Повний enumeration + attack paths + HTML звіт
-./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --report report.html
+./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# З фільтрацією scope, proxy, JSON export
+./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 \
+  --scope "OU=Finance,DC=corp,DC=local" \
+  --proxy socks5://127.0.0.1:1080 \
+  --json ./bh_out/
 
 # Kerberoastable і AS-REP акаунти
 ./adpath kerberos -d corp.local -u admin -p Pass --dc 10.0.0.1
@@ -58,6 +83,24 @@ github.com/olekukonko/tablewriter
 
 # GPO analysis + password policy
 ./adpath gpo -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# ADCS ESC1-ESC8 detection
+./adpath adcs -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Domain/forest trust analysis
+./adpath trust -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Shadow Credentials (msDS-KeyCredentialLink)
+./adpath shadow -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Audit Policy / Blue Team visibility
+./adpath audit -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Автентифікація: Pass-the-Hash
+./adpath enum -d corp.local -u admin --hash <NT_hash> --dc 10.0.0.1
+
+# Автентифікація: Pass-the-Ticket
+./adpath enum -d corp.local --ccache /tmp/admin.ccache --dc kingslanding.sevenkingdoms.local
 
 # Версія
 ./adpath version
@@ -98,9 +141,25 @@ github.com/olekukonko/tablewriter
 
 ### HTML звіт
 - Single file (CSS + D3.js inline)
-- Tabs: Summary, Attack Paths, Graph, Kerberos, ACL, Delegation, GPO, Users, Groups, Computers
+- Tabs: Summary, Attack Paths, Graph, Kerberos, ACL, Delegation, GPO, ADCS, Trusts, Shadow Creds, LDAP Security, Audit, Exposure, Users, Groups, Computers
 - D3.js force-directed граф для attack paths
 - Summary: findings chart по severity + категорії
+- SVG adpath logo в header (7 spokes + center node)
+- Light/dark theme toggle
+- Global search через всі tabs
+- MITRE ATT&CK badges (purple T-code, linked до attack.mitre.org) на section headers і per-finding rows
+- Per-finding Exploit/Fix accordion з контекстними командами
+
+### CLI Spinner
+- `internal/spinner` — 8-frame анімація, · обертається навколо ⊙ по годинниковій (N→NE→E→SE→S→SW→W→NW)
+- 100ms/frame, 3-line ANSI block, ⊙ — purple, · — dim white
+- Ховає/показує курсор (`\033[?25l` / `\033[?25h`)
+- Запускається під час silent Analyze* фази в `runEnum`
+
+### MITRE ATT&CK Mapping (`internal/analysis/mitre.go`)
+- 17 ключів: kerberoasting, asrep, dcsync, acl_abuse, force_change_password, add_member, unconstrained_delegation, constrained_delegation, rbcd, adcs, gpo_abuse, shadow_credentials, ldap_relay, anon_ldap, trust_abuse, audit_defense, machine_account_quota
+- `LookupTechniques(key MitreKey) []MitreTechnique`
+- `MitreTechnique.URL()` → `https://attack.mitre.org/techniques/TXXXX/`
 
 ---
 
@@ -252,8 +311,9 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **Shadow Credentials** — `internal/analysis/shadow_credentials.go`: DACL парсинг msDS-KeyCredentialLink (GUID 5b47d60f-...) на DA/EA/DC об'єктах; окрема команда `adpath shadow`; next steps з pywhisker/certipy; HTML tab Shadow Creds з таблицею findings
 - ✅ **HTML report fixes (v0.9.0)** — Shadow Credentials tab в HTML звіті; EnrollableBy badge в ADCS tab для ESC1; виправлено severity badge (Medium більше не показує badge-critical)
 
-### v0.9.1 TODO
-- **MITRE ATT&CK mapping** — автоматичні теги до кожного finding: "T1558.003 — Kerberoasting", "T1484.001 — GPO modification" і т.д. CISO і compliance teams люблять цю мову. В HTML звіті — badge біля кожного finding з посиланням на attack.mitre.org. Подумати над посиланнями на mitigation.
+### v0.9.1 ЗАВЕРШЕНО
+
+- ✅ **MITRE ATT&CK mapping** (`internal/analysis/mitre.go`) — 17 ключів, purple T-code badges в HTML звіті на section headers і per-row (ACL по типу права, Delegation по типу делегування). Всі badges клікабельні → attack.mitre.org.
 
 ### v0.9.2 ЗАВЕРШЕНО
 
@@ -262,7 +322,13 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 ### v0.9.3 ЗАВЕРШЕНО
 
 - ✅ **Anonymous LDAP check** — `ProbeAnonymousRead()` перевіряє чи anonymous bind може читати AD objects (не тільки RootDSE); `LDAPSecurityResult.AnonReadEnabled` + finding "Anonymous LDAP read enabled" (Medium); CLI при anonymous bind показує "RootDSE ✓ readable" + підказку для повного enumeration
-- **Username enumeration via Kerberos AS-REQ** — `adpath enum-users --wordlist users.txt`: без пароля, тільки доступ до мережі. Помилка `PRINCIPAL_UNKNOWN` vs `PREAUTH_REQUIRED` — дозволяє підтвердити існування акаунта
+
+### v0.9.4 ЗАВЕРШЕНО
+
+- ✅ **CLI Spinner** (`internal/spinner`) — adpath logo обертається під час silent analysis фази в `runEnum`; 8-frame, 100ms/frame, ⊙ purple + · dim white
+- ✅ **HTML report — SVG logo** — adpath graph icon у header (7 outer nodes + spokes + center); light/dark theme adaptive
+- ✅ **--json flag** — перейменовано з --bloodhound; docs оновлено; BH CE v5 сумісність задокументована
+- ✅ **MkDocs Material docs** — повна документація на `docs/`; auto-deploy вимкнено (workflow_dispatch); приватна до публічного релізу
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -275,4 +341,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.4 — Audit Policy / Blue Team (adpath audit, AD Recycle Bin, auditingPolicy parse, MAQ check, HTML Audit tab).*
+*Останнє оновлення: v0.9.4 — Spinner, MITRE ATT&CK mapping, SVG logo, --json rename, MkDocs docs.*
