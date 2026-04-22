@@ -151,14 +151,18 @@ func printProtectedUsersResult(r *ProtectedUsersResult, showNextSteps bool) {
 	color.Red("  %-32s %d  (NTLM/RC4 auth possible, delegation not blocked)",
 		"privileged not in group", len(r.PrivilegedNotProtected))
 
+	fmt.Println()
+	color.White("  %-28s %-10s %s", "ACCOUNT", "SEVERITY", "PRIVILEGED GROUPS")
+	color.White("  " + strings.Repeat("─", 70))
 	for _, f := range r.PrivilegedNotProtected {
-		line := fmt.Sprintf("    %-24s [%s]  %s", f.SAMAccountName, f.Severity, strings.Join(f.Groups, ", "))
+		line := fmt.Sprintf("  %-28s %-10s %s", f.SAMAccountName, f.Severity, strings.Join(f.Groups, ", "))
 		if f.Severity == "Critical" {
 			color.Red(line)
 		} else {
 			color.Yellow(line)
 		}
 	}
+	fmt.Println()
 
 	if showNextSteps {
 		color.Cyan("\n  NEXT STEPS (Protected Users)")

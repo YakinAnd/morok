@@ -110,12 +110,24 @@ var auditCmd = &cobra.Command{
 	RunE:  runAudit,
 }
 
+var usersCmd = &cobra.Command{
+	Use:   "users",
+	Short: "Enumerate AD users and display a summary table",
+	RunE:  runUsers,
+}
+
+var computersCmd = &cobra.Command{
+	Use:   "computers",
+	Short: "Enumerate AD computers and display a summary table",
+	RunE:  runComputers,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -143,6 +155,8 @@ func init() {
 	rootCmd.AddCommand(trustCmd)
 	rootCmd.AddCommand(shadowCmd)
 	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(usersCmd)
+	rootCmd.AddCommand(computersCmd)
 
 	rootCmd.Version = "0.9.4"
 }
@@ -510,6 +524,186 @@ func runShadow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("shadow credentials analysis error: %w", err)
 	}
 	analysis.PrintShadowCredentialsResult(r)
+	return nil
+}
+
+// ============================================================
+// Логіка команди Users
+// ============================================================
+
+func runUsers(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client, err := connectAndBind()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	color.Cyan("\n  USERS")
+	users, err := client.EnumerateUsers()
+	if err != nil {
+		return fmt.Errorf("user enumeration error: %w", err)
+	}
+
+	color.White("  %-28s %d", "total users", len(users))
+	enabled, disabled, adminCount, asrep, pwdNeverExpires := 0, 0, 0, 0, 0
+	for _, u := range users {
+		if u.Enabled {
+			enabled++
+		} else {
+			disabled++
+		}
+		if u.AdminCount {
+			adminCount++
+		}
+		if u.DontReqPreauth {
+			asrep++
+		}
+		if u.PasswordNeverExpires {
+			pwdNeverExpires++
+		}
+	}
+	color.White("  %-28s %d", "enabled", enabled)
+	color.White("  %-28s %d", "disabled", disabled)
+	if adminCount > 0 {
+		color.Yellow("  %-28s %d", "adminCount=1 (protected)", adminCount)
+	}
+	if asrep > 0 {
+		color.Red("  %-28s %d  (AS-REP roastable)", "no pre-auth", asrep)
+	}
+	if pwdNeverExpires > 0 {
+		color.Yellow("  %-28s %d", "password never expires", pwdNeverExpires)
+	}
+
+	fmt.Println()
+	color.White("  %-22s %-24s %-8s %-10s %-7s %-15s %-22s %s",
+		"USERNAME", "DISPLAY NAME", "ENABLED", "ADMINCOUNT", "AS-REP", "PWD NEVER EXP", "LAST LOGON", "SPNS")
+	color.White("  " + strings.Repeat("─", 120))
+	for _, u := range users {
+		enabledStr := "yes"
+		if !u.Enabled {
+			enabledStr = "no"
+		}
+		adminStr := ""
+		if u.AdminCount {
+			adminStr = "yes"
+		}
+		asrepStr := ""
+		if u.DontReqPreauth {
+			asrepStr = "yes"
+		}
+		pwdStr := ""
+		if u.PasswordNeverExpires {
+			pwdStr = "yes"
+		}
+		spnCount := ""
+		if len(u.SPNs) > 0 {
+			spnCount = fmt.Sprintf("%d", len(u.SPNs))
+		}
+		lastLogon := u.LastLogon
+		if lastLogon == "" {
+			lastLogon = "never"
+		}
+		line := fmt.Sprintf("  %-22s %-24s %-8s %-10s %-7s %-15s %-22s %s",
+			u.SAMAccountName, u.DisplayName, enabledStr, adminStr, asrepStr, pwdStr, lastLogon, spnCount)
+		if !u.Enabled {
+			color.White("\033[2m" + line + "\033[0m") // dim
+		} else if u.DontReqPreauth {
+			color.Red(line)
+		} else if u.AdminCount {
+			color.Yellow(line)
+		} else {
+			color.White(line)
+		}
+	}
+	return nil
+}
+
+// ============================================================
+// Логіка команди Computers
+// ============================================================
+
+func runComputers(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client, err := connectAndBind()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	color.Cyan("\n  COMPUTERS")
+	computers, err := client.EnumerateComputers()
+	if err != nil {
+		return fmt.Errorf("computer enumeration error: %w", err)
+	}
+
+	color.White("  %-28s %d", "total computers", len(computers))
+	enabled, disabled, laps, unconstr := 0, 0, 0, 0
+	for _, c := range computers {
+		if c.Enabled {
+			enabled++
+		} else {
+			disabled++
+		}
+		if c.LAPSEnabled {
+			laps++
+		}
+		if c.UnconstrainedDelegation {
+			unconstr++
+		}
+	}
+	color.White("  %-28s %d", "enabled", enabled)
+	color.White("  %-28s %d", "disabled", disabled)
+	if laps > 0 {
+		color.Green("  %-28s %d", "LAPS enabled", laps)
+	} else {
+		color.Yellow("  %-28s 0  (no LAPS managed hosts detected)", "LAPS enabled")
+	}
+	if unconstr > 0 {
+		color.Red("  %-28s %d  (unconstrained delegation)", "dangerous delegation", unconstr)
+	}
+
+	fmt.Println()
+	color.White("  %-36s %-32s %-8s %-6s %-20s %-22s %s",
+		"HOSTNAME", "OS", "ENABLED", "LAPS", "UNCONSTRAINED DELEG", "LAST LOGON", "DOMAIN")
+	color.White("  " + strings.Repeat("─", 135))
+	for _, c := range computers {
+		enabledStr := "yes"
+		if !c.Enabled {
+			enabledStr = "no"
+		}
+		lapsStr := ""
+		if c.LAPSEnabled {
+			lapsStr = "yes"
+		}
+		unStr := ""
+		if c.UnconstrainedDelegation {
+			unStr = "yes"
+		}
+		hostname := c.DNSHostName
+		if hostname == "" {
+			hostname = c.SAMAccountName
+		}
+		lastLogon := c.LastLogon
+		if lastLogon == "" {
+			lastLogon = "never"
+		}
+		osStr := c.OperatingSystem
+		if c.OperatingSystemVersion != "" {
+			osStr = fmt.Sprintf("%s (%s)", osStr, c.OperatingSystemVersion)
+		}
+		line := fmt.Sprintf("  %-36s %-32s %-8s %-6s %-20s %-22s %s",
+			hostname, osStr, enabledStr, lapsStr, unStr, lastLogon, c.Domain)
+		if c.UnconstrainedDelegation {
+			color.Red(line)
+		} else if !c.Enabled {
+			color.White("\033[2m" + line + "\033[0m") // dim
+		} else {
+			color.White(line)
+		}
+	}
 	return nil
 }
 

@@ -598,26 +598,26 @@ func printADCSResult(r *ADCSResult, showNextSteps bool) {
 		color.White("  %-28s %d", "vulnerable templates", 0)
 	} else {
 		color.Yellow("  %-28s %d  (%d critical)", "vulnerable templates", len(r.TemplateFindings), critCount)
-		color.White("  %-24s %-10s %-16s %s", "template", "severity", "vulns", "auth EKU")
-		color.White("  " + strings.Repeat("-", 64))
+		fmt.Println()
+		color.White("  %-32s %-10s %-20s %-26s %s", "TEMPLATE", "SEVERITY", "VULNS", "AUTH EKU", "ENROLLABLE BY")
+		color.White("  " + strings.Repeat("─", 100))
 		for _, f := range r.TemplateFindings {
 			authStr := ""
 			if f.AuthEnabled {
 				authStr = strings.Join(f.EKUs, ", ")
 			}
-			enrollStr := ""
-			if len(f.EnrollableBy) > 0 {
-				enrollStr = "  [enrollable by: " + strings.Join(f.EnrollableBy, ", ") + "]"
-			}
-			line := fmt.Sprintf("  %-24s %-10s %-16s %s%s", f.TemplateName, f.Severity, formatVulns(f.VulnTypes), authStr, enrollStr)
-			if f.Severity == "Critical" {
+			enrollStr := strings.Join(f.EnrollableBy, ", ")
+			line := fmt.Sprintf("  %-32s %-10s %-20s %-26s %s", f.TemplateName, f.Severity, formatVulns(f.VulnTypes), authStr, enrollStr)
+			switch f.Severity {
+			case "Critical":
 				color.Red(line)
-			} else if f.Severity == "High" {
+			case "High":
 				color.Yellow(line)
-			} else {
+			default:
 				color.White(line)
 			}
 		}
+		fmt.Println()
 	}
 
 	// CA-level findings (ESC6)
