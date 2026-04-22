@@ -174,12 +174,8 @@ func resolveReportPath(explicit, targetDomain string) string {
 // Auth helper
 // ============================================================
 
-// connectAndBind підключається та автентифікується відповідним методом:
-//
-//	--ccache  → Kerberos ccache (Pass-the-Ticket)
-//	-H/--hashes → NTLM hash (Pass-the-Hash)
-//	-u/-p     → simple bind (UPN / NT format)
-//	(none)    → anonymous bind (null session)
+// connectAndBind підключається та автентифікується відповідним методом.
+// Не друкує нічого — викликаючий код відповідає за вивід.
 func connectAndBind() (*adldap.Client, error) {
 	client := adldap.NewClient(domain, username, password, dc, verbose)
 	client.NTHash = ntHash
@@ -187,15 +183,10 @@ func connectAndBind() (*adldap.Client, error) {
 	client.ProxyURL = proxyURL
 	if scopeDN != "" {
 		client.BaseDN = scopeDN
-		color.White("  %-28s %s", "scope", scopeDN)
 	}
 
 	if proxyURL != "" && ccachePath != "" {
 		return nil, fmt.Errorf("--proxy and --ccache cannot be used together: Kerberos ccache is not supported through SOCKS5 proxy")
-	}
-
-	if proxyURL != "" {
-		color.White("  proxy             %s", proxyURL)
 	}
 
 	if err := client.Connect(); err != nil {
@@ -219,13 +210,10 @@ func connectAndBind() (*adldap.Client, error) {
 			return nil, fmt.Errorf("auth error: %w", err)
 		}
 	default:
-		color.Yellow("  no credentials — anonymous bind (limited enumeration)")
 		if err := client.AnonymousBind(); err != nil {
 			client.Close()
 			return nil, fmt.Errorf("anonymous bind failed: %w", err)
 		}
-		color.White("  %-28s %s", "RootDSE", "✓ readable")
-		color.Yellow("  %-28s %s", "hint", "obtain any domain account for full enumeration")
 	}
 
 	return client, nil
@@ -238,103 +226,55 @@ func connectAndBind() (*adldap.Client, error) {
 func runEnum(cmd *cobra.Command, args []string) error {
 	printBanner()
 
+	// ── спінер стартує одразу після банера ────────────────────
+	spin := spinner.New("enumerating " + domain + "...")
+	spin.Start()
+
+	// ── підключення ───────────────────────────────────────────
 	client, err := connectAndBind()
 	if err != nil {
+		spin.Stop()
 		return err
 	}
 	defer client.Close()
 
-	// ── RootDSE (no auth required) ────────────────────────────
+	// ── RootDSE ───────────────────────────────────────────────
+	var rds *adldap.RootDSEInfo
 	var ldapSecResult *analysis.LDAPSecurityResult
 	var auditResult *analysis.AuditResult
-	if rds, err := client.QueryRootDSE(); err == nil {
-		color.Cyan("\n  DOMAIN INFO")
-		color.White("  %-28s %s", "domain", rds.DefaultNamingContext)
-		color.White("  %-28s %s", "forest", rds.ForestNamingContext)
-		color.White("  %-28s %s  (%s)", "domain level",
-			rds.DomainFunctionality,
-			adldap.FunctionalityLevelName(rds.DomainFunctionality))
-		color.White("  %-28s %s", "responding DC", rds.ServerName)
+	if r, err := client.QueryRootDSE(); err == nil {
+		rds = r
 		ldapSecResult = analysis.AnalyzeLDAPSecurity(client, rds)
-		analysis.LDAPSecuritySummaryLine(ldapSecResult)
 		auditResult = analysis.AnalyzeAuditPolicy(client, rds)
-		analysis.AuditSummaryLine(auditResult)
 	}
 
 	// ── enumeration ───────────────────────────────────────────
 	result, err := client.EnumerateAll()
 	if err != nil {
+		spin.Stop()
 		return fmt.Errorf("enumeration error: %w", err)
 	}
 
 	// ── граф + attack paths ───────────────────────────────────
 	g := graph.Build(result)
-	nodes, edges := g.Stats()
-	color.Cyan("\n  GRAPH")
-	color.White("  %-12s %d", "nodes", nodes)
-	color.White("  %-12s %d", "edges", edges)
-
 	paths := g.FindPathsToPrivilegedGroups(maxDepth)
-	g.PrintPaths(paths)
 
 	// ── аналіз ───────────────────────────────────────────────
-	outPath := resolveReportPath(reportPath, domain)
-
-	spin := spinner.New("analyzing...")
-	spin.Start()
-
 	kr := analysis.AnalyzeKerberos(result)
-
-	aclResult, err := analysis.AnalyzeACL(client, result)
-	if err != nil {
-		aclResult = nil
-	}
-
-	dr, err := analysis.AnalyzeDelegation(client)
-	if err != nil {
-		dr = nil
-	}
-
-	gr, err := analysis.AnalyzeGPO(client)
-	if err != nil {
-		gr = nil
-	}
-
+	aclResult, _ := analysis.AnalyzeACL(client, result)
+	dr, _ := analysis.AnalyzeDelegation(client)
+	gr, _ := analysis.AnalyzeGPO(client)
 	hr := analysis.AnalyzeHygiene(result)
 	puResult := analysis.AnalyzeProtectedUsers(result)
-
-	adminSDResult, err := analysis.AnalyzeAdminSDHolder(client, result)
-	if err != nil {
-		adminSDResult = nil
-	}
-
-	trustResult, err := analysis.AnalyzeTrusts(client, result)
-	if err != nil {
-		trustResult = nil
-	}
-
-	psoResult, err := analysis.AnalyzePSO(client)
-	if err != nil {
-		psoResult = nil
-	}
-
-	adcsResult, err := analysis.AnalyzeADCS(client)
-	if err != nil {
-		adcsResult = nil
-	}
-
-	shadowResult, err := analysis.AnalyzeShadowCredentials(client, result)
-	if err != nil {
-		shadowResult = nil
-	}
+	adminSDResult, _ := analysis.AnalyzeAdminSDHolder(client, result)
+	trustResult, _ := analysis.AnalyzeTrusts(client, result)
+	psoResult, _ := analysis.AnalyzePSO(client)
+	adcsResult, _ := analysis.AnalyzeADCS(client)
+	shadowResult, _ := analysis.AnalyzeShadowCredentials(client, result)
 
 	spin.Stop()
 
-	if adcsResult != nil {
-		analysis.PrintADCSResultSummary(adcsResult)
-	}
-	analysis.AnalyzeShadowCredentialsSummary(shadowResult)
-
+	// ── вивід результатів ─────────────────────────────────────
 	authMethod := "Password"
 	switch {
 	case ccachePath != "":
@@ -345,6 +285,42 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
+	if rds != nil {
+		color.Cyan("\n  DOMAIN INFO")
+		color.White("  %-28s %s", "domain", rds.DefaultNamingContext)
+		color.White("  %-28s %s", "forest", rds.ForestNamingContext)
+		color.White("  %-28s %s  (%s)", "domain level",
+			rds.DomainFunctionality,
+			adldap.FunctionalityLevelName(rds.DomainFunctionality))
+		color.White("  %-28s %s", "responding DC", rds.ServerName)
+		color.White("  %-28s %s", "auth", authMethod)
+		if scopeDN != "" {
+			color.White("  %-28s %s", "scope", scopeDN)
+		}
+		if proxyURL != "" {
+			color.White("  %-28s %s", "proxy", proxyURL)
+		}
+		if username == "" {
+			color.Yellow("  %-28s %s", "mode", "anonymous bind — limited enumeration")
+			color.Yellow("  %-28s %s", "hint", "obtain any domain account for full enumeration")
+		}
+		analysis.LDAPSecuritySummaryLine(ldapSecResult)
+		analysis.AuditSummaryLine(auditResult)
+	}
+
+	nodes, edges := g.Stats()
+	color.Cyan("\n  GRAPH")
+	color.White("  %-12s %d", "nodes", nodes)
+	color.White("  %-12s %d", "edges", edges)
+	g.PrintPaths(paths)
+
+	if adcsResult != nil {
+		analysis.PrintADCSResultSummary(adcsResult)
+	}
+	analysis.AnalyzeShadowCredentialsSummary(shadowResult)
+
+	// ── звіт ─────────────────────────────────────────────────
+	outPath := resolveReportPath(reportPath, domain)
 	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
