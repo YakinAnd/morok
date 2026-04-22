@@ -675,13 +675,9 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		color.Red("  %-28s %d  (unconstrained delegation)", "dangerous delegation", unconstr)
 	}
 
-	const (
-		wHost = 40
-		wOS   = 36
-	)
 	fmt.Println()
-	color.White("  %-*s  %-*s  %s", wHost, "HOSTNAME", wOS, "OS", "ENABLED")
-	color.White("  " + strings.Repeat("─", wHost+wOS+12))
+	color.White("  %-44s  %-36s  %s", "HOSTNAME", "OS", "ENABLED")
+	color.White("  " + strings.Repeat("─", 88))
 	for _, c := range computers {
 		enabledStr := "yes"
 		if !c.Enabled {
@@ -691,11 +687,7 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		if hostname == "" {
 			hostname = c.SAMAccountName
 		}
-		osStr := c.OperatingSystem
-		line := fmt.Sprintf("  %-*s  %-*s  %s",
-			wHost, trunc(hostname, wHost),
-			wOS, trunc(osStr, wOS),
-			enabledStr)
+		line := fmt.Sprintf("  %-44s  %-36s  %s", hostname, c.OperatingSystem, enabledStr)
 		if !c.Enabled {
 			color.White("\033[2m" + line + "\033[0m")
 		} else {
