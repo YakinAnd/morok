@@ -21,7 +21,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | `--proxy` | | SOCKS5 proxy URL (`socks5://host:port`) | |
 | `--scope` | | Restrict enumeration to specific OU/DN | |
 | `--report` | | HTML report output path | `<domain>_<timestamp>.html` |
-| `--bloodhound` | | Directory for BloodHound CE JSON export | |
+| `--json` | | Export AD objects as JSON to directory (e.g. `json_out/`) | |
 | `--max-depth` | | BFS depth for attack path search | `10` |
 | `--verbose` | `-v` | Verbose LDAP output | |
 
@@ -41,7 +41,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | **ACL** | GenericAll, WriteDACL, WriteOwner, ForceChangePassword, AddMember, DCSync |
 | **Delegation** | Unconstrained, constrained, RBCD |
 | **GPO** | Password policy audit, GPO write ACL, GPP cpassword |
-| **Hygiene / Exposure** | Stale accounts, krbtgt age, LAPS coverage, passwords in descriptions |
+| **Exposure** | Stale accounts, krbtgt age, LAPS coverage, passwords in descriptions |
 | **PSO** | Fine-Grained Password Policy (msDS-PasswordSettings objects) |
 | **ADCS** | ESC1–ESC8 certificate template vulnerabilities |
 | **Protected Users** | Privileged accounts not in Protected Users group |
@@ -60,14 +60,14 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
 
 The report is a **self-contained single HTML file** — no server needed, works offline, can be emailed or archived.
 
-## BloodHound CE export
+## JSON export
 
 ```bash
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
-  --bloodhound ./bh_out/
+  --json ./json_out/
 ```
 
-Generates `users.json`, `groups.json`, `computers.json`, `domains.json` compatible with BloodHound CE v5. Import via: **BloodHound CE → Administration → File Ingest**.
+Generates `users.json`, `groups.json`, `computers.json`, `domains.json`. The format is compatible with **BloodHound CE v5** — import via: BloodHound CE → Administration → File Ingest.
 
 ## Examples
 
@@ -90,7 +90,7 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --scope "OU=Finance,DC=corp,DC=local"
 
-# Full run + BloodHound export
+# Full run + JSON export
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
-  --report /tmp/corp.html --bloodhound ./bh_out/
+  --report /tmp/corp.html --json ./json_out/
 ```

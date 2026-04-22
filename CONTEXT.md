@@ -240,7 +240,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
   - Протестовано на GOAD-Light: north.sevenkingdoms.local → Bidirectional, AD (Uplevel), Internal, Info ✅
 
 ### v0.9 TODO
-- ✅ BloodHound JSON export — `--bloodhound` flag, сумісність з BH CE v5 (users/groups/computers/domains.json)
+- ✅ JSON export — `--json` flag (перейменовано з --bloodhound), сумісність з BH CE v5 (users/groups/computers/domains.json)
 - ✅ Audit Policy / Blue Team — `internal/analysis/audit.go`: AD Recycle Bin status, legacy auditingPolicy attribute парсинг, ms-DS-MachineAccountQuota; `adpath audit` команда; HTML Audit tab; findings: High якщо audit не налаштовано, Medium якщо Recycle Bin відключений або MAQ > 0
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
 - ✅ LDAP signing + channel binding статус — `internal/analysis/ldap_security.go`: перевірка plain vs LDAPS, supportedCapabilities OID (1.2.840.113556.1.4.1791), SASL механізми; HTML tab "LDAP Security"; summary рядок в enum

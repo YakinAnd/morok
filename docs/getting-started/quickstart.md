@@ -73,16 +73,16 @@ adpath shadow -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 adpath audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-## 4. BloodHound CE export
+## 4. JSON export
 
-Generate JSON files compatible with BloodHound Community Edition v5:
+Export AD objects as JSON files (users, groups, computers, domains):
 
 ```bash
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
-  --bloodhound ./bh_out/
+  --json ./json_out/
 ```
 
-Import via: **BloodHound CE → Administration → File Ingest**
+The format is compatible with BloodHound CE v5 — import via: **BloodHound CE → Administration → File Ingest**
 
 ## 5. Scoped enumeration
 

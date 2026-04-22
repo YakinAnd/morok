@@ -31,7 +31,7 @@ var (
 	scopeDN        string // --scope: override base DN for scoped audit
 	dc             string
 	reportPath     string
-	bloodhoundPath string // --bloodhound: output dir for BloodHound CE JSON
+	jsonExportPath string // --json: output dir for AD JSON export (compatible with BloodHound CE)
 	maxDepth       int
 	verbose        bool
 )
@@ -130,7 +130,7 @@ func init() {
 	}
 
 	enumCmd.Flags().StringVar(&reportPath, "report", "", "Save HTML report to file (e.g. report.html)")
-	enumCmd.Flags().StringVar(&bloodhoundPath, "bloodhound", "", "Export BloodHound CE JSON to directory (e.g. bh_out/)")
+	enumCmd.Flags().StringVar(&jsonExportPath, "json", "", "Export AD objects as JSON to directory (e.g. json_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
 
 	rootCmd.AddCommand(aclCmd)
@@ -351,14 +351,14 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("report error: %w", err)
 	}
 
-	if bloodhoundPath != "" {
-		if err := bloodhound.Export(bloodhoundPath, result); err != nil {
-			color.Yellow("  bloodhound export failed: %v", err)
+	if jsonExportPath != "" {
+		if err := bloodhound.Export(jsonExportPath, result); err != nil {
+			color.Yellow("  json export failed: %v", err)
 		} else {
-			color.Cyan("\n  BLOODHOUND EXPORT")
-			color.White("  %-28s %s", "output dir", bloodhoundPath)
+			color.Cyan("\n  JSON EXPORT")
+			color.White("  %-28s %s", "output dir", jsonExportPath)
 			color.White("  %-28s %s", "files", "users.json, groups.json, computers.json, domains.json")
-			color.White("  %-28s %s", "import", "BloodHound CE → Administration → File Ingest")
+			color.White("  %-28s %s", "bloodhound", "compatible with BloodHound CE → Administration → File Ingest")
 		}
 	}
 

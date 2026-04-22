@@ -15,7 +15,7 @@
 
 ### v0.9.1 / v0.9.0
 - **Shadow Credentials** — `adpath shadow`; DACL parse for `msDS-KeyCredentialLink` write on DA/EA/DC objects; HTML Shadow Creds tab
-- **BloodHound CE v5 export** — `--bloodhound` flag; users/groups/computers/domains.json
+- **JSON export** — `--json` flag; users/groups/computers/domains.json; compatible with BloodHound CE v5
 - **ADCS enrollment rights** — ESC1 Critical only if low-priv principal can actually enroll; Medium otherwise
 - **HTML fixes** — severity badge fix, EnrollableBy badge
 
@@ -45,7 +45,7 @@
 
 ### v0.6
 - DCSync detection
-- Hygiene / Exposure module — stale accounts, krbtgt age, passwords in descriptions
+- Exposure module — stale accounts, krbtgt age, passwords in descriptions
 - PSO (Fine-Grained Password Policy) analysis
 - Extended attack paths to 8 privileged groups
 

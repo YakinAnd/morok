@@ -30,7 +30,7 @@ adpath connects to a Domain Controller over LDAP and runs a comprehensive securi
 | **Shadow Credentials** | Write access to `msDS-KeyCredentialLink` on privileged objects |
 | **Trusts** | SID filtering, trust direction/type, Foreign Security Principals in privileged groups |
 | **GPO** | Password policy, GPO write ACL, GPP/MS14-025 cpassword |
-| **Hygiene** | Stale accounts, krbtgt age, LAPS coverage, passwords in descriptions |
+| **Exposure** | Stale accounts, krbtgt age, LAPS coverage, passwords in descriptions |
 | **Protected Users** | Privileged accounts not in Protected Users group |
 | **AdminSDHolder** | Orphaned adminCount=1 objects, backdoor ACEs |
 | **LDAP Security** | Signing/channel binding enforcement, SASL mechanisms, anonymous read |
@@ -47,7 +47,7 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 - **Multiple auth methods** — password, Pass-the-Hash (NTLM), Pass-the-Ticket (Kerberos ccache)
 - **SOCKS5 proxy** — route all LDAP traffic through a proxy (`--proxy socks5://127.0.0.1:1080`)
 - **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
-- **BloodHound export** — generate CE v5 JSON for import into BloodHound (`--bloodhound ./bh_out/`)
+- **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
 - **Self-contained HTML report** — single file, dark/light theme, global search, D3.js attack path graph
 
 ---
@@ -67,8 +67,8 @@ adpath enum -d corp.local --ccache admin.ccache --dc dc01.corp.local
 # With SOCKS5 proxy (pivoting)
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
 
-# Export for BloodHound CE
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --bloodhound ./bh_out/
+# JSON export (compatible with BloodHound CE)
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
 
 # Scoped audit (Finance OU only)
 adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Finance,DC=corp,DC=local"
