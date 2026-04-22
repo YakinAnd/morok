@@ -675,9 +675,28 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		color.Red("  %-28s %d  (unconstrained delegation)", "dangerous delegation", unconstr)
 	}
 
+	// compute column widths dynamically
+	maxHost, maxOS := len("HOSTNAME"), len("OS")
+	for _, c := range computers {
+		h := c.DNSHostName
+		if h == "" {
+			h = c.SAMAccountName
+		}
+		if len(h) > maxHost {
+			maxHost = len(h)
+		}
+		osStr := c.OperatingSystem
+		if c.OperatingSystemVersion != "" {
+			osStr += " " + c.OperatingSystemVersion
+		}
+		if len(osStr) > maxOS {
+			maxOS = len(osStr)
+		}
+	}
+
 	fmt.Println()
-	color.White("  %-44s  %-36s  %s", "HOSTNAME", "OS", "ENABLED")
-	color.White("  " + strings.Repeat("─", 88))
+	color.White("  %-*s  %-*s  %s", maxHost, "HOSTNAME", maxOS, "OS", "ENABLED")
+	color.White("  " + strings.Repeat("─", maxHost+maxOS+12))
 	for _, c := range computers {
 		enabledStr := "yes"
 		if !c.Enabled {
@@ -687,7 +706,11 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		if hostname == "" {
 			hostname = c.SAMAccountName
 		}
-		line := fmt.Sprintf("  %-44s  %-36s  %s", hostname, c.OperatingSystem, enabledStr)
+		osStr := c.OperatingSystem
+		if c.OperatingSystemVersion != "" {
+			osStr += " " + c.OperatingSystemVersion
+		}
+		line := fmt.Sprintf("  %-*s  %-*s  %s", maxHost, hostname, maxOS, osStr, enabledStr)
 		if !c.Enabled {
 			color.White("\033[2m" + line + "\033[0m")
 		} else {
