@@ -510,6 +510,54 @@ func templateFuncs() template.FuncMap {
 				return "Audit msDS-AllowedToActOnBehalfOfOtherIdentity; remove unnecessary RBCD grants"
 			}
 		},
+		"mitreBadges": func(key string) template.HTML {
+			techs := analysis.LookupTechniques(analysis.MitreKey(key))
+			if len(techs) == 0 {
+				return ""
+			}
+			var out string
+			for _, t := range techs {
+				out += `<a class="mitre-badge" href="` + t.URL() + `" target="_blank" rel="noopener" title="` + t.Name + `">` + t.ID + `</a>`
+			}
+			return template.HTML(out)
+		},
+		"mitreForRight": func(right string) template.HTML {
+			keyMap := map[string]analysis.MitreKey{
+				"GenericAll":          analysis.MitreACLAbuse,
+				"WriteDACL":           analysis.MitreACLAbuse,
+				"WriteOwner":          analysis.MitreACLAbuse,
+				"GenericWrite":        analysis.MitreACLAbuse,
+				"ForceChangePassword": analysis.MitreForceChangePwd,
+				"AddMember":           analysis.MitreAddMember,
+			}
+			key, ok := keyMap[right]
+			if !ok {
+				return ""
+			}
+			techs := analysis.LookupTechniques(key)
+			var out string
+			for _, t := range techs {
+				out += `<a class="mitre-badge" href="` + t.URL() + `" target="_blank" rel="noopener" title="` + t.Name + `">` + t.ID + `</a>`
+			}
+			return template.HTML(out)
+		},
+		"mitreForDeleg": func(delegType string) template.HTML {
+			keyMap := map[string]analysis.MitreKey{
+				"Unconstrained":           analysis.MitreUnconstrainedDel,
+				"Constrained":             analysis.MitreConstrainedDel,
+				"Resource-Based Constrained": analysis.MitreRBCD,
+			}
+			key, ok := keyMap[delegType]
+			if !ok {
+				return ""
+			}
+			techs := analysis.LookupTechniques(key)
+			var out string
+			for _, t := range techs {
+				out += `<a class="mitre-badge" href="` + t.URL() + `" target="_blank" rel="noopener" title="` + t.Name + `">` + t.ID + `</a>`
+			}
+			return template.HTML(out)
+		},
 		"pathExploit": func(nodes []graph.Node) string {
 			for _, n := range nodes {
 				if n.Kerberoastable {
@@ -671,6 +719,13 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .badge-medium { background: var(--badge-med-bg); color: var(--badge-med-txt); }
 .badge-high { background: var(--badge-high-bg, #7b341e); color: var(--badge-high-txt, #fc8181); }
 .badge-critical { background: var(--badge-crit-bg); color: var(--badge-crit-txt); }
+.mitre-badge { display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 0.7rem; font-weight: 600; font-family: monospace;
+  background: #2d1b69; color: #a78bfa; text-decoration: none;
+  border: 1px solid #4c1d95; vertical-align: middle; margin-left: 4px; }
+.mitre-badge:hover { background: #4c1d95; color: #c4b5fd; }
+[data-theme="light"] .mitre-badge { background: #ede9fe; color: #5b21b6; border-color: #c4b5fd; }
+[data-theme="light"] .mitre-badge:hover { background: #ddd6fe; }
 
 /* Severity */
 .sev-critical { color: #e53e3e; font-weight: 700; }
@@ -1032,7 +1087,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- TRUSTS TAB -->
 <div id="tab-trusts" class="tab-pane">
-  <h2 class="section-title">Domain &amp; Forest Trusts
+  <h2 class="section-title">Domain &amp; Forest Trusts {{mitreBadges "trust_abuse"}}
     <span class="help-icon" data-tip="Domain trusts define authentication paths between domains. SID filtering disabled on a trust allows SID history abuse — an attacker in a trusted domain can forge SIDs to escalate privileges in this domain. Bidirectional forest trusts create lateral movement paths between forests. Foreign Security Principals (FSPs) are accounts from trusted domains added to local groups.">?</span>
   </h2>
 
@@ -1311,6 +1366,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h3 class="section-title" style="font-size:0.95rem; margin-top:16px">
     Kerberoastable Accounts
     <span>{{len .KerberosResult.KerberoastableAccounts}}</span>
+    {{mitreBadges "kerberoasting"}}
     <span class="help-icon" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
   </h3>
   {{if .KerberosResult.KerberoastableAccounts}}
@@ -1355,6 +1411,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
     AS-REP Roastable Accounts
     <span>{{len .KerberosResult.ASREPAccounts}}</span>
+    {{mitreBadges "asrep"}}
     <span class="help-icon" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
   </h3>
   {{if .KerberosResult.ASREPAccounts}}
@@ -1402,13 +1459,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h2 class="section-title">
     Dangerous ACL Permissions
     <span>{{.Summary.DangerousACLCount}} finding(s)</span>
+    {{mitreBadges "acl_abuse"}}
     <span class="help-icon" data-tip="Access Control Lists define who can do what to each AD object. Misconfigurations like GenericAll, WriteDACL or ForceChangePassword allow an attacker to take over accounts or escalate to Domain Admin without exploiting any software vulnerability — just abusing legitimate AD permissions.">?</span>
   </h2>
 
   {{if .ACLResult}}{{if .ACLResult.DCSyncFindings}}
   <div style="background:#2d1515;border:1px solid #e53e3e;border-radius:8px;padding:16px;margin-bottom:20px">
     <div style="font-size:0.9rem;font-weight:600;color:#fc8181;margin-bottom:10px">
-      ☠ DCSync Rights Detected — {{len .ACLResult.DCSyncFindings}} principal(s) can dump all domain password hashes
+      ☠ DCSync Rights Detected — {{len .ACLResult.DCSyncFindings}} principal(s) can dump all domain password hashes {{mitreBadges "dcsync"}}
     </div>
     {{range .ACLResult.DCSyncFindings}}
     <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #742a2a">
@@ -1456,6 +1514,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
       <span class="badge badge-critical" style="font-family:monospace">{{$f.Right}}</span>
+      {{mitreForRight (print $f.Right)}}
       <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
       <span class="mono" style="color:#f6ad55">{{$f.TargetName}}</span>
@@ -1492,6 +1551,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge badge-critical">{{.DelegationType}}</span>
       <span class="mono" style="color:var(--text-main)">{{.SAMAccountName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.ObjectType}}</span>
+      {{mitreForDeleg (print .DelegationType)}}
       {{if .AllowedServices}}<span style="color:var(--text-muted);font-size:0.78rem">→ {{joinSPNs .AllowedServices}}</span>{{end}}
     </div>
     <div style="padding:4px 16px 0">
@@ -1778,6 +1838,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult.GPOFindings}}
   <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
     Dangerous GPO Findings <span>{{len .GPOResult.GPOFindings}}</span>
+    {{mitreBadges "gpo_abuse"}}
   </h3>
   <div class="table-wrap">
   <table>
@@ -1879,7 +1940,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
 
   <!-- Template Findings -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:8px">Vulnerable Templates ({{.Summary.ADCSTemplateCount}})</div>
+  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:8px">Vulnerable Templates ({{.Summary.ADCSTemplateCount}}) {{mitreBadges "adcs"}}</div>
   {{if .ADCSResult.TemplateFindings}}
   {{range .ADCSResult.TemplateFindings}}
   {{$tmplSev := .Severity}}
@@ -1915,7 +1976,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 <!-- SHADOW CREDENTIALS TAB -->
 <div id="tab-shadow" class="tab-pane">
   <div class="section-header">
-    Shadow Credentials
+    Shadow Credentials {{mitreBadges "shadow_credentials"}}
     <span class="help-icon" data-tip="Shadow Credentials: writing msDS-KeyCredentialLink on a privileged object allows obtaining a TGT without knowing or changing the password. Exploitable via pywhisker or certipy shadow.">?</span>
   </div>
   {{if .ShadowCredentialsResult}}
@@ -1963,7 +2024,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 <!-- LDAP SECURITY TAB -->
 <div id="tab-ldapsec" class="tab-pane">
   <div class="section-header">
-    LDAP Security
+    LDAP Security {{mitreBadges "ldap_relay"}}
     <span class="help-icon" data-tip="LDAP signing prevents man-in-the-middle attacks on LDAP traffic. If signing is not enforced, an attacker between the client and DC can read or modify LDAP requests. NTLM relay to LDAP (via PetitPotam/Coercer) is possible when signing and channel binding are not enforced.">?</span>
   </div>
   {{if .LDAPSecurityResult}}
@@ -2009,7 +2070,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <div id="tab-audit" class="tab-pane">
   <div class="section-header">
-    Audit Policy / Blue Team Visibility
+    Audit Policy / Blue Team Visibility {{mitreBadges "audit_defense"}}
     <span class="help-icon" data-tip="Checks AD Recycle Bin status (deleted object recovery), legacy audit policy configuration (event log visibility), and machine account quota (RBCD abuse vector).">?</span>
   </div>
   {{if .AuditResult}}
