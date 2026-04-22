@@ -15,6 +15,7 @@ import (
 	"github.com/YakinAnd/adpath/internal/graph"
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 	"github.com/YakinAnd/adpath/internal/report"
+	"github.com/YakinAnd/adpath/internal/spinner"
 )
 
 // ============================================================
@@ -279,61 +280,58 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	// ── аналіз ───────────────────────────────────────────────
 	outPath := resolveReportPath(reportPath, domain)
 
+	spin := spinner.New("analyzing...")
+	spin.Start()
+
 	kr := analysis.AnalyzeKerberos(result)
 
 	aclResult, err := analysis.AnalyzeACL(client, result)
 	if err != nil {
-		color.Yellow("  acl analysis failed: %v", err)
 		aclResult = nil
 	}
 
 	dr, err := analysis.AnalyzeDelegation(client)
 	if err != nil {
-		color.Yellow("  delegation analysis failed: %v", err)
 		dr = nil
 	}
 
 	gr, err := analysis.AnalyzeGPO(client)
 	if err != nil {
-		color.Yellow("  gpo analysis failed: %v", err)
 		gr = nil
 	}
 
 	hr := analysis.AnalyzeHygiene(result)
-
 	puResult := analysis.AnalyzeProtectedUsers(result)
 
 	adminSDResult, err := analysis.AnalyzeAdminSDHolder(client, result)
 	if err != nil {
-		color.Yellow("  adminsdholder analysis failed: %v", err)
 		adminSDResult = nil
 	}
 
 	trustResult, err := analysis.AnalyzeTrusts(client, result)
 	if err != nil {
-		color.Yellow("  trust analysis failed: %v", err)
 		trustResult = nil
 	}
 
 	psoResult, err := analysis.AnalyzePSO(client)
 	if err != nil {
-		color.Yellow("  pso analysis failed: %v", err)
 		psoResult = nil
 	}
 
 	adcsResult, err := analysis.AnalyzeADCS(client)
 	if err != nil {
-		color.Yellow("  adcs analysis failed: %v", err)
 		adcsResult = nil
-	}
-	if adcsResult != nil {
-		analysis.PrintADCSResultSummary(adcsResult)
 	}
 
 	shadowResult, err := analysis.AnalyzeShadowCredentials(client, result)
 	if err != nil {
-		color.Yellow("  shadow credentials analysis failed: %v", err)
 		shadowResult = nil
+	}
+
+	spin.Stop()
+
+	if adcsResult != nil {
+		analysis.PrintADCSResultSummary(adcsResult)
 	}
 	analysis.AnalyzeShadowCredentialsSummary(shadowResult)
 
