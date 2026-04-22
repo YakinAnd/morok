@@ -634,9 +634,12 @@ func runComputers(cmd *cobra.Command, args []string) error {
 	defer client.Close()
 
 	color.Cyan("\n  COMPUTERS")
-	computers, err := client.EnumerateComputers()
+	computers, forestWide, err := client.EnumerateComputersForest()
 	if err != nil {
 		return fmt.Errorf("computer enumeration error: %w", err)
+	}
+	if forestWide {
+		color.White("  %-28s forest-wide (GC)", "scope")
 	}
 
 	color.White("  %-28s %d", "total computers", len(computers))

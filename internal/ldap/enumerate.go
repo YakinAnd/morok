@@ -420,6 +420,13 @@ func printFinding(label string, count int) {
 // Forest-wide computer enumeration
 // ============================================================
 
+// EnumerateComputersForest tries GC (port 3268) to get all forest computers,
+// then upgrades to full attributes via direct domain DC queries.
+// Returns (computers, forestWide, error).
+func (c *Client) EnumerateComputersForest() ([]LDAPComputer, bool, error) {
+	return c.enumerateComputersForest()
+}
+
 // enumerateComputersForest tries GC (port 3268) to get all forest computers,
 // then upgrades to full attributes via direct domain DC queries.
 // Returns (computers, forestWide, error).
