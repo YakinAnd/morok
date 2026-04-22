@@ -591,9 +591,14 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 
 /* Header */
 .header { background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-page) 100%);
-  border-bottom: 1px solid var(--border); padding: 24px 40px; position: relative; }
-.header h1 { font-size: 1.6rem; color: var(--accent); letter-spacing: 0.05em; }
-.header .meta { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }
+  border-bottom: 1px solid var(--border); padding: 20px 40px; position: relative;
+  display: flex; align-items: center; gap: 18px; }
+.header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.header-logo-text { display: flex; flex-direction: column; gap: 2px; }
+.header-logo-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-main); line-height: 1; }
+.header-logo-name em { color: #9b5ffe; font-style: normal; }
+.header-logo-tag { font-size: 0.68rem; letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase; }
+.header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
 
 /* Theme toggle button */
@@ -752,7 +757,31 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 <body>
 
 <div class="header">
-  <h1>⚔ adpath v0.8.2 — {{.Domain}} — {{.GeneratedAt}}</h1>
+  <div class="header-logo">
+    <svg width="38" height="38" viewBox="0 0 58 58" fill="none">
+      <line x1="29" y1="29" x2="29" y2="6"  stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
+      <line x1="29" y1="29" x2="48" y2="14" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
+      <line x1="29" y1="29" x2="52" y2="35" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
+      <line x1="29" y1="29" x2="40" y2="52" stroke="#7c3aed" stroke-width="1.5" opacity="0.4"/>
+      <line x1="29" y1="29" x2="18" y2="52" stroke="#7c3aed" stroke-width="1.5" opacity="0.4"/>
+      <line x1="29" y1="29" x2="6"  y2="35" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
+      <line x1="29" y1="29" x2="10" y2="14" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
+      <circle cx="29" cy="6"  r="3"   fill="#5b21b6" opacity="0.8"/>
+      <circle cx="48" cy="14" r="2.5" fill="#5b21b6" opacity="0.7"/>
+      <circle cx="52" cy="35" r="3"   fill="#7c3aed" opacity="0.8"/>
+      <circle cx="40" cy="52" r="2.5" fill="#5b21b6" opacity="0.6"/>
+      <circle cx="18" cy="52" r="2.5" fill="#5b21b6" opacity="0.6"/>
+      <circle cx="6"  cy="35" r="3"   fill="#5b21b6" opacity="0.7"/>
+      <circle cx="10" cy="14" r="2.5" fill="#5b21b6" opacity="0.7"/>
+      <circle cx="29" cy="29" r="10" fill="#7c3aed" opacity="0.08"/>
+      <circle cx="29" cy="29" r="6"  fill="#4c1d95" opacity="0.8"/>
+      <circle cx="29" cy="29" r="3.5" fill="#a855f7"/>
+    </svg>
+    <div class="header-logo-text">
+      <div class="header-logo-name"><em>ad</em>path</div>
+      <div class="header-logo-tag">Active Directory path analysis</div>
+    </div>
+  </div>
   <div class="meta">
     Domain: <span class="domain">{{.Domain}}</span> &nbsp;|&nbsp;
     Auth: <span style="color:var(--color-ok)">{{.AuthMethod}}</span> &nbsp;|&nbsp;
