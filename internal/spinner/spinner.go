@@ -48,45 +48,43 @@ func New(msg string) *Spinner {
 	}
 }
 
+func (s *Spinner) drawFrame(i int, first bool) {
+	f := frames[i%len(frames)]
+	if !first {
+		fmt.Print("\033[3A\r") // up 3 lines, go to col 0
+	}
+	dim.Printf("   %s\n", f.top)
+	dim.Printf("   %s", f.before)
+	purple.Printf("⊙")
+	dim.Printf("%s", f.after)
+	cyan.Printf("  %s\n", s.msg)
+	dim.Printf("   %s\n", f.bottom)
+}
+
 // Start launches the spinner animation in a background goroutine.
 // It hides the cursor and draws a 3-line spinning graph icon.
+// The first frame is drawn immediately so it is visible even on fast operations.
 func (s *Spinner) Start() {
 	fmt.Print("\033[?25l") // hide cursor
+	s.drawFrame(0, true)   // first frame immediately — always visible
 	go func() {
 		defer func() {
 			fmt.Print("\033[?25h") // show cursor
 			close(s.doneC)
 		}()
 
-		first := true
-		i := 0
+		i := 1
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-s.stopC:
-				if !first {
-					// move up 3 lines and erase them
-					fmt.Print("\033[3A\r\033[K\n\033[K\n\033[K\033[3A\r")
-				}
+				// erase the 3 spinner lines
+				fmt.Print("\033[3A\r\033[K\n\033[K\n\033[K\033[3A\r")
 				return
 			case <-ticker.C:
-				f := frames[i%len(frames)]
-				if !first {
-					fmt.Print("\033[3A\r") // up 3 lines, go to col 0
-				}
-				// Row 0: outer node at top/bottom/side positions
-				dim.Printf("   %s\n", f.top)
-				// Row 1: ⊙ (colored) + orbital node chars + message
-				dim.Printf("   %s", f.before)
-				purple.Printf("⊙")
-				dim.Printf("%s", f.after)
-				cyan.Printf("  %s\n", s.msg)
-				// Row 2
-				dim.Printf("   %s\n", f.bottom)
-
-				first = false
+				s.drawFrame(i, false)
 				i++
 			}
 		}
