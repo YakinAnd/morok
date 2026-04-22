@@ -676,48 +676,28 @@ func runComputers(cmd *cobra.Command, args []string) error {
 	}
 
 	const (
-		wHost = 34
-		wOS   = 28
-		wDom  = 26
+		wHost = 40
+		wOS   = 36
 	)
 	fmt.Println()
-	color.White("  %-*s  %-*s  %-7s  %-4s  %-5s  %-19s  %s",
-		wHost, "HOSTNAME", wOS, "OS", "ENABLED", "LAPS", "DELEG", "LAST LOGON", "DOMAIN")
-	color.White("  " + strings.Repeat("─", wHost+wOS+wDom+40))
+	color.White("  %-*s  %-*s  %s", wHost, "HOSTNAME", wOS, "OS", "ENABLED")
+	color.White("  " + strings.Repeat("─", wHost+wOS+12))
 	for _, c := range computers {
 		enabledStr := "yes"
 		if !c.Enabled {
 			enabledStr = "no"
 		}
-		lapsStr := ""
-		if c.LAPSEnabled {
-			lapsStr = "yes"
-		}
-		unStr := ""
-		if c.UnconstrainedDelegation {
-			unStr = "yes"
-		}
 		hostname := c.DNSHostName
 		if hostname == "" {
 			hostname = c.SAMAccountName
 		}
-		lastLogon := c.LastLogon
-		if lastLogon == "" {
-			lastLogon = "never"
-		}
 		osStr := c.OperatingSystem
-		if c.OperatingSystemVersion != "" {
-			osStr = fmt.Sprintf("%s (%s)", osStr, c.OperatingSystemVersion)
-		}
-		line := fmt.Sprintf("  %-*s  %-*s  %-7s  %-4s  %-5s  %-19s  %s",
+		line := fmt.Sprintf("  %-*s  %-*s  %s",
 			wHost, trunc(hostname, wHost),
 			wOS, trunc(osStr, wOS),
-			enabledStr, lapsStr, unStr, lastLogon,
-			trunc(c.Domain, wDom))
-		if c.UnconstrainedDelegation {
-			color.Red(line)
-		} else if !c.Enabled {
-			color.White("\033[2m" + line + "\033[0m") // dim
+			enabledStr)
+		if !c.Enabled {
+			color.White("\033[2m" + line + "\033[0m")
 		} else {
 			color.White(line)
 		}
