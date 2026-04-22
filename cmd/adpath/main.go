@@ -279,6 +279,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("enumeration error: %w", err)
 	}
+	client.PrintEnumerationSummary(result)
 
 	// ── граф + attack paths ───────────────────────────────────
 	g := graph.Build(result)

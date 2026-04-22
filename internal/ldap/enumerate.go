@@ -168,7 +168,12 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	result.Computers = computers
 	result.ForestWide = forestWide
 
-	// Підсумок
+	return result, nil
+}
+
+// PrintEnumerationSummary prints the "OBJECTS COLLECTED" and quick findings sections.
+// Call this only from the enum command — not from targeted analysis commands.
+func (c *Client) PrintEnumerationSummary(result *EnumerationResult) {
 	compLabel := "domain"
 	if result.ForestWide {
 		compLabel = "forest-wide"
@@ -178,10 +183,7 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	color.White("  %-12s %d", "groups", len(result.Groups))
 	color.White("  %-12s %d  (%s)", "computers", len(result.Computers), compLabel)
 
-	// Швидкий аналіз цікавих об'єктів
 	c.printQuickFindings(result)
-
-	return result, nil
 }
 
 // EnumerateUsers збирає всіх користувачів AD
