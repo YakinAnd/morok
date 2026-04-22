@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.8.2
+- **Поточна версія:** v0.9.3
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -255,13 +255,14 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 ### v0.9.1 TODO
 - **MITRE ATT&CK mapping** — автоматичні теги до кожного finding: "T1558.003 — Kerberoasting", "T1484.001 — GPO modification" і т.д. CISO і compliance teams люблять цю мову. В HTML звіті — badge біля кожного finding з посиланням на attack.mitre.org. Подумати над посиланнями на mitigation.
 
-### v0.9.2 TODO
-- **--scope фільтрація** — аудит не всього домену а конкретного OU, групи або користувача. `--scope "OU=Finance,DC=corp,DC=local"` підмінює base DN для LDAP queries. Великі середовища з тисячами об'єктів — пентестер хоче фокус на конкретній частині.
+### v0.9.2 ЗАВЕРШЕНО
 
-### v0.9.3 TODO
-- **Anonymous LDAP check** — якщо anonymous bind читає більше ніж RootDSE → security finding (Medium): "Anonymous LDAP read enabled — unauthenticated enumeration possible". Показувати в CLI що доступно а що ні при роботі без credentials
+- ✅ **--scope фільтрація** — `--scope "OU=Finance,DC=corp,DC=local"` підмінює base DN для всіх LDAP queries; доступно на всіх командах (enum, acl, kerberos, shadow, adcs, delegation, gpo, trust)
+
+### v0.9.3 ЗАВЕРШЕНО
+
+- ✅ **Anonymous LDAP check** — `ProbeAnonymousRead()` перевіряє чи anonymous bind може читати AD objects (не тільки RootDSE); `LDAPSecurityResult.AnonReadEnabled` + finding "Anonymous LDAP read enabled" (Medium); CLI при anonymous bind показує "RootDSE ✓ readable" + підказку для повного enumeration
 - **Username enumeration via Kerberos AS-REQ** — `adpath enum-users --wordlist users.txt`: без пароля, тільки доступ до мережі. Помилка `PRINCIPAL_UNKNOWN` vs `PREAUTH_REQUIRED` — дозволяє підтвердити існування акаунта
-- **Покращений anonymous вивід** — при anonymous bind чітко показати: RootDSE ✓, LDAP enumeration: skipped/partial + підказка "отримай будь-який доменний акаунт для повного enumeration"
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -274,4 +275,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.0 — BloodHound CE v5 export (--bloodhound), ESC1 enrollment rights qualifier (DACL parsing), Shadow Credentials detection (msDS-KeyCredentialLink, adpath shadow), HTML report: Shadow Creds tab, EnrollableBy badge, severity badge fix.*
+*Останнє оновлення: v0.9.3 — --scope filtering (підміна base DN), Anonymous LDAP check (ProbeAnonymousRead, AnonReadEnabled finding), покращений anonymous bind CLI output.*

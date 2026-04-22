@@ -28,6 +28,7 @@ var (
 	ntHash         string // --hash: NT hash for Pass-the-Hash
 	ccachePath     string // --ccache: path to ccache file for Pass-the-Ticket
 	proxyURL       string // --proxy: SOCKS5 proxy URL (PTT not supported through proxy)
+	scopeDN        string // --scope: override base DN for scoped audit
 	dc             string
 	reportPath     string
 	bloodhoundPath string // --bloodhound: output dir for BloodHound CE JSON
@@ -117,6 +118,7 @@ func init() {
 		cmd.Flags().StringVar(&ccachePath, "ccache", "", "Path to Kerberos ccache file for Pass-the-Ticket")
 		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
 		cmd.Flags().StringVar(&proxyURL, "proxy", "", "SOCKS5 proxy URL (e.g. socks5://127.0.0.1:1080) — PTT/ccache not supported through proxy")
+		cmd.Flags().StringVar(&scopeDN, "scope", "", "Restrict enumeration to specific OU/DN (e.g. OU=Finance,DC=corp,DC=local)")
 		cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 		cmd.MarkFlagRequired("domain")
 	}
@@ -175,6 +177,10 @@ func connectAndBind() (*adldap.Client, error) {
 	client.NTHash = ntHash
 	client.CcachePath = ccachePath
 	client.ProxyURL = proxyURL
+	if scopeDN != "" {
+		client.BaseDN = scopeDN
+		color.White("  %-28s %s", "scope", scopeDN)
+	}
 
 	if proxyURL != "" && ccachePath != "" {
 		return nil, fmt.Errorf("--proxy and --ccache cannot be used together: Kerberos ccache is not supported through SOCKS5 proxy")
@@ -205,11 +211,13 @@ func connectAndBind() (*adldap.Client, error) {
 			return nil, fmt.Errorf("auth error: %w", err)
 		}
 	default:
-		color.White("  no credentials — anonymous bind")
+		color.Yellow("  no credentials — anonymous bind (limited enumeration)")
 		if err := client.AnonymousBind(); err != nil {
 			client.Close()
 			return nil, fmt.Errorf("anonymous bind failed: %w", err)
 		}
+		color.White("  %-28s %s", "RootDSE", "✓ readable")
+		color.Yellow("  %-28s %s", "hint", "obtain any domain account for full enumeration")
 	}
 
 	return client, nil

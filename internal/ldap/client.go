@@ -23,6 +23,7 @@ type Client struct {
 	NTHash     string // NT hash for Pass-the-Hash (NTLM auth)
 	CcachePath string // path to ccache file for Pass-the-Ticket (Kerberos auth)
 	ProxyURL   string // SOCKS5 proxy, e.g. socks5://127.0.0.1:1080 (PTT not supported through proxy)
+	IsAnon     bool   // true after successful anonymous bind
 	BaseDN     string
 	conn       *goldap.Conn
 	saslWrap   *saslConn // non-nil only for Kerberos ccache connections
@@ -252,8 +253,29 @@ func (c *Client) AnonymousBind() error {
 		return fmt.Errorf("anonymous bind failed (null sessions disabled): %w", err)
 	}
 
+	c.IsAnon = true
 	color.Yellow("  null session      anonymous bind OK")
 	return nil
+}
+
+// ProbeAnonymousRead attempts a minimal LDAP search to check whether anonymous
+// sessions can read AD objects beyond RootDSE.
+// Returns true if any user/group objects are readable without credentials.
+func (c *Client) ProbeAnonymousRead() bool {
+	if c.conn == nil || !c.IsAnon {
+		return false
+	}
+	req := goldap.NewSearchRequest(
+		c.BaseDN,
+		goldap.ScopeSingleLevel,
+		goldap.NeverDerefAliases,
+		1, 5, false,
+		"(objectClass=user)",
+		[]string{"sAMAccountName"},
+		nil,
+	)
+	sr, err := c.conn.Search(req)
+	return err == nil && len(sr.Entries) > 0
 }
 
 // Search виконує LDAP пошук з автоматичним paging (1000 записів за раз)

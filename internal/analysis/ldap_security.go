@@ -22,12 +22,13 @@ type LDAPSecurityFinding struct {
 }
 
 type LDAPSecurityResult struct {
-	Domain          string
-	PlainLDAP       bool   // connection was on port 389
-	SigningEnforced  bool   // false = signing not required = finding
-	Capabilities    []string
-	SASLMechanisms  []string
-	Findings        []LDAPSecurityFinding
+	Domain           string
+	PlainLDAP        bool   // connection was on port 389
+	SigningEnforced   bool   // false = signing not required = finding
+	AnonReadEnabled  bool   // anonymous session can read AD objects
+	Capabilities     []string
+	SASLMechanisms   []string
+	Findings         []LDAPSecurityFinding
 }
 
 // AnalyzeLDAPSecurity checks LDAP signing and channel binding status.
@@ -75,6 +76,19 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 			Detail:   fmt.Sprintf("DC does not advertise LDAP integrity OID (%s) in supportedCapabilities. Channel binding may not be enforced, increasing exposure to NTLM relay attacks against LDAP. Check KB4520412/MS Advisory ADV190023.", oidLDAPIntegrity),
 			Severity: "Medium",
 		})
+	}
+
+	// Anonymous read check
+	if client.IsAnon {
+		canRead := client.ProbeAnonymousRead()
+		r.AnonReadEnabled = canRead
+		if canRead {
+			r.Findings = append(r.Findings, LDAPSecurityFinding{
+				Title:    "Anonymous LDAP read enabled",
+				Detail:   "Unauthenticated (null session) bind can enumerate AD objects (users, groups). An attacker without credentials can perform reconnaissance. Disable anonymous LDAP access via: HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters → DSHeuristics (set bit 7 to 0) and restrict null session permissions.",
+				Severity: "Medium",
+			})
+		}
 	}
 
 	// Informational: flag if GSS-SPNEGO (NTLM/Kerberos) is available over plain LDAP
