@@ -576,10 +576,15 @@ func runUsers(cmd *cobra.Command, args []string) error {
 		color.Yellow("  %-28s %d", "password never expires", pwdNeverExpires)
 	}
 
+	const (
+		wUser = 22
+		wDisp = 24
+	)
 	fmt.Println()
-	color.White("  %-22s %-24s %-8s %-10s %-7s %-15s %-22s %s",
-		"USERNAME", "DISPLAY NAME", "ENABLED", "ADMINCOUNT", "AS-REP", "PWD NEVER EXP", "LAST LOGON", "SPNS")
-	color.White("  " + strings.Repeat("─", 120))
+	color.White("  %-*s  %-*s  %-7s  %-10s  %-6s  %-13s  %-19s  %s",
+		wUser, "USERNAME", wDisp, "DISPLAY NAME",
+		"ENABLED", "ADMINCOUNT", "AS-REP", "PWD NEVER EXP", "LAST LOGON", "SPNS")
+	color.White("  " + strings.Repeat("─", wUser+wDisp+75))
 	for _, u := range users {
 		enabledStr := "yes"
 		if !u.Enabled {
@@ -605,8 +610,10 @@ func runUsers(cmd *cobra.Command, args []string) error {
 		if lastLogon == "" {
 			lastLogon = "never"
 		}
-		line := fmt.Sprintf("  %-22s %-24s %-8s %-10s %-7s %-15s %-22s %s",
-			u.SAMAccountName, u.DisplayName, enabledStr, adminStr, asrepStr, pwdStr, lastLogon, spnCount)
+		line := fmt.Sprintf("  %-*s  %-*s  %-7s  %-10s  %-6s  %-13s  %-19s  %s",
+			wUser, trunc(u.SAMAccountName, wUser),
+			wDisp, trunc(u.DisplayName, wDisp),
+			enabledStr, adminStr, asrepStr, pwdStr, lastLogon, spnCount)
 		if !u.Enabled {
 			color.White("\033[2m" + line + "\033[0m") // dim
 		} else if u.DontReqPreauth {
@@ -668,10 +675,15 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		color.Red("  %-28s %d  (unconstrained delegation)", "dangerous delegation", unconstr)
 	}
 
+	const (
+		wHost = 34
+		wOS   = 28
+		wDom  = 26
+	)
 	fmt.Println()
-	color.White("  %-36s %-32s %-8s %-6s %-20s %-22s %s",
-		"HOSTNAME", "OS", "ENABLED", "LAPS", "UNCONSTRAINED DELEG", "LAST LOGON", "DOMAIN")
-	color.White("  " + strings.Repeat("─", 135))
+	color.White("  %-*s  %-*s  %-7s  %-4s  %-5s  %-19s  %s",
+		wHost, "HOSTNAME", wOS, "OS", "ENABLED", "LAPS", "DELEG", "LAST LOGON", "DOMAIN")
+	color.White("  " + strings.Repeat("─", wHost+wOS+wDom+40))
 	for _, c := range computers {
 		enabledStr := "yes"
 		if !c.Enabled {
@@ -697,8 +709,11 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		if c.OperatingSystemVersion != "" {
 			osStr = fmt.Sprintf("%s (%s)", osStr, c.OperatingSystemVersion)
 		}
-		line := fmt.Sprintf("  %-36s %-32s %-8s %-6s %-20s %-22s %s",
-			hostname, osStr, enabledStr, lapsStr, unStr, lastLogon, c.Domain)
+		line := fmt.Sprintf("  %-*s  %-*s  %-7s  %-4s  %-5s  %-19s  %s",
+			wHost, trunc(hostname, wHost),
+			wOS, trunc(osStr, wOS),
+			enabledStr, lapsStr, unStr, lastLogon,
+			trunc(c.Domain, wDom))
 		if c.UnconstrainedDelegation {
 			color.Red(line)
 		} else if !c.Enabled {
@@ -708,6 +723,15 @@ func runComputers(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
+}
+
+// trunc truncates s to maxLen runes, appending "…" if cut.
+func trunc(s string, maxLen int) string {
+	r := []rune(s)
+	if len(r) <= maxLen {
+		return s
+	}
+	return string(r[:maxLen-1]) + "…"
 }
 
 // ============================================================
