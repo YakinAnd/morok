@@ -41,6 +41,10 @@ Every finding card (attack path, ACL, delegation, ADCS, etc.) has a collapsible 
 - Contextual exploit commands (bloodyAD, GetUserSPNs, getST.py, certipy, etc.) filled with discovered names/hashes
 - Remediation steps
 
+## MITRE ATT&CK badges
+
+Every finding section and individual finding row includes a purple **T-code badge** linking to the corresponding MITRE ATT&CK technique page (e.g. `T1558.003` for Kerberoasting). Click any badge to open the technique on attack.mitre.org.
+
 ## Section tooltips
 
 Every section header has a `?` icon. Hover to get a brief explanation of what the section checks and why it matters.

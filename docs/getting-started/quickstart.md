@@ -73,7 +73,25 @@ adpath shadow -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 adpath audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-## 4. JSON export
+## 4. User and computer enumeration
+
+Fast targeted enumeration — no full analysis, just a clean table of users or computers.
+
+```bash
+# All users — table with AS-REP, adminCount, last logon, SPN count
+adpath users -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+
+# All computers — forest-wide via GC, table with hostname, OS, enabled status
+adpath computers -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+```
+
+`adpath users` highlights AS-REP roastable accounts in red, adminCount=1 in yellow, disabled accounts are dimmed.
+
+`adpath computers` uses the same forest-wide Global Catalog enumeration as `enum` — shows hosts from all domains in the forest.
+
+## 5. JSON export
+
+## 6. JSON export
 
 Export AD objects as JSON files (users, groups, computers, domains):
 
@@ -84,7 +102,7 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
 
 The format is compatible with BloodHound CE v5 — import via: **BloodHound CE → Administration → File Ingest**
 
-## 5. Scoped enumeration
+## 7. Scoped enumeration
 
 Audit only a specific OU or container instead of the entire domain. Useful for large environments or when you want to focus on a specific business unit.
 
@@ -93,7 +111,7 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --scope "OU=Finance,DC=corp,DC=local"
 ```
 
-## 6. Low-privilege account
+## 8. Low-privilege account
 
 adpath works with **any valid domain account**. AD's default security model allows all authenticated users to read most LDAP attributes — you do not need Domain Admin or local admin rights for enumeration.
 
@@ -101,7 +119,7 @@ adpath works with **any valid domain account**. AD's default security model allo
 adpath enum -d corp.local -u helpdesk -p 'Summer2024!' --dc 10.0.0.1
 ```
 
-## 7. Pivoting through SOCKS5
+## 9. Pivoting through SOCKS5
 
 Route all LDAP traffic through a proxy — useful when the DC is only reachable via a pivot:
 

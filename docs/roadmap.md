@@ -86,7 +86,9 @@
 
 ### Next
 - **Username enumeration via Kerberos AS-REQ** — `adpath enum-users --wordlist users.txt`; PRINCIPAL_UNKNOWN vs PREAUTH_REQUIRED without credentials
-- **MITRE ATT&CK mapping** — technique tags (T1558.003, T1484.001, etc.) on each finding; badge with link to attack.mitre.org in HTML report
+- **ADCS ESC9, ESC10, ESC11, ESC13** — extended certificate template vulnerability coverage
+- **SMB signing check** — detect NTLM relay risk without SMB shares access
+- **Stealth mode** — `--stealth` flag; minimal LDAP queries, no GC, no extra round-trips for SIEM-heavy environments
 
 ### v1.0 — Public release
 - README with demo GIF
