@@ -50,6 +50,8 @@ type ReportData struct {
 	// v0.9.0
 	ShadowCredentialsResult *analysis.ShadowCredentialsResult
 	LDAPSecurityResult      *analysis.LDAPSecurityResult
+	// v0.9.4
+	AuditResult *analysis.AuditResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -84,6 +86,10 @@ type Summary struct {
 	ADCSCriticalCount       int
 	// v0.9.0
 	ShadowCredCount         int
+	// v0.9.4
+	AuditFindingCount       int
+	RecycleBinEnabled       bool
+	MachineAccountQuota     int
 }
 
 // GraphNode і GraphEdge для D3.js JSON
@@ -129,6 +135,7 @@ func Generate(
 	trustResult *analysis.TrustResult,
 	shadowResult   *analysis.ShadowCredentialsResult,
 	ldapSecResult  *analysis.LDAPSecurityResult,
+	auditResult    *analysis.AuditResult,
 	authMethod string,
 ) error {
 
@@ -140,7 +147,7 @@ func Generate(
 	Groups:               result.Groups,
 	Computers:            result.Computers,
 	AttackPaths:          paths,
-	Summary:              buildSummary(result, paths, kr, aclResult, dr, gr, hr, adcsResult),
+	Summary:              buildSummary(result, paths, kr, aclResult, dr, gr, hr, adcsResult, auditResult),
 	GraphJSON:            template.JS(buildD3JSON(g, paths)),
 	KerberosResult:       kr,
 	ACLResult:            aclResult,
@@ -156,6 +163,7 @@ func Generate(
 	TrustResult:             trustResult,
 	ShadowCredentialsResult: shadowResult,
 	LDAPSecurityResult:      ldapSecResult,
+	AuditResult:             auditResult,
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -196,6 +204,7 @@ func buildSummary(
 	gr *analysis.GPOResult,
 	hr *analysis.HygieneResult,
 	adcsResult *analysis.ADCSResult,
+	auditResult *analysis.AuditResult,
 ) Summary {
 	s := Summary{
 		TotalUsers:       len(result.Users),
@@ -265,6 +274,12 @@ func buildSummary(
 				s.ADCSCriticalCount++
 			}
 		}
+	}
+
+	if auditResult != nil {
+		s.AuditFindingCount = len(auditResult.Findings)
+		s.RecycleBinEnabled = auditResult.RecycleBinEnabled
+		s.MachineAccountQuota = auditResult.MachineAccountQuota
 	}
 
 	return s
@@ -566,6 +581,7 @@ html[data-theme="light"] {
   --sev-medium:    #b7791f;
   --badge-ok-bg:   #c6f6d5;   --badge-ok-txt:   #276749;
   --badge-med-bg:  #feebc8;   --badge-med-txt:  #744210;
+  --badge-high-bg: #fed7ae;   --badge-high-txt: #7b341e;
   --badge-crit-bg: #fed7d7;   --badge-crit-txt: #c53030;
   --gs-match-bg:   #fefcbf;   --gs-match-txt:   #744210;
 }
@@ -648,6 +664,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   font-size: 0.75rem; font-weight: 600; }
 .badge-ok { background: var(--badge-ok-bg); color: var(--badge-ok-txt); }
 .badge-medium { background: var(--badge-med-bg); color: var(--badge-med-txt); }
+.badge-high { background: var(--badge-high-bg, #7b341e); color: var(--badge-high-txt, #fc8181); }
 .badge-critical { background: var(--badge-crit-bg); color: var(--badge-crit-txt); }
 
 /* Severity */
@@ -765,6 +782,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
   <button onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
   <button onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
+  <button onclick="showTab('audit')">Audit {{if gt .Summary.AuditFindingCount 0}}({{.Summary.AuditFindingCount}}){{end}}</button>
   <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -1957,6 +1975,85 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
   {{else}}
   <p style="color:var(--text-muted)">LDAP security data not available.</p>
+  {{end}}
+</div>
+
+<div id="tab-audit" class="tab-pane">
+  <div class="section-header">
+    Audit Policy / Blue Team Visibility
+    <span class="help-icon" data-tip="Checks AD Recycle Bin status (deleted object recovery), legacy audit policy configuration (event log visibility), and machine account quota (RBCD abuse vector).">?</span>
+  </div>
+  {{if .AuditResult}}
+  <table class="data-table" style="margin-bottom:20px">
+    <thead><tr><th>Setting</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>AD Recycle Bin</td>
+        <td>
+          {{if not .AuditResult.RecycleBinSupported}}
+            <span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">Not supported (forest FFL &lt; 2008 R2)</span>
+          {{else if .AuditResult.RecycleBinEnabled}}
+            <span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ Enabled</span>
+          {{else}}
+            <span class="badge badge-medium">⚠ Disabled</span>
+          {{end}}
+        </td>
+      </tr>
+      <tr>
+        <td>Legacy Audit Policy</td>
+        <td>
+          {{if .AuditResult.AuditingEnabled}}
+            <span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ Configured</span>
+          {{else}}
+            <span class="badge badge-high">⚠ NOT configured</span>
+          {{end}}
+        </td>
+      </tr>
+      <tr>
+        <td>Machine Account Quota</td>
+        <td>
+          {{if eq .AuditResult.MachineAccountQuota 0}}
+            <span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">0 — safe ✓</span>
+          {{else}}
+            <span class="badge badge-medium">⚠ {{.AuditResult.MachineAccountQuota}} — any user can add computers</span>
+          {{end}}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  {{if .AuditResult.AuditingEnabled}}
+  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Audit Categories</div>
+  <table class="data-table" style="margin-bottom:20px">
+    <thead><tr><th>Category</th><th>Success</th><th>Failure</th></tr></thead>
+    <tbody>
+      {{range .AuditResult.AuditCategories}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{if .Success}}<span style="color:var(--color-ok)">✓</span>{{else}}<span style="color:var(--text-muted)">—</span>{{end}}</td>
+        <td>{{if .Failure}}<span style="color:var(--color-ok)">✓</span>{{else}}<span style="color:var(--text-muted)">—</span>{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  {{if .AuditResult.Findings}}
+  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Findings</div>
+  {{range .AuditResult.Findings}}
+  <div class="path-card" style="margin-bottom:10px">
+    <div class="path-header">
+      <span class="badge {{if eq .Severity "High"}}badge-high{{else if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
+      <span style="margin-left:8px">{{.Title}}</span>
+    </div>
+    <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
+  </div>
+  {{end}}
+  {{else}}
+  <p style="color:var(--color-ok)">✓ No audit visibility issues found.</p>
+  {{end}}
+  {{else}}
+  <p style="color:var(--text-muted)">Audit policy data not available.</p>
   {{end}}
 </div>
 

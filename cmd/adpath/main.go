@@ -104,12 +104,18 @@ var shadowCmd = &cobra.Command{
 	RunE:  runShadow,
 }
 
+var auditCmd = &cobra.Command{
+	Use:   "audit",
+	Short: "Check audit policy, AD Recycle Bin, and blue-team visibility settings",
+	RunE:  runAudit,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -136,8 +142,9 @@ func init() {
 	rootCmd.AddCommand(adcsCmd)
 	rootCmd.AddCommand(trustCmd)
 	rootCmd.AddCommand(shadowCmd)
+	rootCmd.AddCommand(auditCmd)
 
-	rootCmd.Version = "0.9.0"
+	rootCmd.Version = "0.9.4"
 }
 
 // ============================================================
@@ -238,6 +245,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	// ── RootDSE (no auth required) ────────────────────────────
 	var ldapSecResult *analysis.LDAPSecurityResult
+	var auditResult *analysis.AuditResult
 	if rds, err := client.QueryRootDSE(); err == nil {
 		color.Cyan("\n  DOMAIN INFO")
 		color.White("  %-28s %s", "domain", rds.DefaultNamingContext)
@@ -248,6 +256,8 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		color.White("  %-28s %s", "responding DC", rds.ServerName)
 		ldapSecResult = analysis.AnalyzeLDAPSecurity(client, rds)
 		analysis.LDAPSecuritySummaryLine(ldapSecResult)
+		auditResult = analysis.AnalyzeAuditPolicy(client, rds)
+		analysis.AuditSummaryLine(auditResult)
 	}
 
 	// ── enumeration ───────────────────────────────────────────
@@ -337,7 +347,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 
@@ -503,6 +513,25 @@ func runTrust(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runAudit(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	client, err := connectAndBind()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	rds, err := client.QueryRootDSE()
+	if err != nil {
+		return fmt.Errorf("rootDSE query failed: %w", err)
+	}
+
+	r := analysis.AnalyzeAuditPolicy(client, rds)
+	analysis.PrintAuditResult(r)
+	return nil
+}
+
 func runShadow(cmd *cobra.Command, args []string) error {
 	printBanner()
 
@@ -536,7 +565,7 @@ func printBanner() {
 	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
 	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
 	color.White(``)
-	color.White(`  v0.8.2  //  AD Attack Path Enumerator made by M4t`)
+	color.White(`  v0.9.4  //  AD Attack Path Enumerator made by M4t`)
 	color.White(`  ` + strings.Repeat("─", 40))
 }
 

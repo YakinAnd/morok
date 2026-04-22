@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.9.3
+- **Поточна версія:** v0.9.4
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -241,7 +241,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 
 ### v0.9 TODO
 - ✅ BloodHound JSON export — `--bloodhound` flag, сумісність з BH CE v5 (users/groups/computers/domains.json)
-- Audit Policy / Blue Team — Advanced Audit налаштування, event log retention, AD Recycle Bin
+- ✅ Audit Policy / Blue Team — `internal/analysis/audit.go`: AD Recycle Bin status, legacy auditingPolicy attribute парсинг, ms-DS-MachineAccountQuota; `adpath audit` команда; HTML Audit tab; findings: High якщо audit не налаштовано, Medium якщо Recycle Bin відключений або MAQ > 0
 - Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
 - ✅ LDAP signing + channel binding статус — `internal/analysis/ldap_security.go`: перевірка plain vs LDAPS, supportedCapabilities OID (1.2.840.113556.1.4.1791), SASL механізми; HTML tab "LDAP Security"; summary рядок в enum
 - SMB signing статус — окрема задача (ADP-14), потребує SMB2 Negotiate парсинг
@@ -275,4 +275,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.3 — --scope filtering (підміна base DN), Anonymous LDAP check (ProbeAnonymousRead, AnonReadEnabled finding), покращений anonymous bind CLI output.*
+*Останнє оновлення: v0.9.4 — Audit Policy / Blue Team (adpath audit, AD Recycle Bin, auditingPolicy parse, MAQ check, HTML Audit tab).*
