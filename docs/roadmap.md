@@ -3,7 +3,7 @@
 ## Current: v0.9.6
 
 ### v0.9.6
-- **`adpath enum-users`** — username enumeration without credentials via Kerberos AS-REQ; classifies responses: EXISTS / AS-REP roastable / DISABLED / EXPIRED; wordlist with `#` comment support; not-found suppressed by default
+- **`adpath kerb-enum`** — username enumeration without credentials via Kerberos AS-REQ; classifies responses: EXISTS / AS-REP roastable / DISABLED / EXPIRED; wordlist with `#` comment support; not-found suppressed by default
 - **`--stealth` flag** on `adpath enum` — minimal LDAP footprint: only users+groups (no GC, no computers); skips ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAP Security, Audit; always runs: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY printed at end
 
 ### v0.9.5

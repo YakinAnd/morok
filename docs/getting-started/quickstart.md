@@ -120,7 +120,7 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --stealth
 Enumerate valid AD usernames via Kerberos AS-REQ — only port 88 access to the DC is required:
 
 ```bash
-adpath enum-users -d corp.local --dc 10.0.0.1 --wordlist users.txt
+adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 ```
 
 ## 9. Pivoting through SOCKS5

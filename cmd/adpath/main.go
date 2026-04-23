@@ -35,7 +35,7 @@ var (
 	jsonExportPath string // --json: output dir for AD JSON export (compatible with BloodHound CE)
 	maxDepth       int
 	verbose        bool
-	wordlistPath   string // --wordlist: path to username wordlist for enum-users
+	wordlistPath   string // --wordlist: path to username wordlist for kerb-enum
 	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
 )
 
@@ -114,7 +114,7 @@ var auditCmd = &cobra.Command{
 }
 
 var enumUsersCmd = &cobra.Command{
-	Use:   "enum-users",
+	Use:   "kerb-enum",
 	Short: "Enumerate valid AD usernames via Kerberos AS-REQ (no credentials required)",
 	RunE:  runEnumUsers,
 }
@@ -606,7 +606,7 @@ func runEnumUsers(cmd *cobra.Command, args []string) error {
 
 	_, err := adkerberos.EnumUsers(domain, targetDC, wordlistPath)
 	if err != nil {
-		return fmt.Errorf("enum-users: %w", err)
+		return fmt.Errorf("kerb-enum: %w", err)
 	}
 	return nil
 }

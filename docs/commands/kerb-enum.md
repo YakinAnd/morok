@@ -1,11 +1,11 @@
-# adpath enum-users
+# adpath kerb-enum
 
 Enumerate valid AD usernames via Kerberos AS-REQ **without credentials** — only network access to port 88 (Kerberos) on the DC is required.
 
 ## Usage
 
 ```bash
-adpath enum-users -d <domain> --dc <dc> --wordlist users.txt
+adpath kerb-enum -d <domain> --dc <dc> --wordlist users.txt
 ```
 
 ## How it works
@@ -43,10 +43,10 @@ Not-found results are suppressed by default — only valid accounts are printed.
 
 ```bash
 # Basic username enumeration
-adpath enum-users -d corp.local --dc 10.0.0.1 --wordlist users.txt
+adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 
 # With a large wordlist (e.g. statistically common AD usernames)
-adpath enum-users -d corp.local --dc 10.0.0.1 --wordlist /usr/share/wordlists/usernames.txt
+adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /usr/share/wordlists/usernames.txt
 ```
 
 ## Flags

@@ -109,7 +109,7 @@ golang.org/x/net/proxy                  # --proxy SOCKS5
 ./adpath computers -d corp.local -u admin -p Pass --dc 10.0.0.1
 
 # Username enumeration без credentials (Kerberos AS-REQ)
-./adpath enum-users -d corp.local --dc 10.0.0.1 --wordlist users.txt
+./adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 
 # Stealth enumeration (мінімальні LDAP-запити, без GC, без ACL/ADCS/GPO)
 ./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --stealth
@@ -259,7 +259,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ ldap: `SearchBase()` для PSO, `SearchGC()` для forest-wide запитів
 
 **Залишились на v0.7 (з оригінального v0.6 TODO):**
-- Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
+- Username enumeration через Kerberos AS-REQ — `adpath kerb-enum --wordlist users.txt`
 - RootDSE enumeration без bind (domain, forest, AD version)
 - GPP passwords (MS14-025) — cpassword в SYSVOL\...\Groups.xml
 - SMB signing перевірка — якщо не required → NTLM relay можливий
@@ -313,7 +313,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 ### v0.9 TODO
 - ✅ JSON export — `--json` flag (перейменовано з --bloodhound), сумісність з BH CE v5 (users/groups/computers/domains.json)
 - ✅ Audit Policy / Blue Team — `internal/analysis/audit.go`: AD Recycle Bin status, legacy auditingPolicy attribute парсинг, ms-DS-MachineAccountQuota; `adpath audit` команда; HTML Audit tab; findings: High якщо audit не налаштовано, Medium якщо Recycle Bin відключений або MAQ > 0
-- Username enumeration через Kerberos AS-REQ — `adpath enum-users --wordlist users.txt`
+- Username enumeration через Kerberos AS-REQ — `adpath kerb-enum --wordlist users.txt`
 - ✅ LDAP signing + channel binding статус — `internal/analysis/ldap_security.go`: перевірка plain vs LDAPS, supportedCapabilities OID (1.2.840.113556.1.4.1791), SASL механізми; HTML tab "LDAP Security"; summary рядок в enum
 - SMB signing статус — окрема задача (ADP-14), потребує SMB2 Negotiate парсинг
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
@@ -352,7 +352,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 
 ### v0.9.6 ЗАВЕРШЕНО
 
-- ✅ **`adpath enum-users`** — username enumeration без credentials через Kerberos AS-REQ (TCP порт 88); класифікація відповідей KDC: EXISTS / AS-REP roastable / DISABLED / EXPIRED; `internal/kerberos/enumusers.go`; wordlist формат (# коментарі, пусті рядки); not-found results приховані за замовчуванням
+- ✅ **`adpath kerb-enum`** — username enumeration без credentials через Kerberos AS-REQ (TCP порт 88); класифікація відповідей KDC: EXISTS / AS-REP roastable / DISABLED / EXPIRED; `internal/kerberos/enumusers.go`; wordlist формат (# коментарі, пусті рядки); not-found results приховані за замовчуванням
 - ✅ **`--stealth` flag** на `adpath enum` — мінімальні LDAP-запити: тільки users+groups (без комп'ютерів, без GC); пропускаються: ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAPSecurity, Audit; завжди виконується: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY в кінці CLI
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
@@ -366,4 +366,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.6 — enum-users via Kerberos AS-REQ, stealth mode.*
+*Останнє оновлення: v0.9.6 — kerb-enum via Kerberos AS-REQ, stealth mode.*
