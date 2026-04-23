@@ -13,6 +13,7 @@ import (
 	"github.com/YakinAnd/adpath/internal/analysis"
 	"github.com/YakinAnd/adpath/internal/bloodhound"
 	"github.com/YakinAnd/adpath/internal/graph"
+	adkerberos "github.com/YakinAnd/adpath/internal/kerberos"
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
 	"github.com/YakinAnd/adpath/internal/report"
 )
@@ -34,6 +35,7 @@ var (
 	jsonExportPath string // --json: output dir for AD JSON export (compatible with BloodHound CE)
 	maxDepth       int
 	verbose        bool
+	wordlistPath   string // --wordlist: path to username wordlist for enum-users
 )
 
 // ============================================================
@@ -110,6 +112,12 @@ var auditCmd = &cobra.Command{
 	RunE:  runAudit,
 }
 
+var enumUsersCmd = &cobra.Command{
+	Use:   "enum-users",
+	Short: "Enumerate valid AD usernames via Kerberos AS-REQ (no credentials required)",
+	RunE:  runEnumUsers,
+}
+
 var usersCmd = &cobra.Command{
 	Use:   "users",
 	Short: "Enumerate AD users and display a summary table",
@@ -127,7 +135,7 @@ var computersCmd = &cobra.Command{
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd, enumUsersCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -145,6 +153,9 @@ func init() {
 	enumCmd.Flags().StringVar(&jsonExportPath, "json", "", "Export AD objects as JSON to directory (e.g. json_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
 
+	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
+	enumUsersCmd.MarkFlagRequired("wordlist")
+
 	rootCmd.AddCommand(aclCmd)
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(versionCmd)
@@ -157,6 +168,7 @@ func init() {
 	rootCmd.AddCommand(auditCmd)
 	rootCmd.AddCommand(usersCmd)
 	rootCmd.AddCommand(computersCmd)
+	rootCmd.AddCommand(enumUsersCmd)
 
 	rootCmd.Version = "0.9.4"
 }
@@ -525,6 +537,25 @@ func runShadow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("shadow credentials analysis error: %w", err)
 	}
 	analysis.PrintShadowCredentialsResult(r)
+	return nil
+}
+
+// ============================================================
+// Логіка команди Enum-Users (Kerberos AS-REQ, no creds)
+// ============================================================
+
+func runEnumUsers(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	targetDC := dc
+	if targetDC == "" {
+		targetDC = domain
+	}
+
+	_, err := adkerberos.EnumUsers(domain, targetDC, wordlistPath)
+	if err != nil {
+		return fmt.Errorf("enum-users: %w", err)
+	}
 	return nil
 }
 
