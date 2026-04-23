@@ -179,7 +179,7 @@ func init() {
 	rootCmd.AddCommand(enumUsersCmd)
 	rootCmd.AddCommand(smbCmd)
 
-	rootCmd.Version = "0.9.6"
+	rootCmd.Version = "0.9.8"
 }
 
 // ============================================================
@@ -281,30 +281,18 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	// ── RootDSE ───────────────────────────────────────────────
 	var ldapSecResult *analysis.LDAPSecurityResult
 	var auditResult *analysis.AuditResult
+	var rdsInfo *adldap.RootDSEInfo
 	if rds, err := client.QueryRootDSE(); err == nil {
-		color.Cyan("\n  DOMAIN INFO")
-		color.White("  %-28s %s", "domain", rds.DefaultNamingContext)
-		color.White("  %-28s %s", "forest", rds.ForestNamingContext)
-		color.White("  %-28s %s  (%s)", "domain level",
-			rds.DomainFunctionality,
-			adldap.FunctionalityLevelName(rds.DomainFunctionality))
-		color.White("  %-28s %s", "responding DC", rds.ServerName)
+		rdsInfo = rds
 		if !stealth {
 			ldapSecResult = analysis.AnalyzeLDAPSecurity(client, rds)
-			analysis.LDAPSecuritySummaryLine(ldapSecResult)
 			auditResult = analysis.AnalyzeAuditPolicy(client, rds)
-			analysis.AuditSummaryLine(auditResult)
 		}
-	}
-
-	if stealth {
-		color.Yellow("  %-28s enabled — minimal queries, no GC, no ACL/ADCS/GPO/delegation", "stealth mode")
 	}
 
 	// ── enumeration ───────────────────────────────────────────
 	var result *adldap.EnumerationResult
 	if stealth {
-		// domain-only: users + groups, no computers, no GC
 		users, err := client.EnumerateUsers()
 		if err != nil {
 			return fmt.Errorf("user enumeration error: %w", err)
@@ -314,43 +302,26 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("group enumeration error: %w", err)
 		}
 		result = &adldap.EnumerationResult{
-			Domain:  client.Domain,
-			BaseDN:  client.BaseDN,
-			Users:   users,
-			Groups:  groups,
+			Domain: client.Domain,
+			BaseDN: client.BaseDN,
+			Users:  users,
+			Groups: groups,
 		}
-		color.Cyan("\n  OBJECTS COLLECTED  (stealth)")
-		color.White("  %-12s %d", "users", len(users))
-		color.White("  %-12s %d", "groups", len(groups))
-		color.White("  %-12s skipped (stealth)", "computers")
 	} else {
-		var err error
 		result, err = client.EnumerateAll()
 		if err != nil {
 			return fmt.Errorf("enumeration error: %w", err)
 		}
-		client.PrintEnumerationSummary(result)
 	}
 
-	// ── граф + attack paths ───────────────────────────────────
+	// ── graph + attack paths ──────────────────────────────────
 	g := graph.Build(result)
-	nodes, edges := g.Stats()
-	color.Cyan("\n  GRAPH")
-	color.White("  %-12s %d", "nodes", nodes)
-	color.White("  %-12s %d", "edges", edges)
-
 	paths := g.FindPathsToPrivilegedGroups(maxDepth)
-	g.PrintPaths(paths)
 
-	// ── аналіз ───────────────────────────────────────────────
-	outPath := resolveReportPath(reportPath, domain)
-
+	// ── analysis ─────────────────────────────────────────────
 	kr := analysis.AnalyzeKerberos(result)
 	trustResult, _ := analysis.AnalyzeTrusts(client, result)
-
-	// SMB signing check — no credentials needed, runs always
 	smbResult := analysis.CheckSMBSigning(client.Host)
-	analysis.SMBSigningSummaryLine(smbResult)
 
 	var aclResult *analysis.ACLResult
 	var dr *analysis.DelegationResult
@@ -372,46 +343,344 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		psoResult, _ = analysis.AnalyzePSO(client)
 		adcsResult, _ = analysis.AnalyzeADCS(client)
 		shadowResult, _ = analysis.AnalyzeShadowCredentials(client, result)
+	}
 
-		if adcsResult != nil {
-			analysis.PrintADCSResultSummary(adcsResult)
+	// ── Variant A terminal output ─────────────────────────────
+	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult)
+
+	// ── HTML report (opt-in via --report) ────────────────────
+	if reportPath != "" {
+		outPath := resolveReportPath(reportPath, domain)
+		authMethod := "Password"
+		switch {
+		case ccachePath != "":
+			authMethod = "PTT (Kerberos ccache)"
+		case ntHash != "":
+			authMethod = "PTH (NTLM hash)"
+		case username == "":
+			authMethod = "Anonymous"
 		}
-		analysis.AnalyzeShadowCredentialsSummary(shadowResult)
+		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, authMethod); err != nil {
+			return fmt.Errorf("report error: %w", err)
+		}
+		fmt.Println()
+		color.Cyan("  REPORT")
+		color.White("  %-28s %s", "saved to", outPath)
 	}
 
-	authMethod := "Password"
-	switch {
-	case ccachePath != "":
-		authMethod = "PTT (Kerberos ccache)"
-	case ntHash != "":
-		authMethod = "PTH (NTLM hash)"
-	case username == "":
-		authMethod = "Anonymous"
-	}
-
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, authMethod); err != nil {
-		return fmt.Errorf("report error: %w", err)
-	}
-
-	if stealth {
-		color.Cyan("\n  STEALTH SUMMARY")
-		color.White("  %-28s kerberos, attack paths, trusts", "modules run")
-		color.White("  %-28s acl, delegation, gpo, adcs, shadow, hygiene, audit, ldap-security", "skipped")
-		color.White("  %-28s %s", "report saved to", outPath)
-	}
-
+	// ── JSON export ───────────────────────────────────────────
 	if jsonExportPath != "" {
 		if err := bloodhound.Export(jsonExportPath, result); err != nil {
 			color.Yellow("  json export failed: %v", err)
 		} else {
-			color.Cyan("\n  JSON EXPORT")
+			fmt.Println()
+			color.Cyan("  JSON EXPORT")
 			color.White("  %-28s %s", "output dir", jsonExportPath)
 			color.White("  %-28s %s", "files", "users.json, groups.json, computers.json, domains.json")
-			color.White("  %-28s %s", "bloodhound", "compatible with BloodHound CE → Administration → File Ingest")
 		}
 	}
 
 	return nil
+}
+
+// ============================================================
+// Variant A — minimalist enum summary
+// ============================================================
+
+const enumMaxItems = 5 // max notable items to show per category before truncating
+
+// bold returns a bold+red string for CRITICAL findings.
+var (
+	critPrefix = color.New(color.FgRed, color.Bold).SprintFunc()
+	highPrefix = color.New(color.FgRed).SprintFunc()
+	medPrefix  = color.New(color.FgYellow).SprintFunc()
+	dimText    = color.New(color.Faint).SprintFunc()
+)
+
+// joinTrunc joins up to max names with " / " and appends "(+N more)" if needed.
+func joinTrunc(names []string, max int) string {
+	if len(names) == 0 {
+		return ""
+	}
+	if len(names) <= max {
+		return strings.Join(names, " / ")
+	}
+	shown := strings.Join(names[:max], " / ")
+	return fmt.Sprintf("%s  (+%d more)", shown, len(names)-max)
+}
+
+func printEnumSummary(
+	rds *adldap.RootDSEInfo,
+	result *adldap.EnumerationResult,
+	paths []graph.AttackPath,
+	kr *analysis.KerberosResult,
+	acl *analysis.ACLResult,
+	adcs *analysis.ADCSResult,
+	shadow *analysis.ShadowCredentialsResult,
+	smb *analysis.SMBSigningResult,
+	hr *analysis.HygieneResult,
+	ldapSec *analysis.LDAPSecurityResult,
+	audit *analysis.AuditResult,
+) {
+	fmt.Println()
+
+	// ── DOMAIN ────────────────────────────────────────────────
+	color.Cyan("  DOMAIN")
+	if rds != nil {
+		dcName := rds.ServerName
+		if dcName == "" {
+			dcName = domain
+		}
+		osName := adldap.FunctionalityLevelName(rds.DomainFunctionality)
+		color.White("  %-14s %s", "domain", rds.DefaultNamingContext)
+		color.White("  %-14s %s", "DC", dcName)
+		if osName != "" {
+			color.White("  %-14s %s", "level", osName)
+		}
+	} else {
+		color.White("  %-14s %s", "domain", domain)
+	}
+
+	// ── LDAP / SMB flags ──────────────────────────────────────
+	if ldapSec != nil {
+		for _, f := range ldapSec.Findings {
+			switch f.Severity {
+			case "High":
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "ldap", f.Title)
+			default:
+				fmt.Printf("  %s  %-20s %s\n", medPrefix("[-]"), "ldap", f.Title)
+			}
+		}
+	}
+	if smb != nil && smb.Reachable && !smb.SigningRequired {
+		fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "smb signing", "not required — NTLM relay risk")
+	}
+	if audit != nil {
+		for _, f := range audit.Findings {
+			fmt.Printf("  %s  %-20s %s\n", medPrefix("[-]"), "audit", f.Title)
+		}
+	}
+
+	// ── USERS ─────────────────────────────────────────────────
+	if result != nil {
+		fmt.Println()
+		totalUsers := len(result.Users)
+		enabledUsers, disabledUsers, asrepUsers, adminUsers, pwdNeverUsers := 0, 0, []string{}, 0, 0
+		for _, u := range result.Users {
+			if u.Enabled {
+				enabledUsers++
+			} else {
+				disabledUsers++
+			}
+			if u.DontReqPreauth && u.Enabled {
+				asrepUsers = append(asrepUsers, u.SAMAccountName)
+			}
+			if u.AdminCount {
+				adminUsers++
+			}
+			if u.PasswordNeverExpires && u.Enabled {
+				pwdNeverUsers++
+			}
+		}
+		color.Cyan("  USERS    %s", dimText(fmt.Sprintf("%d total · %d enabled · %d disabled", totalUsers, enabledUsers, disabledUsers)))
+		if len(asrepUsers) > 0 {
+			fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", joinTrunc(asrepUsers, enumMaxItems))
+		}
+		if adminUsers > 0 {
+			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[-]"), "adminCount=1", adminUsers)
+		}
+		if pwdNeverUsers > 0 {
+			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[-]"), "pwd never expires", pwdNeverUsers)
+		}
+		if hr != nil {
+			if len(hr.StaleUsers) > 0 {
+				fmt.Printf("  %s  %-20s %d accounts  %s\n", medPrefix("[-]"), "stale (>90d)", len(hr.StaleUsers), dimText("no logon"))
+			}
+			if hr.KrbtgtAtRisk {
+				fmt.Printf("  %s  %-20s %s  %s\n", highPrefix("[!]"), "krbtgt age", fmt.Sprintf("%d days", hr.KrbtgtPwdAgeDays), dimText("golden ticket risk"))
+			}
+		}
+
+		// ── COMPUTERS ─────────────────────────────────────────────
+		if len(result.Computers) > 0 {
+			fmt.Println()
+			totalComp := len(result.Computers)
+			enabledComp, disabledComp, unconstrComp, noLAPSComp := 0, 0, []string{}, 0
+			for _, c := range result.Computers {
+				if c.Enabled {
+					enabledComp++
+					if !c.LAPSEnabled {
+						noLAPSComp++
+					}
+				} else {
+					disabledComp++
+				}
+				if c.UnconstrainedDelegation {
+					h := c.DNSHostName
+					if h == "" {
+						h = c.SAMAccountName
+					}
+					unconstrComp = append(unconstrComp, h)
+				}
+			}
+			scopeLabel := ""
+			if result.ForestWide {
+				scopeLabel = "  " + dimText("(forest-wide)")
+			}
+			color.Cyan("  COMPUTERS  %s%s", dimText(fmt.Sprintf("%d total · %d enabled · %d disabled", totalComp, enabledComp, disabledComp)), scopeLabel)
+			if noLAPSComp > 0 {
+				fmt.Printf("  %s  %-20s %d hosts\n", medPrefix("[-]"), "no LAPS", noLAPSComp)
+			}
+			if len(unconstrComp) > 0 {
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "unconstrained deleg", joinTrunc(unconstrComp, enumMaxItems))
+			}
+			if hr != nil && len(hr.StaleComputers) > 0 {
+				fmt.Printf("  %s  %-20s %d hosts  %s\n", medPrefix("[-]"), "stale (>45d)", len(hr.StaleComputers), dimText("no logon"))
+			}
+		}
+	}
+
+	// ── KERBEROS ──────────────────────────────────────────────
+	if kr != nil && (len(kr.KerberoastableAccounts) > 0 || len(kr.ASREPAccounts) > 0) {
+		fmt.Println()
+		color.Cyan("  KERBEROS")
+		if len(kr.KerberoastableAccounts) > 0 {
+			names := make([]string, len(kr.KerberoastableAccounts))
+			for i, a := range kr.KerberoastableAccounts {
+				names[i] = a.SAMAccountName
+			}
+			fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "kerberoastable", joinTrunc(names, enumMaxItems))
+		}
+		if len(kr.ASREPAccounts) > 0 {
+			names := make([]string, len(kr.ASREPAccounts))
+			for i, a := range kr.ASREPAccounts {
+				names[i] = a.SAMAccountName
+			}
+			fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", joinTrunc(names, enumMaxItems))
+		}
+	}
+
+	// ── ACL ───────────────────────────────────────────────────
+	if acl != nil && (len(acl.Findings) > 0 || len(acl.DCSyncFindings) > 0) {
+		fmt.Println()
+		critCount, highCount := 0, 0
+		for _, f := range acl.Findings {
+			if f.Severity == "Critical" {
+				critCount++
+			} else {
+				highCount++
+			}
+		}
+		critCount += len(acl.DCSyncFindings)
+		color.Cyan("  ACL      %s", dimText(fmt.Sprintf("%d critical · %d high", critCount, highCount)))
+		shown := 0
+		for _, f := range acl.DCSyncFindings {
+			if shown >= enumMaxItems {
+				break
+			}
+			fmt.Printf("  %s  %-18s %-14s →  %s\n", critPrefix("[!!]"), f.PrincipalName, "DCSync", domain)
+			shown++
+		}
+		for _, f := range acl.Findings {
+			if shown >= enumMaxItems {
+				break
+			}
+			pfx := highPrefix("[!] ")
+			if f.Severity == "Critical" {
+				pfx = critPrefix("[!!]")
+			}
+			fmt.Printf("  %s  %-18s %-14s →  %s\n", pfx, f.PrincipalName, string(f.Right), f.TargetName)
+			shown++
+		}
+		total := len(acl.Findings) + len(acl.DCSyncFindings)
+		if total > enumMaxItems {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath acl -d %s ...)", total-enumMaxItems, domain)))
+		}
+	}
+
+	// ── ADCS ──────────────────────────────────────────────────
+	if adcs != nil && len(adcs.TemplateFindings) > 0 {
+		fmt.Println()
+		critCount, highCount := 0, 0
+		for _, f := range adcs.TemplateFindings {
+			if f.Severity == "Critical" {
+				critCount++
+			} else {
+				highCount++
+			}
+		}
+		color.Cyan("  ADCS     %s", dimText(fmt.Sprintf("%d critical · %d high", critCount, highCount)))
+		shown := 0
+		for _, f := range adcs.TemplateFindings {
+			if shown >= enumMaxItems {
+				break
+			}
+			pfx := highPrefix("[!] ")
+			if f.Severity == "Critical" {
+				pfx = critPrefix("[!!]")
+			}
+			escLabel := ""
+			if len(f.VulnTypes) > 0 {
+				escLabel = string(f.VulnTypes[0])
+			}
+			fmt.Printf("  %s  %-18s %s  %s\n", pfx, f.TemplateName, dimText("("+escLabel+")"), "")
+			shown++
+		}
+		if len(adcs.TemplateFindings) > enumMaxItems {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath adcs -d %s ...)", len(adcs.TemplateFindings)-enumMaxItems, domain)))
+		}
+	}
+
+	// ── SHADOW CREDENTIALS ────────────────────────────────────
+	if shadow != nil && len(shadow.Findings) > 0 {
+		fmt.Println()
+		color.Cyan("  SHADOW CREDS  %s", dimText(fmt.Sprintf("%d finding(s)", len(shadow.Findings))))
+		shown := 0
+		for _, f := range shadow.Findings {
+			if shown >= enumMaxItems {
+				break
+			}
+			pfx := highPrefix("[!] ")
+			if f.Severity == "Critical" {
+				pfx = critPrefix("[!!]")
+			}
+			fmt.Printf("  %s  %-18s →  %s\n", pfx, f.PrincipalName, f.TargetName)
+			shown++
+		}
+		if len(shadow.Findings) > enumMaxItems {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath shadow -d %s ...)", len(shadow.Findings)-enumMaxItems, domain)))
+		}
+	}
+
+	// ── ATTACK PATHS ──────────────────────────────────────────
+	if len(paths) > 0 {
+		fmt.Println()
+		color.Cyan("  ATTACK PATHS  %s", dimText(fmt.Sprintf("%d found", len(paths))))
+		shown := 0
+		for _, p := range paths {
+			if shown >= enumMaxItems {
+				break
+			}
+			names := make([]string, len(p.Nodes))
+			for i, n := range p.Nodes {
+				names[i] = n.SAMAccountName
+			}
+			chain := strings.Join(names, " → ")
+			fmt.Printf("  %s  %s  %s\n", critPrefix("[!!]"), chain, dimText(fmt.Sprintf("(depth %d → %s)", p.Depth, p.TargetGroup)))
+			shown++
+		}
+		if len(paths) > enumMaxItems {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more)", len(paths)-enumMaxItems)))
+		}
+	} else if result != nil {
+		fmt.Println()
+		color.Cyan("  ATTACK PATHS  %s", dimText("0 found"))
+	}
+
+	fmt.Println()
+	if reportPath == "" {
+		color.White("  %s", dimText("tip: add --report report.html to generate a full HTML report"))
+	}
 }
 
 
