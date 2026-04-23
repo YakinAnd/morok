@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.9.7
+- **Поточна версія:** v0.9.8
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -358,6 +358,12 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **`adpath kerb-enum`** — username enumeration без credentials через Kerberos AS-REQ (TCP порт 88); класифікація відповідей KDC: EXISTS / AS-REP roastable / DISABLED / EXPIRED; `internal/kerberos/enumusers.go`; wordlist формат (# коментарі, пусті рядки); not-found results приховані за замовчуванням
 - ✅ **`--stealth` flag** на `adpath enum` — мінімальні LDAP-запити: тільки users+groups (без комп'ютерів, без GC); пропускаються: ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAPSecurity, Audit; завжди виконується: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY в кінці CLI
 
+### v0.9.8 ЗАВЕРШЕНО
+
+- ✅ **ADCS ESC9** — `CT_FLAG_NO_SECURITY_EXTENSION` (0x00080000) в `msPKI-Enrollment-Flag`; сертифікат без SID-binding; потребує GenericWrite для зміни UPN жертви; Severity: Medium; next steps: bloodyAD UPN change → certipy req → certipy auth
+- ✅ **ADCS ESC11** — ICPR/DCOM enrollment relay (CA-level finding, як ESC8 але через RPC/DCOM); Severity: High; next steps: certipy relay -target 'rpc://...'
+- ✅ **ADCS ESC13** — issuance policy OID linked to privileged group via `msDS-OIDToGroupLink`; queries `CN=OID,CN=Public Key Services`; Critical якщо low-priv може записатись; next steps: certipy req + certipy auth
+
 ### v0.9.7 ЗАВЕРШЕНО
 
 - ✅ **`adpath smb`** — SMB signing check через raw SMB2 Negotiate (TCP/445); читає SecurityMode поле з відповіді; High якщо signing не required, Medium якщо enabled але не required; summary line в `adpath enum`; секція в HTML LDAP Security tab; без credentials — тільки порт 445; `internal/analysis/smb_signing.go`
@@ -373,4 +379,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.7 — SMB signing check (adpath smb).*
+*Останнє оновлення: v0.9.8 — ADCS ESC9, ESC11, ESC13 detection.*

