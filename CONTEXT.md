@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.9.6
+- **Поточна версія:** v0.9.7
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -113,6 +113,9 @@ golang.org/x/net/proxy                  # --proxy SOCKS5
 
 # Stealth enumeration (мінімальні LDAP-запити, без GC, без ACL/ADCS/GPO)
 ./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --stealth
+
+# SMB signing check (без credentials, тільки порт 445)
+./adpath smb -d corp.local --dc 10.0.0.1
 
 # Версія
 ./adpath version
@@ -355,6 +358,10 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **`adpath kerb-enum`** — username enumeration без credentials через Kerberos AS-REQ (TCP порт 88); класифікація відповідей KDC: EXISTS / AS-REP roastable / DISABLED / EXPIRED; `internal/kerberos/enumusers.go`; wordlist формат (# коментарі, пусті рядки); not-found results приховані за замовчуванням
 - ✅ **`--stealth` flag** на `adpath enum` — мінімальні LDAP-запити: тільки users+groups (без комп'ютерів, без GC); пропускаються: ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAPSecurity, Audit; завжди виконується: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY в кінці CLI
 
+### v0.9.7 ЗАВЕРШЕНО
+
+- ✅ **`adpath smb`** — SMB signing check через raw SMB2 Negotiate (TCP/445); читає SecurityMode поле з відповіді; High якщо signing не required, Medium якщо enabled але не required; summary line в `adpath enum`; секція в HTML LDAP Security tab; без credentials — тільки порт 445; `internal/analysis/smb_signing.go`
+
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
 - Стаття, пости на r/netsec, UISGCON
@@ -366,4 +373,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.6 — kerb-enum via Kerberos AS-REQ, stealth mode.*
+*Останнє оновлення: v0.9.7 — SMB signing check (adpath smb).*

@@ -49,6 +49,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | **AdminSDHolder** | Orphaned adminCount=1, custom backdoor ACEs |
 | **Trusts** | Trust direction/type, SID filtering, FSPs in privileged groups |
 | **Shadow Credentials** | Write access to msDS-KeyCredentialLink on DA/EA/DC objects |
+| **SMB Signing** | SMB signing status on the DC (port 445) — NTLM relay risk |
 
 ## HTML report
 

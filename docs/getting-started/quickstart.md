@@ -123,7 +123,15 @@ Enumerate valid AD usernames via Kerberos AS-REQ — only port 88 access to the 
 adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 ```
 
-## 9. Pivoting through SOCKS5
+## 9. SMB signing check (no credentials)
+
+Check if SMB signing is required on the DC — only port 445 access needed:
+
+```bash
+adpath smb -d corp.local --dc 10.0.0.1
+```
+
+## 11. Pivoting through SOCKS5
 
 Route all LDAP traffic through a proxy — useful when the DC is only reachable via a pivot:
 

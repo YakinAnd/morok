@@ -69,6 +69,7 @@ nav:
     - users: commands/users.md
     - computers: commands/computers.md
     - kerb-enum: commands/kerb-enum.md
+    - smb: commands/smb.md
   - HTML Report:
     - Overview: report/overview.md
     - Tabs reference: report/tabs.md

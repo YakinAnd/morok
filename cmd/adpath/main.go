@@ -131,12 +131,18 @@ var computersCmd = &cobra.Command{
 	RunE:  runComputers,
 }
 
+var smbCmd = &cobra.Command{
+	Use:   "smb",
+	Short: "Check SMB signing status on the domain controller (port 445)",
+	RunE:  runSMB,
+}
+
 // ============================================================
 // Реєстрація флагів
 // ============================================================
 
 func init() {
-	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd, enumUsersCmd} {
+	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd, enumUsersCmd, smbCmd} {
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -171,8 +177,9 @@ func init() {
 	rootCmd.AddCommand(usersCmd)
 	rootCmd.AddCommand(computersCmd)
 	rootCmd.AddCommand(enumUsersCmd)
+	rootCmd.AddCommand(smbCmd)
 
-	rootCmd.Version = "0.9.4"
+	rootCmd.Version = "0.9.6"
 }
 
 // ============================================================
@@ -341,6 +348,10 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	kr := analysis.AnalyzeKerberos(result)
 	trustResult, _ := analysis.AnalyzeTrusts(client, result)
 
+	// SMB signing check — no credentials needed, runs always
+	smbResult := analysis.CheckSMBSigning(client.Host)
+	analysis.SMBSigningSummaryLine(smbResult)
+
 	var aclResult *analysis.ACLResult
 	var dr *analysis.DelegationResult
 	var gr *analysis.GPOResult
@@ -378,7 +389,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		authMethod = "Anonymous"
 	}
 
-	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, authMethod); err != nil {
+	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
 	}
 
@@ -826,6 +837,23 @@ func printBanner() {
 	color.White(``)
 	color.White(`  v0.9.4  //  AD Attack Path Enumerator made by M4t`)
 	color.White(`  ` + strings.Repeat("─", 40))
+}
+
+// ============================================================
+// Логіка команди SMB
+// ============================================================
+
+func runSMB(cmd *cobra.Command, args []string) error {
+	printBanner()
+
+	targetDC := dc
+	if targetDC == "" {
+		targetDC = domain
+	}
+
+	r := analysis.CheckSMBSigning(targetDC)
+	analysis.PrintSMBSigningResult(r)
+	return nil
 }
 
 // ============================================================

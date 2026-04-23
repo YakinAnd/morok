@@ -52,6 +52,8 @@ type ReportData struct {
 	LDAPSecurityResult      *analysis.LDAPSecurityResult
 	// v0.9.4
 	AuditResult *analysis.AuditResult
+	// v0.9.6
+	SMBSigningResult *analysis.SMBSigningResult
 }
 
 // Summary — короткий підсумок для executive section
@@ -136,6 +138,7 @@ func Generate(
 	shadowResult   *analysis.ShadowCredentialsResult,
 	ldapSecResult  *analysis.LDAPSecurityResult,
 	auditResult    *analysis.AuditResult,
+	smbResult      *analysis.SMBSigningResult,
 	authMethod string,
 ) error {
 
@@ -164,6 +167,7 @@ func Generate(
 	ShadowCredentialsResult: shadowResult,
 	LDAPSecurityResult:      ldapSecResult,
 	AuditResult:             auditResult,
+	SMBSigningResult:        smbResult,
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -557,6 +561,22 @@ func templateFuncs() template.FuncMap {
 				out += `<a class="mitre-badge" href="` + t.URL() + `" target="_blank" rel="noopener" title="` + t.Name + `">` + t.ID + `</a>`
 			}
 			return template.HTML(out)
+		},
+		"dialectName": func(d uint16) string {
+			switch d {
+			case 0x0202:
+				return "SMB 2.0.2"
+			case 0x0210:
+				return "SMB 2.1"
+			case 0x0300:
+				return "SMB 3.0"
+			case 0x0302:
+				return "SMB 3.0.2"
+			case 0x0311:
+				return "SMB 3.1.1"
+			default:
+				return fmt.Sprintf("0x%04x", d)
+			}
 		},
 		"pathExploit": func(nodes []graph.Node) string {
 			for _, n := range nodes {
@@ -2065,6 +2085,48 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
   {{else}}
   <p style="color:var(--text-muted)">LDAP security data not available.</p>
+  {{end}}
+
+  {{if .SMBSigningResult}}
+  <div class="section-header" style="margin-top:24px">SMB Signing (port 445)</div>
+  {{if .SMBSigningResult.Reachable}}
+  <table class="data-table" style="margin-bottom:16px">
+    <thead><tr><th>Property</th><th>Value</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Host</td>
+        <td class="mono">{{.SMBSigningResult.Host}}</td>
+      </tr>
+      <tr>
+        <td>Dialect</td>
+        <td>{{dialectName .SMBSigningResult.Dialect}}</td>
+      </tr>
+      <tr>
+        <td>Signing</td>
+        <td>
+          {{if .SMBSigningResult.SigningRequired}}<span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ required</span>
+          {{else if .SMBSigningResult.SigningEnabled}}<span class="badge badge-medium">enabled (not required)</span>
+          {{else}}<span class="badge badge-high">not enabled</span>{{end}}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  {{if .SMBSigningResult.Findings}}
+  {{range .SMBSigningResult.Findings}}
+  <div class="path-card" style="margin-bottom:10px">
+    <div class="path-header">
+      <span class="badge {{if eq .Severity "High"}}badge-high{{else if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
+      <span style="margin-left:8px">{{.Title}}</span>
+    </div>
+    <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
+  </div>
+  {{end}}
+  {{else}}
+  <p style="color:var(--color-ok)">✓ SMB signing is required.</p>
+  {{end}}
+  {{else}}
+  <p style="color:var(--text-muted)">Port 445 not reachable — SMB signing check skipped.</p>
+  {{end}}
   {{end}}
 </div>
 

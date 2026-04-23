@@ -99,6 +99,7 @@ func TestGenerateReport(t *testing.T) {
 		nil, // ShadowCredentialsResult
 		fakeLDAPSecResult(),
 		fakeAuditResult(),
+		nil, // SMBSigningResult
 		"Password",
 	)
 	if err != nil {

@@ -1,6 +1,9 @@
 # Roadmap
 
-## Current: v0.9.6
+## Current: v0.9.7
+
+### v0.9.7
+- **`adpath smb`** — SMB signing check via raw SMB2 Negotiate (no credentials); SecurityMode field parsing; High finding if signing not required; integrated into `adpath enum` output and HTML report (LDAP Security tab)
 
 ### v0.9.6
 - **`adpath kerb-enum`** — username enumeration without credentials via Kerberos AS-REQ; classifies responses: EXISTS / AS-REP roastable / DISABLED / EXPIRED; wordlist with `#` comment support; not-found suppressed by default
@@ -90,7 +93,6 @@
 
 ### Next
 - **ADCS ESC9, ESC10, ESC11, ESC13** — extended certificate template vulnerability coverage
-- **SMB signing check** — detect NTLM relay risk without SMB shares access
 
 ### v1.0 — Public release
 - README with demo GIF
