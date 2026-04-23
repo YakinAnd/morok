@@ -44,7 +44,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | **GPO** | Password policy audit, GPO write ACL, GPP cpassword |
 | **Exposure** | Stale accounts, krbtgt age, LAPS coverage, passwords in descriptions |
 | **PSO** | Fine-Grained Password Policy (msDS-PasswordSettings objects) |
-| **ADCS** | ESC1–ESC8 certificate template vulnerabilities |
+| **ADCS** | ESC1–ESC9, ESC11, ESC13 certificate template vulnerabilities |
 | **Protected Users** | Privileged accounts not in Protected Users group |
 | **AdminSDHolder** | Orphaned adminCount=1, custom backdoor ACEs |
 | **Trusts** | Trust direction/type, SID filtering, FSPs in privileged groups |

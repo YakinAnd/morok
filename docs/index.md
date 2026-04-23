@@ -11,7 +11,7 @@ adpath is a lightweight, single-binary CLI tool for enumerating Active Directory
  / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |
 /_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|
 
-  v0.9.5  //  AD Attack Path Enumerator
+  v0.9.8  //  AD Attack Path Enumerator
 ```
 
 ---
@@ -26,7 +26,8 @@ adpath connects to a Domain Controller over LDAP and runs a comprehensive securi
 | **Kerberos** | Kerberoastable accounts (SPNs), AS-REP roastable accounts (no preauth) |
 | **ACL** | GenericAll, WriteDACL, WriteOwner, ForceChangePassword, AddMember, DCSync (replication rights) |
 | **Delegation** | Unconstrained, constrained, RBCD misconfigurations |
-| **ADCS** | Certificate template vulnerabilities ESC1–ESC8 |
+| **ADCS** | Certificate template vulnerabilities ESC1–ESC9, ESC11, ESC13 |
+| **SMB Signing** | SMB signing status on DC (port 445) — NTLM relay risk, no credentials needed |
 | **Shadow Credentials** | Write access to `msDS-KeyCredentialLink` on privileged objects |
 | **Trusts** | SID filtering, trust direction/type, Foreign Security Principals in privileged groups |
 | **GPO** | Password policy, GPO write ACL, GPP/MS14-025 cpassword |
@@ -78,6 +79,15 @@ adpath adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Audit policy + AD Recycle Bin check
 adpath audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+
+# Stealth mode — minimal LDAP footprint (SIEM-heavy environments)
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --stealth
+
+# Username enumeration without credentials (Kerberos AS-REQ)
+adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
+
+# SMB signing check without credentials
+adpath smb -d corp.local --dc 10.0.0.1
 ```
 
 ---
@@ -105,10 +115,12 @@ Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/a
 | `acl` | Dangerous ACL permissions (GenericAll, WriteDACL, DCSync…) |
 | `delegation` | Unconstrained, constrained, RBCD delegation |
 | `gpo` | GPO security analysis + password policy |
-| `adcs` | ADCS certificate template vulnerabilities (ESC1–ESC8) |
+| `adcs` | ADCS certificate template vulnerabilities (ESC1–ESC9, ESC11, ESC13) |
 | `trust` | Domain/forest trust analysis, Foreign Security Principals |
 | `shadow` | Shadow Credentials — write access to msDS-KeyCredentialLink |
 | `audit` | Audit policy, AD Recycle Bin, machine account quota |
 | `users` | Enumerate AD users — summary table with AS-REP, adminCount, last logon |
 | `computers` | Enumerate AD computers — forest-wide, OS, LAPS, delegation summary |
+| `kerb-enum` | Username enumeration via Kerberos AS-REQ — no credentials required |
+| `smb` | SMB signing check on DC port 445 — no credentials required |
 | `version` | Print version |

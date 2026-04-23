@@ -85,8 +85,10 @@ Computer table with: OS version, LAPS status, last logon, domain, description.
 - Certification Authorities table
 - ESC6 — EDITF_ATTRIBUTESUBJECTALTNAME2 flag on CA
 - ESC7 — low-priv ManageCA or ManageCertificates
-- Certificate template findings (ESC1–ESC5, ESC8) with certipy commands
-- **EnrollableBy** badge on ESC1 — shows which principals can actually enroll (Critical only if low-priv can enroll)
+- ESC8 — Web Enrollment endpoint (manual verify)
+- ESC11 — ICPR/DCOM relay endpoint (manual verify)
+- Certificate template findings: ESC1, ESC2, ESC3, ESC4, ESC9, ESC13 with certipy/bloodyAD commands
+- **EnrollableBy** badge on ESC1/ESC13 — Critical only if low-priv can enroll
 
 ## Shadow Creds
 
@@ -101,6 +103,7 @@ Computer table with: OS version, LAPS status, last logon, domain, description.
 - SASL mechanisms advertised
 - Supported capabilities OIDs
 - Findings: signing not enforced, channel binding not advertised, SASL over plain LDAP, anonymous read
+- **SMB Signing** section — SecurityMode from SMB2 Negotiate; High if signing not required (NTLM relay possible)
 
 ## Audit
 

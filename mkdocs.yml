@@ -78,7 +78,7 @@ nav:
     - AS-REP Roasting: techniques/asreproasting.md
     - ACL Abuse: techniques/acl-abuse.md
     - Delegation Abuse: techniques/delegation.md
-    - ADCS (ESC1–ESC8): techniques/adcs.md
+    - ADCS (ESC1–ESC13): techniques/adcs.md
     - Trust Attacks: techniques/trusts.md
     - Shadow Credentials: techniques/shadow-credentials.md
     - LDAP Relay: techniques/ldap-relay.md
