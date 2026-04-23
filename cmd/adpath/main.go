@@ -36,6 +36,7 @@ var (
 	maxDepth       int
 	verbose        bool
 	wordlistPath   string // --wordlist: path to username wordlist for enum-users
+	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
 )
 
 // ============================================================
@@ -152,6 +153,7 @@ func init() {
 	enumCmd.Flags().StringVar(&reportPath, "report", "", "Save HTML report to file (e.g. report.html)")
 	enumCmd.Flags().StringVar(&jsonExportPath, "json", "", "Export AD objects as JSON to directory (e.g. json_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
+	enumCmd.Flags().BoolVar(&stealth, "stealth", false, "Stealth mode — minimal LDAP queries, no GC, no ACL/GPO/ADCS/delegation analysis")
 
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
 	enumUsersCmd.MarkFlagRequired("wordlist")
@@ -280,18 +282,48 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			rds.DomainFunctionality,
 			adldap.FunctionalityLevelName(rds.DomainFunctionality))
 		color.White("  %-28s %s", "responding DC", rds.ServerName)
-		ldapSecResult = analysis.AnalyzeLDAPSecurity(client, rds)
-		analysis.LDAPSecuritySummaryLine(ldapSecResult)
-		auditResult = analysis.AnalyzeAuditPolicy(client, rds)
-		analysis.AuditSummaryLine(auditResult)
+		if !stealth {
+			ldapSecResult = analysis.AnalyzeLDAPSecurity(client, rds)
+			analysis.LDAPSecuritySummaryLine(ldapSecResult)
+			auditResult = analysis.AnalyzeAuditPolicy(client, rds)
+			analysis.AuditSummaryLine(auditResult)
+		}
+	}
+
+	if stealth {
+		color.Yellow("  %-28s enabled — minimal queries, no GC, no ACL/ADCS/GPO/delegation", "stealth mode")
 	}
 
 	// ── enumeration ───────────────────────────────────────────
-	result, err := client.EnumerateAll()
-	if err != nil {
-		return fmt.Errorf("enumeration error: %w", err)
+	var result *adldap.EnumerationResult
+	if stealth {
+		// domain-only: users + groups, no computers, no GC
+		users, err := client.EnumerateUsers()
+		if err != nil {
+			return fmt.Errorf("user enumeration error: %w", err)
+		}
+		groups, err := client.EnumerateGroups()
+		if err != nil {
+			return fmt.Errorf("group enumeration error: %w", err)
+		}
+		result = &adldap.EnumerationResult{
+			Domain:  client.Domain,
+			BaseDN:  client.BaseDN,
+			Users:   users,
+			Groups:  groups,
+		}
+		color.Cyan("\n  OBJECTS COLLECTED  (stealth)")
+		color.White("  %-12s %d", "users", len(users))
+		color.White("  %-12s %d", "groups", len(groups))
+		color.White("  %-12s skipped (stealth)", "computers")
+	} else {
+		var err error
+		result, err = client.EnumerateAll()
+		if err != nil {
+			return fmt.Errorf("enumeration error: %w", err)
+		}
+		client.PrintEnumerationSummary(result)
 	}
-	client.PrintEnumerationSummary(result)
 
 	// ── граф + attack paths ───────────────────────────────────
 	g := graph.Build(result)
@@ -307,21 +339,34 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	outPath := resolveReportPath(reportPath, domain)
 
 	kr := analysis.AnalyzeKerberos(result)
-	aclResult, _ := analysis.AnalyzeACL(client, result)
-	dr, _ := analysis.AnalyzeDelegation(client)
-	gr, _ := analysis.AnalyzeGPO(client)
-	hr := analysis.AnalyzeHygiene(result)
-	puResult := analysis.AnalyzeProtectedUsers(result)
-	adminSDResult, _ := analysis.AnalyzeAdminSDHolder(client, result)
 	trustResult, _ := analysis.AnalyzeTrusts(client, result)
-	psoResult, _ := analysis.AnalyzePSO(client)
-	adcsResult, _ := analysis.AnalyzeADCS(client)
-	shadowResult, _ := analysis.AnalyzeShadowCredentials(client, result)
 
-	if adcsResult != nil {
-		analysis.PrintADCSResultSummary(adcsResult)
+	var aclResult *analysis.ACLResult
+	var dr *analysis.DelegationResult
+	var gr *analysis.GPOResult
+	var hr *analysis.HygieneResult
+	var puResult *analysis.ProtectedUsersResult
+	var adminSDResult *analysis.AdminSDHolderResult
+	var psoResult *analysis.PSOResult
+	var adcsResult *analysis.ADCSResult
+	var shadowResult *analysis.ShadowCredentialsResult
+
+	if !stealth {
+		aclResult, _ = analysis.AnalyzeACL(client, result)
+		dr, _ = analysis.AnalyzeDelegation(client)
+		gr, _ = analysis.AnalyzeGPO(client)
+		hr = analysis.AnalyzeHygiene(result)
+		puResult = analysis.AnalyzeProtectedUsers(result)
+		adminSDResult, _ = analysis.AnalyzeAdminSDHolder(client, result)
+		psoResult, _ = analysis.AnalyzePSO(client)
+		adcsResult, _ = analysis.AnalyzeADCS(client)
+		shadowResult, _ = analysis.AnalyzeShadowCredentials(client, result)
+
+		if adcsResult != nil {
+			analysis.PrintADCSResultSummary(adcsResult)
+		}
+		analysis.AnalyzeShadowCredentialsSummary(shadowResult)
 	}
-	analysis.AnalyzeShadowCredentialsSummary(shadowResult)
 
 	authMethod := "Password"
 	switch {
@@ -335,6 +380,13 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, authMethod); err != nil {
 		return fmt.Errorf("report error: %w", err)
+	}
+
+	if stealth {
+		color.Cyan("\n  STEALTH SUMMARY")
+		color.White("  %-28s kerberos, attack paths, trusts", "modules run")
+		color.White("  %-28s acl, delegation, gpo, adcs, shadow, hygiene, audit, ldap-security", "skipped")
+		color.White("  %-28s %s", "report saved to", outPath)
 	}
 
 	if jsonExportPath != "" {

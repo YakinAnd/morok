@@ -1,6 +1,10 @@
 # Roadmap
 
-## Current: v0.9.5
+## Current: v0.9.6
+
+### v0.9.6
+- **`adpath enum-users`** — username enumeration without credentials via Kerberos AS-REQ; classifies responses: EXISTS / AS-REP roastable / DISABLED / EXPIRED; wordlist with `#` comment support; not-found suppressed by default
+- **`--stealth` flag** on `adpath enum` — minimal LDAP footprint: only users+groups (no GC, no computers); skips ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAP Security, Audit; always runs: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY printed at end
 
 ### v0.9.5
 - **`adpath users`** — targeted user enumeration with colored table (AS-REP red, adminCount yellow, disabled dim); columns: username, display name, enabled, adminCount, AS-REP, pwd-never-expires, last logon, SPN count
@@ -85,10 +89,8 @@
 ## Planned
 
 ### Next
-- **Username enumeration via Kerberos AS-REQ** — `adpath enum-users --wordlist users.txt`; PRINCIPAL_UNKNOWN vs PREAUTH_REQUIRED without credentials
 - **ADCS ESC9, ESC10, ESC11, ESC13** — extended certificate template vulnerability coverage
 - **SMB signing check** — detect NTLM relay risk without SMB shares access
-- **Stealth mode** — `--stealth` flag; minimal LDAP queries, no GC, no extra round-trips for SIEM-heavy environments
 
 ### v1.0 — Public release
 - README with demo GIF

@@ -23,6 +23,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | `--report` | | HTML report output path | `<domain>_<timestamp>.html` |
 | `--json` | | Export AD objects as JSON to directory (e.g. `json_out/`) | |
 | `--max-depth` | | BFS depth for attack path search | `10` |
+| `--stealth` | | Stealth mode — minimal LDAP queries, no GC, no ACL/ADCS/GPO/delegation | |
 | `--verbose` | `-v` | Verbose LDAP output | |
 
 ## What it runs

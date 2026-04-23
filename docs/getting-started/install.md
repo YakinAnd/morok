@@ -40,7 +40,7 @@ go build -o adpath.exe .\cmd\adpath\...
 
 ```
 $ adpath version
-adpath v0.9.5
+adpath v0.9.6
 AD Attack Path Enumerator
 https://github.com/YakinAnd/adpath
 ```

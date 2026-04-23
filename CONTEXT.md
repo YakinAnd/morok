@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.9.5
+- **Поточна версія:** v0.9.6
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -107,6 +107,12 @@ golang.org/x/net/proxy                  # --proxy SOCKS5
 
 # Тільки комп'ютери (targeted, forest-wide GC)
 ./adpath computers -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# Username enumeration без credentials (Kerberos AS-REQ)
+./adpath enum-users -d corp.local --dc 10.0.0.1 --wordlist users.txt
+
+# Stealth enumeration (мінімальні LDAP-запити, без GC, без ACL/ADCS/GPO)
+./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --stealth
 
 # Версія
 ./adpath version
@@ -313,7 +319,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ESC9, ESC10, ESC11, ESC13 — залишились не реалізовані
 - ✅ Enrollment rights перевірка як qualifier для ESC1 — DACL парсинг enrollment GUID, ESC1 Critical тільки якщо low-priv може записатись; інакше Medium
 - ✅ **SOCKS5 proxy** — `--proxy socks5://127.0.0.1:1080` на всіх командах; DNS резолвиться на proxy-стороні; замінено LDAP dialer через `golang.org/x/net/proxy`; `--proxy + --ccache` — заблоковано з помилкою (PTT не підтримується через proxy)
-- **Stealth mode** — `--stealth` flag: мінімальна кількість LDAP запитів, без SMB enumeration, без forest-wide GC queries, без додаткових round-trips. Важливо для реальних engagements де є SIEM/detection. Пріоритет: тільки критичні знахідки, менше шуму в логах.
+- ✅ **Stealth mode** — `--stealth` flag на `adpath enum`: мінімальна кількість LDAP запитів (тільки users+groups), без GC (порт 3268), без ACL/Delegation/GPO/ADCS/PSO/ProtectedUsers/AdminSDHolder/ShadowCredentials/Hygiene/LDAPSecurity/Audit. Завжди запускається: RootDSE, Kerberos, Trusts, Graph/AttackPaths. STEALTH SUMMARY в кінці CLI.
 - ✅ **Shadow Credentials** — `internal/analysis/shadow_credentials.go`: DACL парсинг msDS-KeyCredentialLink (GUID 5b47d60f-...) на DA/EA/DC об'єктах; окрема команда `adpath shadow`; next steps з pywhisker/certipy; HTML tab Shadow Creds з таблицею findings
 - ✅ **HTML report fixes (v0.9.0)** — Shadow Credentials tab в HTML звіті; EnrollableBy badge в ADCS tab для ESC1; виправлено severity badge (Medium більше не показує badge-critical)
 
@@ -344,6 +350,11 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **CLI table improvements** — ADCS vulnerable templates і Protected Users findings тепер відображаються у вирівняних таблицях з заголовками та separator line
 - ✅ **Bug fix** — `OBJECTS COLLECTED` і `QUICK FINDINGS` виводяться тільки в `enum`, не в targeted командах (acl, shadow, trust тощо); `EnumerateAll()` більше не друкує автоматично
 
+### v0.9.6 ЗАВЕРШЕНО
+
+- ✅ **`adpath enum-users`** — username enumeration без credentials через Kerberos AS-REQ (TCP порт 88); класифікація відповідей KDC: EXISTS / AS-REP roastable / DISABLED / EXPIRED; `internal/kerberos/enumusers.go`; wordlist формат (# коментарі, пусті рядки); not-found results приховані за замовчуванням
+- ✅ **`--stealth` flag** на `adpath enum` — мінімальні LDAP-запити: тільки users+groups (без комп'ютерів, без GC); пропускаються: ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAPSecurity, Audit; завжди виконується: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY в кінці CLI
+
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
 - Стаття, пости на r/netsec, UISGCON
@@ -355,4 +366,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.5 — adpath users/computers, CLI table improvements, OBJECTS COLLECTED fix.*
+*Останнє оновлення: v0.9.6 — enum-users via Kerberos AS-REQ, stealth mode.*

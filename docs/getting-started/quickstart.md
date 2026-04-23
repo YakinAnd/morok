@@ -107,7 +107,23 @@ adpath works with **any valid domain account**. AD's default security model allo
 adpath enum -d corp.local -u helpdesk -p 'Summer2024!' --dc 10.0.0.1
 ```
 
-## 7. Pivoting through SOCKS5
+## 7. Stealth mode
+
+Reduce your LDAP footprint in SIEM-heavy environments. `--stealth` is available only on `enum` — it skips ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAP Security, and Audit. Only basic enumeration, Kerberos, Trusts, and attack paths run.
+
+```bash
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --stealth
+```
+
+## 8. Username enumeration (no credentials)
+
+Enumerate valid AD usernames via Kerberos AS-REQ — only port 88 access to the DC is required:
+
+```bash
+adpath enum-users -d corp.local --dc 10.0.0.1 --wordlist users.txt
+```
+
+## 9. Pivoting through SOCKS5
 
 Route all LDAP traffic through a proxy — useful when the DC is only reachable via a pivot:
 
