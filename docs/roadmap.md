@@ -1,6 +1,14 @@
 # Roadmap
 
-## Current: v0.9.8
+## Current: v0.9.9
+
+### v0.9.9
+- **HTML report redesign** — ACL grouped by right type by default (Group button removed); MITRE badges on group headers only (not per-row)
+- **Exposure tab** — 8 collapsible sections with count + severity badges (krbtgt, Descriptions, Stale Users, Stale Computers, No LAPS, PSO, Protected Users, AdminSDHolder)
+- **Expand All / Collapse All** — added to ACL and Exposure section headers
+- **Global search overhaul** — results shown as clickable tab buttons (`ACL (5)  Kerberos (2)`); Enter navigates to best tab; auto-expands collapsed sections that contain matches; ✕ Clear button visible only when field has text; highlight color changed to blue (was amber — conflicted with badge-medium background)
+- **Scale improvements** — tables truncated at 100 rows with Show All button; D3 graph capped at 80 nodes (privileged nodes always kept)
+- **CLI Risk Summary** — `enum` output ends with a RISK SUMMARY block showing Critical/High/Medium counts across all modules
 
 ### v0.9.8
 - **ADCS ESC9** — CT_FLAG_NO_SECURITY_EXTENSION detection in msPKI-Enrollment-Flag; Medium — requires GenericWrite over victim account to change UPN; next steps: bloodyAD UPN change + certipy req + certipy auth

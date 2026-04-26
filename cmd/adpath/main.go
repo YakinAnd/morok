@@ -59,7 +59,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		color.Cyan("adpath v0.9.4")
+		color.Cyan("adpath v0.9.9")
 		color.White("AD Attack Path Enumerator")
 		color.White("https://github.com/YakinAnd/adpath")
 	},
@@ -677,6 +677,83 @@ func printEnumSummary(
 		color.Cyan("  ATTACK PATHS  %s", dimText("0 found"))
 	}
 
+	// ── RISK SUMMARY ──────────────────────────────────────────
+	fmt.Println()
+	color.White("  " + strings.Repeat("─", 60))
+
+	// count totals for risk rating
+	critTotal, highTotal, medTotal := 0, 0, 0
+	if acl != nil {
+		critTotal += len(acl.DCSyncFindings)
+		for _, f := range acl.Findings {
+			if f.Severity == "Critical" {
+				critTotal++
+			} else {
+				highTotal++
+			}
+		}
+	}
+	if adcs != nil {
+		for _, f := range adcs.TemplateFindings {
+			if f.Severity == "Critical" {
+				critTotal++
+			} else {
+				highTotal++
+			}
+		}
+	}
+	if shadow != nil {
+		for _, f := range shadow.Findings {
+			if f.Severity == "Critical" {
+				critTotal++
+			} else {
+				highTotal++
+			}
+		}
+	}
+	if kr != nil {
+		highTotal += len(kr.KerberoastableAccounts) + len(kr.ASREPAccounts)
+	}
+	for _, p := range paths {
+		if p.Depth <= 2 {
+			critTotal++
+		} else {
+			medTotal++
+		}
+	}
+	if smb != nil && smb.Reachable && !smb.SigningRequired {
+		highTotal++
+	}
+	if ldapSec != nil {
+		for _, f := range ldapSec.Findings {
+			if f.Severity == "High" {
+				highTotal++
+			} else {
+				medTotal++
+			}
+		}
+	}
+
+	riskLabel := "LOW"
+	riskColor := color.New(color.FgGreen)
+	if critTotal > 0 {
+		riskLabel = "CRITICAL"
+		riskColor = color.New(color.FgRed, color.Bold)
+	} else if highTotal > 0 {
+		riskLabel = "HIGH"
+		riskColor = color.New(color.FgRed)
+	} else if medTotal > 0 {
+		riskLabel = "MEDIUM"
+		riskColor = color.New(color.FgYellow)
+	}
+
+	fmt.Printf("  RISK  ")
+	riskColor.Printf("%s", riskLabel)
+	fmt.Printf("   %s  %s  %s\n",
+		critPrefix(fmt.Sprintf("[!!] %d critical", critTotal)),
+		highPrefix(fmt.Sprintf("[!] %d high", highTotal)),
+		medPrefix(fmt.Sprintf("[-] %d medium", medTotal)),
+	)
 	fmt.Println()
 	if reportPath == "" {
 		color.White("  %s", dimText("tip: add --report report.html to generate a full HTML report"))
@@ -827,7 +904,7 @@ func runTrust(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("trust analysis error: %w", err)
 	}
-	_ = r
+	analysis.PrintTrustResult(r)
 	return nil
 }
 
@@ -1104,7 +1181,7 @@ func printBanner() {
 	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
 	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
 	color.White(``)
-	color.White(`  v0.9.4  //  AD Attack Path Enumerator made by M4t`)
+	color.White(`  v0.9.9  //  AD Attack Path Enumerator`)
 	color.White(`  ` + strings.Repeat("─", 40))
 }
 

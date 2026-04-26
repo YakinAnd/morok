@@ -628,7 +628,7 @@ html[data-theme="dark"] {
   --badge-ok-bg:   #1c4532;   --badge-ok-txt:   #68d391;
   --badge-med-bg:  #744210;   --badge-med-txt:  #f6ad55;
   --badge-crit-bg: #742a2a;   --badge-crit-txt: #e53e3e;
-  --gs-match-bg:   #744210;   --gs-match-txt:   #fef3c7;
+  --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 html[data-theme="light"] {
   --bg-page:       #f0f4f8;
@@ -651,7 +651,7 @@ html[data-theme="light"] {
   --badge-med-bg:  #feebc8;   --badge-med-txt:  #744210;
   --badge-high-bg: #fed7ae;   --badge-high-txt: #7b341e;
   --badge-crit-bg: #fed7d7;   --badge-crit-txt: #c53030;
-  --gs-match-bg:   #fefcbf;   --gs-match-txt:   #744210;
+  --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -684,7 +684,11 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   color: var(--text-main); font-size: 0.9rem; outline: none; }
 .global-search-wrap input:focus { border-color: var(--accent); }
 .global-search-wrap input::placeholder { color: var(--text-subtle); }
-#gs-results { font-size: 0.82rem; color: var(--text-muted); min-width: 120px; }
+#gs-results { display:flex; flex-wrap:wrap; gap:4px; align-items:center; min-width:0; }
+.gs-tab-btn { background:var(--bg-hover); border:1px solid var(--border); border-radius:5px;
+  color:var(--text-main); padding:3px 10px; font-size:0.78rem; cursor:pointer; white-space:nowrap; }
+.gs-tab-btn:hover { border-color:var(--accent); background:var(--accent); color:#fff; }
+.gs-no-match { font-size:0.82rem; color:var(--text-muted); }
 .gs-match { background: var(--gs-match-bg) !important; color: var(--gs-match-txt) !important;
   border-radius: 2px; padding: 0 2px; }
 
@@ -753,6 +757,12 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .sev-critical { color: #e53e3e; font-weight: 700; }
 .sev-high     { color: #f6ad55; font-weight: 600; }
 .sev-medium   { color: var(--sev-medium); }
+
+/* Severity row left-border indicators */
+tr.row-critical td:first-child { border-left: 3px solid #e53e3e; }
+tr.row-high     td:first-child { border-left: 3px solid #dd6b20; }
+tr.row-medium   td:first-child { border-left: 3px solid #d69e2e; }
+tr.row-low      td:first-child { border-left: 3px solid #68d391; }
 
 /* Tables */
 .table-wrap { overflow-x: auto; border-radius: 8px;
@@ -829,6 +839,33 @@ th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text-main); background: var(--bg-hover); }
 th.sort-asc::after  { content: ' ▲'; color: var(--accent); }
 th.sort-desc::after { content: ' ▼'; color: var(--accent); }
+
+/* Collapsible exposure sections */
+.exp-section { border:1px solid var(--border); border-radius:8px; margin-bottom:10px; }
+.exp-header { display:flex; align-items:center; gap:10px; padding:12px 16px;
+  background:var(--bg-grouped); cursor:pointer; user-select:none;
+  border-radius:8px; }
+.exp-section:has(.exp-body:not([style*="none"])) .exp-header { border-radius:8px 8px 0 0; }
+.exp-header:hover { filter:brightness(1.06); }
+.exp-header .exp-title { font-weight:600; color:var(--text-main); font-size:0.9rem; }
+.exp-body { padding:16px; border-top:1px solid var(--border); }
+
+/* Expand/Collapse all buttons */
+.xp-btns { display:flex; gap:6px; margin-left:auto; }
+.xp-btns button { background:var(--bg-hover); border:1px solid var(--border); border-radius:5px;
+  color:var(--text-secondary); padding:4px 11px; font-size:0.76rem; cursor:pointer; white-space:nowrap; }
+.xp-btns button:hover { border-color:var(--accent); color:var(--text-main); }
+
+/* Row-limit "Show all" button */
+.show-all-btn { display:block; width:100%; margin-top:6px; padding:8px;
+  background:var(--bg-hover); border:1px solid var(--border); border-radius:6px;
+  color:var(--accent); font-size:0.82rem; cursor:pointer; text-align:center; }
+.show-all-btn:hover { border-color:var(--accent); background:var(--bg-card); }
+
+/* Graph truncation warning */
+.graph-warn { position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  background:var(--bg-grouped); border:1px solid var(--border); border-radius:6px;
+  padding:5px 14px; font-size:0.78rem; color:var(--text-muted); white-space:nowrap; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -856,7 +893,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </svg>
     <div class="header-logo-text">
       <div class="header-logo-name"><em>ad</em>path</div>
-      <div class="header-logo-tag">Active Directory path analysis</div>
+      <div class="header-logo-tag">v0.9.8 · AD Attack Path Analysis</div>
     </div>
   </div>
   <div class="meta">
@@ -869,10 +906,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <div class="global-search-wrap">
   <input id="gs-input" type="text" placeholder="🔍  Global search across all tabs..."
-    oninput="globalSearch(this.value)" autocomplete="off">
+    oninput="gsHighlight(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();gsNavigateFirst();}" autocomplete="off">
   <span id="gs-results"></span>
-  <button onclick="clearGlobalSearch()" style="background:var(--bg-hover);border:none;color:var(--text-secondary);
-    padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem">✕ Clear</button>
+  <button id="gs-clear" onclick="clearGlobalSearch()" style="background:var(--bg-hover);border:none;color:var(--text-secondary);
+    padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem;display:none">✕ Clear</button>
 </div>
 
 <div class="nav">
@@ -1417,7 +1454,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </thead>
     <tbody>
     {{range .KerberosResult.KerberoastableAccounts}}
-    <tr>
+    <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
       <td class="mono">{{.SAMAccountName}}</td>
       <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
       <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
@@ -1461,7 +1498,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </thead>
     <tbody>
     {{range .KerberosResult.ASREPAccounts}}
-    <tr>
+    <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
       <td class="mono">{{.SAMAccountName}}</td>
       <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
       <td class="mono">{{.LastLogon}}</td>
@@ -1478,12 +1515,18 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- ACL TAB -->
 <div id="tab-acl" class="tab-pane">
-  <h2 class="section-title">
-    Dangerous ACL Permissions
-    <span>{{.Summary.DangerousACLCount}} finding(s)</span>
-    {{mitreBadges "acl_abuse"}}
-    <span class="help-icon" data-tip="Access Control Lists define who can do what to each AD object. Misconfigurations like GenericAll, WriteDACL or ForceChangePassword allow an attacker to take over accounts or escalate to Domain Admin without exploiting any software vulnerability — just abusing legitimate AD permissions.">?</span>
-  </h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">
+      Dangerous ACL Permissions
+      <span>{{.Summary.DangerousACLCount}} finding(s)</span>
+      {{mitreBadges "acl_abuse"}}
+      <span class="help-icon" data-tip="Access Control Lists define who can do what to each AD object. Misconfigurations like GenericAll, WriteDACL or ForceChangePassword allow an attacker to take over accounts or escalate to Domain Admin without exploiting any software vulnerability — just abusing legitimate AD permissions.">?</span>
+    </h2>
+    <div class="xp-btns">
+      <button onclick="expandAllIn('#tab-acl')">Expand all</button>
+      <button onclick="collapseAllIn('#tab-acl')">Collapse all</button>
+    </div>
+  </div>
 
   {{if .ACLResult}}{{if .ACLResult.DCSyncFindings}}
   <div style="background:#2d1515;border:1px solid #e53e3e;border-radius:8px;padding:16px;margin-bottom:20px">
@@ -1527,16 +1570,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </select>
     <span class="filter-count" id="cnt-acl"></span>
     <button onclick="document.getElementById('acl-search').value='';document.getElementById('acl-severity').value='';document.getElementById('acl-right').value='';filterACL()">Clear</button>
-    <button id="btn-group-acl" onclick="toggleGroupACL()" style="margin-left:8px">⊞ Group</button>
   </div>
-  <div id="acl-grouped" style="display:none"></div>
-  <div id="acl-findings">
+  <div id="acl-grouped"></div>
+  <div id="acl-findings" style="display:none">
   {{range $i, $f := .ACLResult.Findings}}
   <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
-      <span class="badge badge-critical" style="font-family:monospace">{{$f.Right}}</span>
-      {{mitreForRight (print $f.Right)}}
       <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
       <span class="mono" style="color:#f6ad55">{{$f.TargetName}}</span>
@@ -1594,197 +1634,293 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- EXPOSURE TAB -->
 <div id="tab-exposure" class="tab-pane">
-  <h2 class="section-title">Exposure &amp; Attack Surface
-    <span class="help-icon" data-tip="Attack surface metrics: stale accounts are unused entry points, LAPS absence means shared local admin passwords enabling lateral movement, old krbtgt password enables persistent Golden Ticket attacks, descriptions often leak credentials or internal IP ranges.">?</span>
-  </h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">Exposure &amp; Attack Surface
+      <span class="help-icon" data-tip="Attack surface metrics: stale accounts are unused entry points, LAPS absence means shared local admin passwords enabling lateral movement, old krbtgt password enables persistent Golden Ticket attacks, descriptions often leak credentials or internal IP ranges.">?</span>
+    </h2>
+    <div class="xp-btns">
+      <button onclick="expandAllIn('#tab-exposure')">Expand all</button>
+      <button onclick="collapseAllIn('#tab-exposure')">Collapse all</button>
+    </div>
+  </div>
 
   <!-- krbtgt -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">Kerberos Ticket Granting Ticket <span class="help-icon" data-tip="The krbtgt account's password hash is used to sign all Kerberos tickets in the domain. If an attacker obtains this hash (e.g. via DCSync), they can forge Golden Tickets — valid for any user, including DA — that persist until the password is rotated TWICE. Microsoft recommends rotating every 180 days.">?</span></div>
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">krbtgt Password Age</span>
+      {{if .HygieneResult}}{{if .HygieneResult.KrbtgtAtRisk}}
+      <span class="badge badge-critical">&#9888; Golden Ticket Risk</span>
+      <span class="badge badge-critical" style="margin-left:auto">Critical</span>
+      {{else if gt .HygieneResult.KrbtgtPwdAgeDays 0}}
+      <span class="badge badge-ok">&#10003; OK — {{.HygieneResult.KrbtgtPwdAgeDays}} days</span>
+      {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No data</span>
+      {{end}}{{end}}
+      <span class="help-icon" data-tip="The krbtgt account password hash signs all Kerberos tickets. If stolen (DCSync), attackers forge Golden Tickets valid for any user. Rotate every 180 days — must rotate TWICE to fully invalidate old tickets.">?</span>
+    </div>
+    <div class="exp-body">
     {{if .HygieneResult}}
     {{if .HygieneResult.KrbtgtAtRisk}}
-    <span class="badge badge-critical">⚠ Golden Ticket Risk</span>
-    <span style="color:#fc8181;font-size:0.9rem">krbtgt password last changed <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days ago</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
-    <div style="width:100%;font-size:0.8rem;color:var(--text-muted);margin-top:4px">Recommendation: reset krbtgt password twice (interval &gt;10h) to invalidate all existing Kerberos tickets</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span class="badge badge-critical">&#9888; Golden Ticket Risk</span>
+      <span style="color:#fc8181;font-size:0.9rem">krbtgt password last changed <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days ago</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
+      <div style="width:100%;font-size:0.8rem;color:var(--text-muted);margin-top:4px">Recommendation: reset krbtgt password twice (interval &gt;10h) to invalidate all existing Kerberos tickets</div>
+    </div>
     {{else if gt .HygieneResult.KrbtgtPwdAgeDays 0}}
-    <span class="badge badge-ok">✓ OK</span>
-    <span style="color:var(--color-ok);font-size:0.9rem">krbtgt password age: <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span class="badge badge-ok">&#10003; OK</span>
+      <span style="color:var(--color-ok);font-size:0.9rem">krbtgt password age: <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
+    </div>
     {{else}}
     <span style="color:var(--text-muted);font-size:0.85rem">krbtgt data not available</span>
     {{end}}
     {{end}}
+    </div>
   </div>
 
-  <!-- descriptions -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Description Notes — Users / Computers / Groups</div>
-  <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:10px">All AD objects with a non-empty description are listed. Admins often leave credentials, IP addresses, or other sensitive information in these fields.</p>
-  {{if .HygieneResult}}{{if .HygieneResult.PasswordInDesc}}
-  <div class="filter-bar">
-    <input type="text" placeholder="Search..." oninput="filterTable('tbl-desc','cnt-desc')">
-    <select data-col="1" onchange="filterTable('tbl-desc','cnt-desc')">
-      <option value="">Type: all</option>
-      <option value="user">user</option>
-      <option value="computer">computer</option>
-      <option value="group">group</option>
-    </select>
-    <span class="filter-count" id="cnt-desc"></span>
-    <button onclick="clearFilters('tbl-desc','cnt-desc')">Clear</button>
-  </div>
-  <div class="table-wrap">
-  <table id="tbl-desc">
-    <thead><tr><th>Account</th><th>Type</th><th>Description</th></tr></thead>
-    <tbody>
-    {{range .HygieneResult.PasswordInDesc}}
-    <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td><span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.ObjectType}}</span></td>
-      <td style="font-family:monospace;font-size:0.8rem;color:var(--text-main)">{{.Description}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-  {{else}}<p style="color:var(--color-ok);margin-bottom:20px">✓ No description attributes found.</p>{{end}}{{end}}
-
-  <!-- stale accounts -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Stale User Accounts (90+ days no logon, enabled)</div>
-  {{if .HygieneResult}}{{if .HygieneResult.StaleUsers}}
-  <div class="table-wrap" style="margin-bottom:20px">
-  <table>
-    <thead><tr><th>Account</th><th>Display Name</th><th>Last Logon</th><th>Pwd Last Set</th><th>AdminCount</th></tr></thead>
-    <tbody>
-    {{range .HygieneResult.StaleUsers}}
-    <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td>{{.DisplayName}}</td>
-      <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
-      <td class="mono">{{.PasswordLastSet}}</td>
-      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-  {{else}}<p style="color:var(--color-ok);margin-bottom:20px">✓ No stale user accounts found.</p>{{end}}{{end}}
-
-  <!-- stale computers -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Stale Computers (45+ days no logon, enabled)</div>
-  {{if .HygieneResult}}{{if .HygieneResult.StaleComputers}}
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Computer</th><th>OS</th><th>Last Logon</th><th>Domain</th></tr></thead>
-    <tbody>
-    {{range .HygieneResult.StaleComputers}}
-    <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td>{{.OperatingSystem}}</td>
-      <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Domain}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-  {{else}}<p style="color:var(--color-ok)">✓ No stale computers found.</p>{{end}}{{end}}
-
-  <!-- LAPS -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:24px;margin-bottom:8px">Computers Without LAPS</div>
+  <!-- Descriptions -->
   {{if .HygieneResult}}
-  {{if gt .Summary.NoLAPSCount 0}}
-  <div class="path-card" style="margin-bottom:12px;padding:12px 16px">
-    <span class="badge badge-medium" style="margin-bottom:8px;display:inline-block">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} computers have no LAPS</span>
-    <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:10px">Local Administrator Password Solution not deployed — local admin passwords may be identical across machines, enabling lateral movement.</div>
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Description Notes</span>
+      {{if .HygieneResult.PasswordInDesc}}
+      <span class="badge badge-medium">{{len .HygieneResult.PasswordInDesc}} objects</span>
+      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
+    </div>
+    <div class="exp-body">
+    <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:10px">All AD objects with a non-empty description. Admins often leave credentials, IP addresses, or other sensitive data here.</p>
+    {{if .HygieneResult.PasswordInDesc}}
+    <div class="filter-bar" style="margin-bottom:8px">
+      <input type="text" placeholder="Search..." oninput="filterTable('tbl-desc','cnt-desc')">
+      <select data-col="1" onchange="filterTable('tbl-desc','cnt-desc')">
+        <option value="">Type: all</option>
+        <option value="user">user</option>
+        <option value="computer">computer</option>
+        <option value="group">group</option>
+      </select>
+      <span class="filter-count" id="cnt-desc"></span>
+      <button onclick="clearFilters('tbl-desc','cnt-desc')">Clear</button>
+    </div>
+    <div class="table-wrap">
+    <table id="tbl-desc">
+      <thead><tr><th>Account</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.PasswordInDesc}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td><span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.ObjectType}}</span></td>
+        <td style="font-family:monospace;font-size:0.8rem;color:var(--text-main)">{{.Description}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--color-ok)">&#10003; No description attributes found.</p>{{end}}
+    </div>
   </div>
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Computer</th><th>OS</th><th>Domain</th><th>Last Logon</th></tr></thead>
-    <tbody>
-    {{range .HygieneResult.NoLAPSComputers}}
-    <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td>{{.OperatingSystem}}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Domain}}</td>
-      <td class="mono" style="color:var(--text-secondary)">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  {{end}}
+
+  <!-- Stale Users -->
+  {{if .HygieneResult}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Stale User Accounts <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(90+ days no logon)</span></span>
+      {{if .HygieneResult.StaleUsers}}
+      <span class="badge badge-medium">{{len .HygieneResult.StaleUsers}} accounts</span>
+      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
+    </div>
+    <div class="exp-body">
+    {{if .HygieneResult.StaleUsers}}
+    <div class="table-wrap">
+    <table id="tbl-stale-users">
+      <thead><tr><th>Account</th><th>Display Name</th><th>Last Logon</th><th>Pwd Last Set</th><th>AdminCount</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.StaleUsers}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td>{{.DisplayName}}</td>
+        <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+        <td class="mono">{{.PasswordLastSet}}</td>
+        <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}&#8212;{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--color-ok)">&#10003; No stale user accounts found.</p>{{end}}
+    </div>
   </div>
-  {{else}}<p style="color:var(--color-ok)">✓ All enabled computers have LAPS deployed.</p>{{end}}
+  {{end}}
+
+  <!-- Stale Computers -->
+  {{if .HygieneResult}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Stale Computers <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(45+ days no logon)</span></span>
+      {{if .HygieneResult.StaleComputers}}
+      <span class="badge badge-medium">{{len .HygieneResult.StaleComputers}} hosts</span>
+      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
+    </div>
+    <div class="exp-body">
+    {{if .HygieneResult.StaleComputers}}
+    <div class="table-wrap">
+    <table id="tbl-stale-comp">
+      <thead><tr><th>Computer</th><th>OS</th><th>Last Logon</th><th>Domain</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.StaleComputers}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td>{{.OperatingSystem}}</td>
+        <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted)">{{.Domain}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--color-ok)">&#10003; No stale computers found.</p>{{end}}
+    </div>
+  </div>
+  {{end}}
+
+  <!-- No LAPS -->
+  {{if .HygieneResult}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Computers Without LAPS</span>
+      {{if gt .Summary.NoLAPSCount 0}}
+      <span class="badge badge-medium">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} hosts</span>
+      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All managed</span>{{end}}
+    </div>
+    <div class="exp-body">
+    {{if gt .Summary.NoLAPSCount 0}}
+    <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">Local Administrator Password Solution not deployed — local admin passwords may be identical across machines, enabling lateral movement.</div>
+    <div class="table-wrap">
+    <table id="tbl-nolaps">
+      <thead><tr><th>Computer</th><th>OS</th><th>Domain</th><th>Last Logon</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.NoLAPSComputers}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td>{{.OperatingSystem}}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted)">{{.Domain}}</td>
+        <td class="mono" style="color:var(--text-secondary)">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--color-ok)">&#10003; All enabled computers have LAPS deployed.</p>{{end}}
+    </div>
+  </div>
   {{end}}
 
   <!-- PSO -->
   {{if .PSOResult}}{{if .PSOResult.PSOs}}
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:24px;margin-bottom:8px">Fine-Grained Password Policy (PSO)</div>
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>PSO Name</th><th>Precedence</th><th>Min Length</th><th>Complexity</th><th>Lockout</th><th>Max Age</th><th>Applies To</th><th>Status</th></tr></thead>
-    <tbody>
-    {{range .PSOResult.PSOs}}
-    <tr>
-      <td class="mono">{{.Name}}</td>
-      <td>{{.Precedence}}</td>
-      <td>{{.MinLength}}</td>
-      <td>{{if .Complexity}}<span class="badge badge-ok">ON</span>{{else}}<span class="badge badge-critical">OFF</span>{{end}}</td>
-      <td>{{if eq .LockoutThreshold 0}}<span class="badge badge-critical">∞</span>{{else}}{{.LockoutThreshold}}{{end}}</td>
-      <td>{{if eq .MaxAgeDays 0}}<span class="badge badge-critical">Never</span>{{else}}{{.MaxAgeDays}}d{{end}}</td>
-      <td style="font-size:0.78rem;color:var(--text-secondary)">{{joinSPNs .AppliesTo}}</td>
-      <td>{{if .IsWeak}}<span class="badge badge-critical">Weak</span>{{else}}<span class="badge badge-ok">OK</span>{{end}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Fine-Grained Password Policy (PSO)</span>
+      <span class="badge badge-medium">{{len .PSOResult.PSOs}} PSOs</span>
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .PSOResult.PSOs}} PSO(s)</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>PSO Name</th><th>Precedence</th><th>Min Length</th><th>Complexity</th><th>Lockout</th><th>Max Age</th><th>Applies To</th><th>Status</th></tr></thead>
+      <tbody>
+      {{range .PSOResult.PSOs}}
+      <tr>
+        <td class="mono">{{.Name}}</td>
+        <td>{{.Precedence}}</td>
+        <td>{{.MinLength}}</td>
+        <td>{{if .Complexity}}<span class="badge badge-ok">ON</span>{{else}}<span class="badge badge-critical">OFF</span>{{end}}</td>
+        <td>{{if eq .LockoutThreshold 0}}<span class="badge badge-critical">&#8734;</span>{{else}}{{.LockoutThreshold}}{{end}}</td>
+        <td>{{if eq .MaxAgeDays 0}}<span class="badge badge-critical">Never</span>{{else}}{{.MaxAgeDays}}d{{end}}</td>
+        <td style="font-size:0.78rem;color:var(--text-secondary)">{{joinSPNs .AppliesTo}}</td>
+        <td>{{if .IsWeak}}<span class="badge badge-critical">Weak</span>{{else}}<span class="badge badge-ok">OK</span>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
   </div>
   {{end}}{{end}}
 
   <!-- Protected Users -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:28px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-    Protected Users Group
-    <span class="help-icon" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials — an attacker capturing their NTLM hash can relay or crack it.">?</span>
-  </div>
   {{if .ProtectedUsersResult}}
-  {{if not .ProtectedUsersResult.ProtectedUsersExists}}
-  <p style="color:#fc8181;font-size:0.85rem;margin-bottom:16px">⚠ Protected Users group not found — may not exist in this domain.</p>
-  {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
-  <div class="path-card" style="margin-bottom:12px;padding:12px 16px">
-    <span class="badge badge-critical" style="margin-bottom:8px;display:inline-block">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged accounts not in Protected Users</span>
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Protected Users Group</span>
+      {{if not .ProtectedUsersResult.ProtectedUsersExists}}
+      <span class="badge badge-critical">Group not found</span>
+      <span class="badge badge-critical" style="margin-left:auto">High</span>
+      {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
+      <span class="badge badge-medium">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged not protected</span>
+      <span class="badge badge-medium" style="margin-left:auto">High</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All protected</span>{{end}}
+      <span class="help-icon" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
+    </div>
+    <div class="exp-body">
+    {{if not .ProtectedUsersResult.ProtectedUsersExists}}
+    <p style="color:#fc8181;font-size:0.85rem">&#9888; Protected Users group not found — may not exist in this domain.</p>
+    {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
     <div style="color:var(--text-secondary);font-size:0.8rem;margin-bottom:10px">NTLM auth, RC4 encryption, and unconstrained delegation are not blocked for these accounts.</div>
-  </div>
-  <div class="table-wrap" style="margin-bottom:20px">
-  <table>
-    <thead><tr><th>Account</th><th>Severity</th><th>Privileged Groups</th></tr></thead>
-    <tbody>
-    {{range .ProtectedUsersResult.PrivilegedNotProtected}}
-    <tr>
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
-      <td style="font-size:0.82rem;color:var(--text-secondary)">{{joinSPNs .Groups}}</td>
-    </tr>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account</th><th>Severity</th><th>Privileged Groups</th></tr></thead>
+      <tbody>
+      {{range .ProtectedUsersResult.PrivilegedNotProtected}}
+      <tr class="{{if eq .Severity "Critical"}}row-critical{{else}}row-high{{end}}">
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+        <td style="font-size:0.82rem;color:var(--text-secondary)">{{joinSPNs .Groups}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}
+    <p style="color:var(--color-ok)">&#10003; All privileged accounts are in Protected Users ({{len .ProtectedUsersResult.Members}} members).</p>
     {{end}}
-    </tbody>
-  </table>
+    </div>
   </div>
-  {{else}}
-  <p style="color:var(--color-ok);margin-bottom:16px">✓ All privileged accounts are in Protected Users ({{len .ProtectedUsersResult.Members}} members).</p>
-  {{end}}
   {{end}}
 
   <!-- AdminSDHolder -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:8px;margin-bottom:8px;display:flex;align-items:center;gap:6px">
-    AdminSDHolder
-    <span class="help-icon" data-tip="AdminSDHolder (CN=AdminSDHolder,CN=System) is a template object whose ACL is copied to all protected objects every 60 minutes by SDProp. A custom ACE here is a persistence backdoor — attacker retains access even after password reset. Orphaned adminCount=1 accounts had their ACL hardened but are no longer monitored.">?</span>
-  </div>
   {{if .AdminSDHolderResult}}
-  {{if .AdminSDHolderResult.CustomACEs}}
-  <div class="path-card" style="margin-bottom:12px;padding:12px 16px;border-color:#e53e3e">
-    <span class="badge badge-critical" style="margin-bottom:8px;display:inline-block">⚠ {{len .AdminSDHolderResult.CustomACEs}} backdoor ACE(s) on AdminSDHolder</span>
-    <div style="color:#fc8181;font-size:0.8rem;margin-bottom:10px">These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
-    <div class="table-wrap">
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">AdminSDHolder</span>
+      {{if .AdminSDHolderResult.CustomACEs}}
+      <span class="badge badge-critical">{{len .AdminSDHolderResult.CustomACEs}} backdoor ACE(s)</span>
+      <span class="badge badge-critical" style="margin-left:auto">Critical</span>
+      {{else if .AdminSDHolderResult.OrphanedAdminCount}}
+      <span class="badge badge-medium">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned</span>
+      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
+      <span class="help-icon" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
+    </div>
+    <div class="exp-body">
+    {{if .AdminSDHolderResult.CustomACEs}}
+    <div style="color:#fc8181;font-size:0.8rem;margin-bottom:10px">&#9888; These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
+    <div class="table-wrap" style="margin-bottom:12px">
     <table>
       <thead><tr><th>Principal</th><th>SID</th><th>Rights</th></tr></thead>
       <tbody>
       {{range .AdminSDHolderResult.CustomACEs}}
-      <tr>
+      <tr class="row-critical">
         <td class="mono" style="color:#fc8181">{{.PrincipalName}}</td>
         <td class="mono" style="font-size:0.75rem;color:var(--text-muted)">{{.PrincipalSID}}</td>
         <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
@@ -1793,11 +1929,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </tbody>
     </table>
     </div>
-  </div>
-  {{end}}
-  {{if .AdminSDHolderResult.OrphanedAdminCount}}
-  <div style="margin-bottom:16px">
-    <span class="badge badge-medium" style="margin-bottom:8px;display:inline-block">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned adminCount=1 account(s)</span>
+    {{end}}
+    {{if .AdminSDHolderResult.OrphanedAdminCount}}
     <div style="color:var(--text-secondary);font-size:0.8rem;margin-bottom:8px">adminCount=1 but not in any privileged group — SDProp no longer manages these objects.</div>
     <div class="table-wrap">
     <table>
@@ -1812,11 +1945,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </tbody>
     </table>
     </div>
+    {{end}}
+    {{if and (not .AdminSDHolderResult.CustomACEs) (not .AdminSDHolderResult.OrphanedAdminCount)}}
+    <p style="color:var(--color-ok)">&#10003; No AdminSDHolder issues found.</p>
+    {{end}}
+    </div>
   </div>
-  {{end}}
-  {{if and (not .AdminSDHolderResult.CustomACEs) (not .AdminSDHolderResult.OrphanedAdminCount)}}
-  <p style="color:var(--color-ok);margin-bottom:16px">✓ No AdminSDHolder issues found.</p>
-  {{end}}
   {{end}}
 
 </div>
@@ -1997,16 +2131,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- SHADOW CREDENTIALS TAB -->
 <div id="tab-shadow" class="tab-pane">
-  <div class="section-header">
+  <h2 class="section-title">
     Shadow Credentials {{mitreBadges "shadow_credentials"}}
     <span class="help-icon" data-tip="Shadow Credentials: writing msDS-KeyCredentialLink on a privileged object allows obtaining a TGT without knowing or changing the password. Exploitable via pywhisker or certipy shadow.">?</span>
-  </div>
+  </h2>
   {{if .ShadowCredentialsResult}}
     {{if .ShadowCredentialsResult.Findings}}
     <div style="margin-bottom:16px">
       <span class="badge badge-critical">{{len .ShadowCredentialsResult.Findings}} dangerous write ACEs found</span>
     </div>
-    <table class="data-table">
+    <div class="table-wrap">
+    <table>
       <thead><tr>
         <th>Principal</th>
         <th>Type</th>
@@ -2017,7 +2152,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </tr></thead>
       <tbody>
       {{range .ShadowCredentialsResult.Findings}}
-      <tr>
+      <tr class="{{if eq .Severity "Critical"}}row-critical{{else}}row-high{{end}}">
         <td class="mono">{{.PrincipalName}}</td>
         <td>{{.PrincipalType}}</td>
         <td class="mono">{{.TargetName}}</td>
@@ -2028,6 +2163,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{end}}
       </tbody>
     </table>
+    </div>
     <div class="path-card" style="margin-top:16px">
       <div class="path-header">Next Steps — exploit with pywhisker / certipy</div>
       <div style="padding:12px 16px">
@@ -2045,12 +2181,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- LDAP SECURITY TAB -->
 <div id="tab-ldapsec" class="tab-pane">
-  <div class="section-header">
+  <h2 class="section-title">
     LDAP Security {{mitreBadges "ldap_relay"}}
     <span class="help-icon" data-tip="LDAP signing prevents man-in-the-middle attacks on LDAP traffic. If signing is not enforced, an attacker between the client and DC can read or modify LDAP requests. NTLM relay to LDAP (via PetitPotam/Coercer) is possible when signing and channel binding are not enforced.">?</span>
-  </div>
+  </h2>
   {{if .LDAPSecurityResult}}
-  <table class="data-table" style="margin-bottom:20px">
+  <div class="table-wrap" style="margin-bottom:20px"><table>
     <thead><tr><th>Setting</th><th>Status</th></tr></thead>
     <tbody>
       <tr>
@@ -2070,7 +2206,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <td class="mono" style="font-size:0.75rem">{{range $i,$c := .LDAPSecurityResult.Capabilities}}{{if $i}}<br>{{end}}{{$c}}{{end}}</td>
       </tr>
     </tbody>
-  </table>
+  </table></div>
   {{if .LDAPSecurityResult.Findings}}
   <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Findings</div>
   {{range .LDAPSecurityResult.Findings}}
@@ -2090,9 +2226,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
 
   {{if .SMBSigningResult}}
-  <div class="section-header" style="margin-top:24px">SMB Signing (port 445)</div>
+  <h3 class="section-title" style="font-size:0.95rem;margin-top:24px">SMB Signing (port 445)</h3>
   {{if .SMBSigningResult.Reachable}}
-  <table class="data-table" style="margin-bottom:16px">
+  <div class="table-wrap" style="margin-bottom:16px"><table>
     <thead><tr><th>Property</th><th>Value</th></tr></thead>
     <tbody>
       <tr>
@@ -2112,7 +2248,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         </td>
       </tr>
     </tbody>
-  </table>
+  </table></div>
   {{if .SMBSigningResult.Findings}}
   {{range .SMBSigningResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
@@ -2133,12 +2269,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <div id="tab-audit" class="tab-pane">
-  <div class="section-header">
+  <h2 class="section-title">
     Audit Policy / Blue Team Visibility {{mitreBadges "audit_defense"}}
     <span class="help-icon" data-tip="Checks AD Recycle Bin status (deleted object recovery), legacy audit policy configuration (event log visibility), and machine account quota (RBCD abuse vector).">?</span>
-  </div>
+  </h2>
   {{if .AuditResult}}
-  <table class="data-table" style="margin-bottom:20px">
+  <div class="table-wrap" style="margin-bottom:20px"><table>
     <thead><tr><th>Setting</th><th>Status</th></tr></thead>
     <tbody>
       <tr>
@@ -2174,11 +2310,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         </td>
       </tr>
     </tbody>
-  </table>
+  </table></div>
 
   {{if .AuditResult.AuditingEnabled}}
   <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Audit Categories</div>
-  <table class="data-table" style="margin-bottom:20px">
+  <div class="table-wrap" style="margin-bottom:20px"><table>
     <thead><tr><th>Category</th><th>Success</th><th>Failure</th></tr></thead>
     <tbody>
       {{range .AuditResult.AuditCategories}}
@@ -2189,7 +2325,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </tr>
       {{end}}
     </tbody>
-  </table>
+  </table></div>
   {{end}}
 
   {{if .AuditResult.Findings}}
@@ -2215,7 +2351,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <script>
 
-// Findings calculation
+// Findings chart
 (function() {
   var chart = document.getElementById('findings-chart');
   if (!chart) return;
@@ -2224,25 +2360,21 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     {
       label: 'Critical',
       color: '#e53e3e',
-      bg: '#742a2a',
-      count: {{.Summary.CriticalCount}} + {{.Summary.DangerousACLCount}}
+      count: {{.Summary.CriticalCount}} + {{.Summary.DangerousACLCount}} + {{.Summary.ADCSCriticalCount}} + {{.Summary.DCSyncCount}}
     },
     {
       label: 'High',
       color: '#dd6b20',
-      bg: '#7b341e',
-      count: {{.Summary.KerberoastableCount}} + {{.Summary.ASREPCount}} + {{.Summary.DelegationCount}}
+      count: {{.Summary.KerberoastableCount}} + {{.Summary.ASREPCount}} + {{.Summary.DelegationCount}} + {{.Summary.ShadowCredCount}}
     },
     {
       label: 'Medium',
       color: '#d69e2e',
-      bg: '#744210',
-      count: {{.Summary.PasswordNeverExpires}} + {{.Summary.AdminCount}}
+      count: {{.Summary.PasswordNeverExpires}} + {{.Summary.AdminCount}} + {{.Summary.StaleUsersCount}} + {{.Summary.AuditFindingCount}}
     },
     {
       label: 'Info',
-      color: '#4299e1',
-      bg: '#2a4365',
+      color: 'var(--accent)',
       count: {{.Summary.TotalUsers}} + {{.Summary.TotalGroups}} + {{.Summary.TotalComputers}}
     }
   ];
@@ -2255,13 +2387,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     var row = document.createElement('div');
     row.style.cssText = 'display:flex;align-items:center;gap:12px';
     row.innerHTML =
-      '<div style="width:64px;font-size:12px;color:var(--text-muted);text-align:right">' + f.label + '</div>' +
-      '<div style="flex:1;background:var(--bg-hover);border-radius:4px;height:24px;overflow:hidden">' +
-        '<div style="width:'+pct+'%;background:'+f.color+';height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;transition:width .3s;min-width:'+(f.count > 0 ? '32px' : '0')+';">' +
-          (f.count > 0 ? '<span style="font-size:12px;font-weight:500;color:#fff">'+f.count+'</span>' : '') +
+      '<div style="width:64px;font-size:12px;color:var(--text-muted);text-align:right;font-weight:500">' + f.label + '</div>' +
+      '<div style="flex:1;background:var(--bg-hover);border-radius:4px;height:22px;overflow:hidden">' +
+        '<div style="width:'+pct+'%;background:'+f.color+';height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;transition:width .5s ease;min-width:'+(f.count > 0 ? '28px' : '0')+';">' +
+          (f.count > 0 ? '<span style="font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)">'+f.count+'</span>' : '') +
         '</div>' +
       '</div>' +
-      '<div style="width:32px;font-size:13px;font-weight:500;color:'+f.color+'">'+f.count+'</div>';
+      '<div style="width:36px;font-size:13px;font-weight:600;color:'+f.color+';text-align:right">'+f.count+'</div>';
     chart.appendChild(row);
   });
 })();
@@ -2314,11 +2446,27 @@ function initGraph() {
   if (graphInitialized) return;
   graphInitialized = true;
 
-  const data = {{.GraphJSON}};
-  if (!data.nodes || data.nodes.length === 0) {
+  const rawData = {{.GraphJSON}};
+  if (!rawData.nodes || rawData.nodes.length === 0) {
     document.getElementById('graph-container').innerHTML =
       '<p style="padding:40px;color:var(--text-muted);text-align:center">No attack paths to visualize.</p>';
     return;
+  }
+
+  // Cap nodes: privileged groups + path nodes first, then fill up
+  const MAX_NODES = 80;
+  let data = rawData;
+  let truncated = false;
+  if (rawData.nodes.length > MAX_NODES) {
+    truncated = true;
+    const priv  = rawData.nodes.filter(n => n.type === 'group' || n.adminCount);
+    const other = rawData.nodes.filter(n => n.type !== 'group' && !n.adminCount);
+    const kept  = [...priv, ...other.slice(0, MAX_NODES - priv.length)];
+    const keptIds = new Set(kept.map(n => n.id));
+    data = {
+      nodes: kept,
+      edges: rawData.edges.filter(e => keptIds.has(e.source) && keptIds.has(e.target))
+    };
   }
 
   // Count how many paths each node appears in (for sizing)
@@ -2333,6 +2481,14 @@ function initGraph() {
   const container = document.getElementById('graph-container');
   const width = container.clientWidth;
   const height = container.clientHeight;
+
+  // Show truncation warning
+  if (truncated) {
+    const warn = document.createElement('div');
+    warn.className = 'graph-warn';
+    warn.textContent = 'Graph truncated: showing ' + MAX_NODES + ' of ' + rawData.nodes.length + ' nodes — use --json for full export';
+    container.appendChild(warn);
+  }
 
   const svg = d3.select('#graph-svg');
   svgRoot = svg;
@@ -2615,44 +2771,49 @@ function filterACL() {
       (!q        || text.includes(q)) &&
       (!severity || card.dataset.severity === severity) &&
       (!right    || card.dataset.right === right);
-    card.style.display = show ? '' : 'none';
+    card.dataset.filtered = show ? 'false' : 'true';
     if (show) visible++;
   });
   const cnt = document.getElementById('cnt-acl');
   if (cnt) cnt.textContent = visible + ' / ' + cards.length;
+  buildGroupedACL();
 }
 
 // ── Global search ─────────────────────────────────────────────
 // Searches all text in all tab-panes, highlights matches, shows result count.
-// Navigates to the tab with the most matches on Enter.
+// Global search state
 let _gsMatches = []; // [{tabName, el, origHTML}]
+let _gsTabCounts = {};
 
-function globalSearch(query) {
-  // restore all previous highlights
+function gsHighlight(query) {
+  // restore previous highlights
   _gsMatches.forEach(m => { if (m.el) m.el.innerHTML = m.origHTML; });
   _gsMatches = [];
+  _gsTabCounts = {};
+
+  const resultsEl = document.getElementById('gs-results');
+  resultsEl.innerHTML = '';
 
   const q = query.trim();
-  if (!q) {
-    document.getElementById('gs-results').textContent = '';
-    return;
-  }
+  const clearBtn = document.getElementById('gs-clear');
+  if (clearBtn) clearBtn.style.display = q ? '' : 'none';
+  if (!q) return;
 
   const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp('(' + escaped + ')', 'gi');
 
-  // count matches per tab
-  const tabCounts = {};
+  // walk all tab panes (including hidden ones) for text matches
   document.querySelectorAll('.tab-pane').forEach(pane => {
     const tabName = pane.id.replace('tab-', '');
     let count = 0;
-    // walk text nodes — highlight only leaf text
     const walker = document.createTreeWalker(pane, NodeFilter.SHOW_TEXT, {
       acceptNode: n => {
         const p = n.parentElement;
         if (!p) return NodeFilter.FILTER_REJECT;
         const tag = p.tagName;
         if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+        // Skip #acl-findings — it's display:none, content is mirrored in #acl-grouped
+        if (p.closest && p.closest('#acl-findings')) return NodeFilter.FILTER_REJECT;
         if (!n.textContent.toLowerCase().includes(q.toLowerCase())) return NodeFilter.FILTER_SKIP;
         return NodeFilter.FILTER_ACCEPT;
       }
@@ -2665,97 +2826,156 @@ function globalSearch(query) {
       const orig = span.innerHTML;
       const highlighted = orig.replace(re, '<mark class="gs-match">$1</mark>');
       if (highlighted !== orig) {
-        _gsMatches.push({ el: span, origHTML: orig });
+        _gsMatches.push({ tabName, el: span, origHTML: orig });
         span.innerHTML = highlighted;
         count += (orig.match(re) || []).length;
       }
     });
-    if (count > 0) tabCounts[tabName] = count;
+    if (count > 0) _gsTabCounts[tabName] = count;
   });
 
-  const total = Object.values(tabCounts).reduce((a, b) => a + b, 0);
-  const tabList = Object.entries(tabCounts).map(([t, c]) => t + '(' + c + ')').join(', ');
-  document.getElementById('gs-results').textContent =
-    total > 0 ? total + ' matches — ' + tabList : 'no matches';
+  const total = Object.values(_gsTabCounts).reduce((a, b) => a + b, 0);
 
-  // auto-navigate to tab with most matches
-  if (total > 0) {
-    const best = Object.entries(tabCounts).sort((a, b) => b[1] - a[1])[0][0];
-    const btn = document.querySelector('.nav button[onclick="showTab(\'' + best + '\')"]');
-    if (btn) {
-      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-      document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
-      document.getElementById('tab-' + best).classList.add('active');
-      btn.classList.add('active');
-      if (best === 'graph') initGraph();
-    }
+  if (total === 0) {
+    resultsEl.innerHTML = '<span class="gs-no-match">no matches</span>';
+    return;
   }
+
+  // Build clickable tab buttons
+  const tabLabels = {
+    overview:'Overview', paths:'Paths', kerberos:'Kerberos', acl:'ACL',
+    delegation:'Delegation', adcs:'ADCS', trust:'Trust', shadow:'Shadow',
+    ldap:'LDAP', audit:'Audit', exposure:'Exposure', users:'Users',
+    groups:'Groups', computers:'Computers', smb:'SMB', graph:'Graph'
+  };
+  Object.entries(_gsTabCounts)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([tab, cnt]) => {
+      const label = tabLabels[tab] || tab;
+      const btn = document.createElement('button');
+      btn.className = 'gs-tab-btn';
+      btn.textContent = label + ' (' + cnt + ')';
+      btn.onclick = function(e) { e.preventDefault(); gsGoTab(tab); };
+      resultsEl.appendChild(btn);
+    });
+
+  // Auto-expand collapsed sections that contain matches
+  _gsMatches.forEach(m => {
+    // Expand .exp-section bodies (Exposure tab)
+    const expBody = m.el.closest('.exp-body');
+    if (expBody && expBody.style.display === 'none') {
+      const expHeader = expBody.previousElementSibling;
+      if (expHeader && expHeader.classList.contains('exp-header')) {
+        expBody.style.display = '';
+        const ch = expHeader.querySelector('.chevron');
+        if (ch) ch.innerHTML = '&#9660;';
+      }
+    }
+  });
+
+  // Expand ACL groups in #acl-grouped whose body contains highlighted matches
+  document.querySelectorAll('#acl-grouped [data-right]').forEach(function(groupHeader) {
+    const body = groupHeader.nextElementSibling;
+    if (!body || !body.classList.contains('group-body')) return;
+    if (body.querySelector('.gs-match') && body.style.display === 'none') {
+      body.style.display = '';
+      const ch = groupHeader.querySelector('.group-chevron');
+      if (ch) ch.innerHTML = '&#9660;';
+    }
+  });
+}
+
+// Navigate to a specific tab from search results
+function gsGoTab(tabName) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  const pane = document.getElementById('tab-' + tabName);
+  if (pane) pane.classList.add('active');
+  const btn = document.querySelector('.nav button[onclick="showTab(\'' + tabName + '\')"]');
+  if (btn) btn.classList.add('active');
+  if (tabName === 'graph') initGraph();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Scroll first match in this tab into view
+  const firstMatch = document.querySelector('#tab-' + tabName + ' .gs-match');
+  if (firstMatch) {
+    setTimeout(() => firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+  }
+}
+
+// Navigate to tab with most matches (called on Enter key)
+function gsNavigateFirst() {
+  const entries = Object.entries(_gsTabCounts).sort((a, b) => b[1] - a[1]);
+  if (entries.length > 0) gsGoTab(entries[0][0]);
 }
 
 function clearGlobalSearch() {
   _gsMatches.forEach(m => { if (m.el) m.el.innerHTML = m.origHTML; });
   _gsMatches = [];
+  _gsTabCounts = {};
   const inp = document.getElementById('gs-input');
   if (inp) inp.value = '';
-  document.getElementById('gs-results').textContent = '';
+  document.getElementById('gs-results').innerHTML = '';
+  const clearBtn = document.getElementById('gs-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
 }
 
-let _aclGrouped = false;
-function toggleGroupACL() {
-  _aclGrouped = !_aclGrouped;
-  const btn     = document.getElementById('btn-group-acl');
-  const flat    = document.getElementById('acl-findings');
-  const grouped = document.getElementById('acl-grouped');
-  const bar     = document.querySelector('#tab-acl .filter-bar');
-  if (_aclGrouped) {
-    buildGroupedACL();
-    flat.style.display    = 'none';
-    grouped.style.display = '';
-    if (bar) bar.style.opacity = '0.4';
-    if (btn) btn.textContent = '\u2630 Flat';
-  } else {
-    flat.style.display    = '';
-    grouped.style.display = 'none';
-    if (bar) bar.style.opacity = '';
-    if (btn) btn.textContent = '\u229e Group';
-  }
-}
+// MITRE badge HTML per ACL right
+const _aclMitre = {
+  'GenericAll':          '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
+  'WriteDACL':           '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
+  'WriteOwner':          '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
+  'GenericWrite':        '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
+  'ForceChangePassword': '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1098/" target="_blank" title="Account Manipulation">T1098</a>',
+  'AddMember':           '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1098/" target="_blank" title="Account Manipulation">T1098</a>',
+};
 
 function buildGroupedACL() {
-  const cards = document.querySelectorAll('#acl-findings .acl-card');
+  const allCards = document.querySelectorAll('#acl-findings .acl-card');
   const groups = {};
   const order  = [];
   const sevOrder = { 'Critical': 0, 'High': 1, 'Medium': 2 };
-  cards.forEach(function(card) {
+
+  allCards.forEach(function(card) {
+    if (card.dataset.filtered === 'true') return;
     const right = card.dataset.right || 'Unknown';
     const sev   = card.dataset.severity || 'Medium';
     if (!groups[right]) { groups[right] = { cards: [], severity: sev }; order.push(right); }
     groups[right].cards.push(card);
   });
+
   order.sort(function(a, b) {
     return (sevOrder[groups[a].severity] ?? 9) - (sevOrder[groups[b].severity] ?? 9);
   });
 
   const container = document.getElementById('acl-grouped');
   container.innerHTML = '';
+
+  if (order.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted);padding:12px">No findings match the current filter.</p>';
+    return;
+  }
+
   order.forEach(function(right) {
     const g     = groups[right];
     const count = g.cards.length;
     const sevClass = g.severity === 'Critical' ? 'badge-critical' : g.severity === 'High' ? 'badge-medium' : 'badge-ok';
+    const mitreBadges = _aclMitre[right] || '';
 
     const section = document.createElement('div');
     section.style.cssText = 'margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden';
 
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-grouped);border-bottom:1px solid var(--border);cursor:pointer;user-select:none';
+    header.dataset.right = right;
     header.innerHTML =
-      '<span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9658;</span>' +
+      '<span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>' +
       '<span class="badge badge-critical" style="font-family:monospace">' + right + '</span>' +
       '<span style="color:var(--text-main);font-weight:600">' + count + ' finding' + (count !== 1 ? 's' : '') + '</span>' +
+      mitreBadges +
       '<span class="badge ' + sevClass + '" style="margin-left:auto">' + g.severity + '</span>';
 
     const body = document.createElement('div');
-    body.style.display = 'none';
+    body.className = 'group-body';
     body.style.padding = '8px';
     g.cards.forEach(function(card) {
       var clone = card.cloneNode(true);
@@ -2763,10 +2983,14 @@ function buildGroupedACL() {
       body.appendChild(clone);
     });
 
+    const chevron = header.querySelector('.chevron');
+    if (chevron) chevron.classList.add('group-chevron');
+
     header.onclick = function() {
       var open = body.style.display !== 'none';
       body.style.display = open ? 'none' : '';
-      header.querySelector('.chevron').innerHTML = open ? '&#9658;' : '&#9660;';
+      const ch = header.querySelector('.group-chevron');
+      if (ch) ch.innerHTML = open ? '&#9658;' : '&#9660;';
     };
 
     section.appendChild(header);
@@ -2774,6 +2998,57 @@ function buildGroupedACL() {
     container.appendChild(section);
   });
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  if (document.querySelector('#acl-findings .acl-card')) buildGroupedACL();
+});
+
+// ── Collapsible exposure sections ────────────────────────────
+function toggleExpSection(header) {
+  const body = header.nextElementSibling;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  header.querySelector('.chevron').innerHTML = open ? '&#9658;' : '&#9660;';
+}
+
+function expandAllIn(sel) {
+  // Exposure static sections
+  document.querySelectorAll(sel + ' .exp-body').forEach(function(b) { b.style.display = ''; });
+  document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.innerHTML = '&#9660;'; });
+  // ACL dynamically built groups
+  document.querySelectorAll(sel + ' .group-body').forEach(function(b) { b.style.display = ''; });
+  document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.innerHTML = '&#9660;'; });
+}
+
+function collapseAllIn(sel) {
+  document.querySelectorAll(sel + ' .exp-body').forEach(function(b) { b.style.display = 'none'; });
+  document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.innerHTML = '&#9658;'; });
+  document.querySelectorAll(sel + ' .group-body').forEach(function(b) { b.style.display = 'none'; });
+  document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.innerHTML = '&#9658;'; });
+}
+
+// ── Row limit (large tables) ──────────────────────────────────
+const _ROW_LIMIT = 100;
+function limitTableRows(tableId) {
+  const tbody = document.querySelector('#' + tableId + ' tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.rows);
+  if (rows.length <= _ROW_LIMIT) return;
+  rows.slice(_ROW_LIMIT).forEach(function(r) { r.style.display = 'none'; r.dataset.limited = '1'; });
+  const wrap = tbody.closest('.table-wrap') || tbody.closest('table');
+  const btn = document.createElement('button');
+  btn.className = 'show-all-btn';
+  btn.textContent = 'Show all ' + rows.length + ' rows (currently showing ' + _ROW_LIMIT + ')';
+  btn.onclick = function() {
+    rows.forEach(function(r) { if (r.dataset.limited) r.style.display = ''; });
+    btn.remove();
+  };
+  (wrap || tbody).after(btn);
+}
+document.addEventListener('DOMContentLoaded', function() {
+  ['tbl-users', 'tbl-groups', 'tbl-computers',
+   'tbl-desc', 'tbl-stale-users', 'tbl-stale-comp', 'tbl-nolaps'].forEach(limitTableRows);
+});
 
 // ── Theme toggle ──────────────────────────────────────────────
 function toggleTheme() {

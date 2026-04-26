@@ -21,6 +21,7 @@ Interactive D3.js force-directed graph of the attack path network.
 - Red arrows = paths leading to admin groups
 - Hover tooltip = object name and path count
 - Zoom/pan + Reset Zoom button
+- Capped at 80 nodes in large environments; privileged nodes (groups, adminCount=1) are always kept
 
 ## Trusts
 
@@ -33,7 +34,7 @@ Domain and forest trusts enumerated from `trustedDomain` objects:
 
 ## Users
 
-Full user table with columns: SAMAccountName, Enabled, Last Logon, Password Last Set, Admin Count, Email, Privileged Groups.
+Full user table with columns: SAMAccountName, Enabled, Last Logon, Password Last Set, Admin Count, Email, Privileged Groups. Tables with more than 100 rows show the first 100 with a **Show all N rows** button.
 
 ## Groups
 
@@ -51,11 +52,14 @@ Computer table with: OS version, LAPS status, last logon, domain, description.
 
 ## ACL
 
-- Dangerous ACL findings grouped by type (GenericAll, WriteDACL, DCSync, etc.)
+Dangerous ACL findings grouped by right type (GenericAll, WriteDACL, DCSync, etc.) by default:
+
 - Source principal → right → target object
-- Severity: Critical if target is DA/EA/DC; High otherwise
+- MITRE ATT&CK badges shown once per group header (not repeated per finding row)
+- Severity: Critical if target is DA/EA or right is GenericAll/WriteDACL/WriteOwner; High for ForceChangePassword/AddMember/GenericWrite
 - Exploit commands (bloodyAD, secretsdump) in accordion
-- **Group button** (⊞) collapses similar findings into a single line
+- **Expand All / Collapse All** buttons in the section header
+- Filter bar to narrow by principal, target, or right type
 
 ## Delegation
 
@@ -66,19 +70,22 @@ Computer table with: OS version, LAPS status, last logon, domain, description.
 
 ## Exposure
 
-- **LAPS coverage** — computers without LAPS listed individually
-- **Stale users** (no logon > 90 days)
-- **Stale computers** (no logon > 45 days)
-- **krbtgt password age** — Golden Ticket risk if > 180 days
-- **Passwords in descriptions** — any AD object with a non-empty description
+Collapsible sections — each shows a count badge and severity badge in the header. Use **Expand All / Collapse All** to control all at once.
+
+- **krbtgt** — password age; Critical if > 180 days (Golden Ticket risk)
+- **Descriptions** — AD objects with non-empty descriptions (may leak credentials or IPs)
+- **Stale Users** — no logon > 90 days
+- **Stale Computers** — no logon > 45 days
+- **No LAPS** — computers without LAPS (shared local admin password risk)
 - **PSO** — Fine-Grained Password Policies with weak settings
+- **Protected Users** — DA/EA accounts not in the Protected Users group
+- **AdminSDHolder** — orphaned adminCount=1 objects or backdoor ACEs on AdminSDHolder
 
 ## GPO
 
 - Default Domain Policy password settings audit
 - GPO write ACL — which non-admin principals can modify GPOs
 - GPP/MS14-025 — GPOs with cpassword CSE GUIDs linked to OUs/domain
-- Protected Users coverage
 
 ## ADCS
 

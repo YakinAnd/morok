@@ -7,8 +7,8 @@ The `enum` command generates a self-contained HTML report after every run.
 - **Single file** — all CSS, JavaScript, and data are embedded inline. No server, no external requests.
 - **Works offline** — share via email or archive. Analysts can open it on air-gapped systems.
 - **Dark/light theme** — toggle in the top-right corner; preference saved to localStorage.
-- **Global search** — search bar above tabs finds matches across all sections simultaneously, shows match count per tab, auto-jumps to the tab with most matches.
-- **D3.js attack path graph** — interactive force-directed graph; node size represents path count, red arrows indicate admin-level paths, hover tooltips, zoom/pan, Reset Zoom button.
+- **Global search** — search bar above tabs highlights matches across all sections. Results appear as clickable tab buttons (e.g. `ACL (5)  Kerberos (2)`). Press **Enter** to jump to the tab with the most matches, or click any button to navigate directly. Collapsed sections are auto-expanded when they contain a match. The **✕ Clear** button appears only when the field has text.
+- **D3.js attack path graph** — interactive force-directed graph; node size represents path count, red arrows indicate admin-level paths, hover tooltips, zoom/pan, Reset Zoom button. Capped at 80 nodes — privileged nodes (groups, adminCount) are always kept.
 
 ## Report path
 
@@ -34,6 +34,13 @@ The first tab shows an executive summary:
 - Summary cards — each card is **clickable** and jumps to the corresponding tab:
   - Attack Paths, Kerberoastable, AS-REP, Dangerous ACLs, Delegation, Stale accounts, ADCS, Shadow Credentials, etc.
 
+## Scale handling
+
+Large environments are handled gracefully:
+
+- Tables with more than 100 rows are truncated with a **Show all N rows** button.
+- The D3 attack path graph is capped at 80 nodes; privileged nodes are always included first.
+
 ## Exploit / Fix accordion
 
 Every finding card (attack path, ACL, delegation, ADCS, etc.) has a collapsible **Exploit / Fix** section with:
@@ -43,7 +50,7 @@ Every finding card (attack path, ACL, delegation, ADCS, etc.) has a collapsible 
 
 ## MITRE ATT&CK badges
 
-Every finding section and individual finding row includes a purple **T-code badge** linking to the corresponding MITRE ATT&CK technique page (e.g. `T1558.003` for Kerberoasting). Click any badge to open the technique on attack.mitre.org.
+Section headers include purple **T-code badges** linking to the corresponding MITRE ATT&CK technique page. In the ACL tab, badges appear on group headers (not repeated per finding row). Click any badge to open the technique on attack.mitre.org.
 
 ## Section tooltips
 
