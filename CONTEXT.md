@@ -3,7 +3,7 @@
 ## Загальна інформація
 - **Репо:** github.com/YakinAnd/adpath
 - **Мова:** Go
-- **Поточна версія:** v0.9.8
+- **Поточна версія:** v0.9.9
 - **Ціль:** Open source CLI інструмент для AD security analysis. В майбутньому — платна Pro версія (модель Burp Suite, ~$300-500/рік)
 - **Аудиторія:** Solo пентестери, MSSP, blue team, SMB компанії
 
@@ -367,6 +367,16 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 ### v0.9.7 ЗАВЕРШЕНО
 
 - ✅ **`adpath smb`** — SMB signing check через raw SMB2 Negotiate (TCP/445); читає SecurityMode поле з відповіді; High якщо signing не required, Medium якщо enabled але не required; summary line в `adpath enum`; секція в HTML LDAP Security tab; без credentials — тільки порт 445; `internal/analysis/smb_signing.go`
+
+### v0.9.9 ЗАВЕРШЕНО
+
+- ✅ **HTML report redesign** — великий UI overhaul (`internal/report/html.go`, 811 рядків змін):
+  - ACL tab тепер згрупований за замовчуванням; MITRE badges тільки на group headers
+  - Exposure tab: 8 collapsible секцій з count + severity badges
+  - "Expand All / Collapse All" кнопки на ACL і Exposure tabs
+  - Tables capped at 100 rows; D3 graph capped at 80 nodes (scale fix для великих AD)
+- ✅ **Global search overhaul** — clickable tab buttons в результатах (клік → перехід на tab); Enter → navigate до наступного результату; auto-expand collapsed sections при знаходженні; Clear кнопка прихована коли порожньо; синє підсвічування (замість amber, щоб не конфліктувати з badge-medium)
+- ✅ **CLI Risk Summary** — блок в кінці `adpath enum` output: рахує criticals/highs/mediums по всіх модулях (ACL, ADCS, Shadow, Kerberos, Attack Paths, SMB, LDAP); виводить загальний рейтинг (CRITICAL / HIGH / MEDIUM / LOW) з кольором
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
