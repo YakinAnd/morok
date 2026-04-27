@@ -1179,7 +1179,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="table-wrap" style="margin-bottom:24px">
   <table>
     <thead>
-      <tr><th>Trusted Domain</th><th>NetBIOS</th><th>Direction</th><th>Type</th><th>SID Filtering</th><th>Severity</th><th>Risks</th></tr>
+      <tr><th>Trusted Domain</th><th>NetBIOS</th><th>Direction</th><th>Type</th><th>SID Filtering</th><th>Severity</th><th>CVSS</th><th>Risks</th></tr>
     </thead>
     <tbody>
     {{range .TrustResult.Trusts}}
@@ -1203,6 +1203,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         {{else if eq .Severity "Medium"}}<span class="badge" style="background:#744210;color:#fef3c7">Medium</span>
         {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Info</span>{{end}}
       </td>
+      <td>{{if gt .CVSS 0.0}}<span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>{{else}}—{{end}}</td>
       <td style="font-size:0.78rem;color:#fc8181">
         {{range .Risks}}<div>⚠ {{.}}</div>{{end}}
       </td>
@@ -1225,12 +1226,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </div>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>External SID</th><th>Severity</th><th>Member of</th></tr></thead>
+    <thead><tr><th>External SID</th><th>Severity</th><th>CVSS</th><th>Member of</th></tr></thead>
     <tbody>
     {{range .TrustResult.FSPs}}
     <tr>
       <td class="mono" style="font-size:0.8rem">{{.ExternalSID}}</td>
       <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       <td style="font-size:0.82rem;color:var(--text-secondary)">{{joinSPNs .MemberOfGroups}}</td>
     </tr>
     {{end}}
@@ -1466,6 +1468,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th>Account</th>
         <th>SPNs</th>
         <th>Admin</th>
+        <th>CVSS</th>
         <th>Last Logon</th>
         <th>Password Last Set</th>
       </tr>
@@ -1476,6 +1479,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td class="mono">{{.SAMAccountName}}</td>
       <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
       <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       <td class="mono">{{.LastLogon}}</td>
       <td class="mono">{{.PasswordLastSet}}</td>
     </tr>
@@ -1510,6 +1514,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr>
         <th>Account</th>
         <th>Admin</th>
+        <th>CVSS</th>
         <th>Last Logon</th>
         <th>Password Last Set</th>
       </tr>
@@ -1519,6 +1524,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
       <td class="mono">{{.SAMAccountName}}</td>
       <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       <td class="mono">{{.LastLogon}}</td>
       <td class="mono">{{.PasswordLastSet}}</td>
     </tr>
@@ -1630,6 +1636,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge badge-critical">{{.DelegationType}}</span>
+      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.SAMAccountName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.ObjectType}}</span>
       {{mitreForDeleg (print .DelegationType)}}
@@ -1936,13 +1943,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div style="color:#fc8181;font-size:0.8rem;margin-bottom:10px">&#9888; These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
     <div class="table-wrap" style="margin-bottom:12px">
     <table>
-      <thead><tr><th>Principal</th><th>SID</th><th>Rights</th></tr></thead>
+      <thead><tr><th>Principal</th><th>SID</th><th>Rights</th><th>CVSS</th></tr></thead>
       <tbody>
       {{range .AdminSDHolderResult.CustomACEs}}
       <tr class="row-critical">
         <td class="mono" style="color:#fc8181">{{.PrincipalName}}</td>
         <td class="mono" style="font-size:0.75rem;color:var(--text-muted)">{{.PrincipalSID}}</td>
         <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
+        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       </tr>
       {{end}}
       </tbody>
@@ -2042,12 +2050,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </h3>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>GPO</th><th>Severity</th><th>Principal</th><th>Rights</th><th>Linked To</th></tr></thead>
+    <thead><tr><th>GPO</th><th>Severity</th><th>CVSS</th><th>Principal</th><th>Rights</th><th>Linked To</th></tr></thead>
     <tbody>
     {{range .GPOResult.GPOACLFindings}}
     <tr>
       <td class="mono">{{.GPOName}}</td>
       <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       <td class="mono">{{.PrincipalName}}</td>
       <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
       <td style="font-size:0.78rem;color:var(--text-secondary)">{{joinSPNs .GPOLinkedTo}}</td>
@@ -2097,6 +2106,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge badge-critical">Critical</span>
       <span class="badge badge-critical" style="font-family:monospace">ESC6</span>
+      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.CAName}}</span>
     </div>
     <div style="padding:8px 16px">
@@ -2123,6 +2133,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span>
       {{range .VulnTypes}}<span class="badge {{if eq $tmplSev "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
+      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
       {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
       {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
@@ -2168,6 +2179,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th>Target Type</th>
         <th>Right</th>
         <th>Severity</th>
+        <th>CVSS</th>
       </tr></thead>
       <tbody>
       {{range .ShadowCredentialsResult.Findings}}
@@ -2178,6 +2190,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <td>{{.TargetType}}</td>
         <td><span class="badge badge-medium" style="font-family:monospace;font-size:0.75rem">{{.Right}}</span></td>
         <td><span class="badge badge-critical">{{.Severity}}</span></td>
+        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       </tr>
       {{end}}
       </tbody>
@@ -2230,9 +2243,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Findings</div>
   {{range .LDAPSecurityResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
-    <div class="path-header">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
-      <span style="margin-left:8px">{{.Title}}</span>
+      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+      <span style="margin-left:4px">{{.Title}}</span>
     </div>
     <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
   </div>
@@ -2271,9 +2285,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .SMBSigningResult.Findings}}
   {{range .SMBSigningResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
-    <div class="path-header">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "High"}}badge-high{{else if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
-      <span style="margin-left:8px">{{.Title}}</span>
+      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+      <span style="margin-left:4px">{{.Title}}</span>
     </div>
     <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
   </div>

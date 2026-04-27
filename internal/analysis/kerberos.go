@@ -23,6 +23,8 @@ type KerberoastableAccount struct {
 	PasswordLastSet string
 	LastLogon       string
 	Description     string
+	CVSS            float64
+	Severity        string
 }
 
 // ASREPAccount — акаунт з DONT_REQUIRE_PREAUTH
@@ -33,6 +35,8 @@ type ASREPAccount struct {
 	PasswordLastSet string
 	LastLogon       string
 	Description     string
+	CVSS            float64
+	Severity        string
 }
 
 // KerberosResult — результат аналізу
@@ -68,6 +72,7 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			continue
 		}
 
+		ac := CVSSForKerberoastable(u.AdminCount)
 		kr.KerberoastableAccounts = append(kr.KerberoastableAccounts, KerberoastableAccount{
 			SAMAccountName:  u.SAMAccountName,
 			DN:              u.DN,
@@ -76,6 +81,8 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			PasswordLastSet: u.PasswordLastSet,
 			LastLogon:       u.LastLogon,
 			Description:     u.Description,
+			CVSS:            ac.Score,
+			Severity:        ac.Severity,
 		})
 	}
 
@@ -88,6 +95,7 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			continue
 		}
 
+		aa := CVSSForASREP(u.AdminCount)
 		kr.ASREPAccounts = append(kr.ASREPAccounts, ASREPAccount{
 			SAMAccountName:  u.SAMAccountName,
 			DN:              u.DN,
@@ -95,6 +103,8 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			PasswordLastSet: u.PasswordLastSet,
 			LastLogon:       u.LastLogon,
 			Description:     u.Description,
+			CVSS:            aa.Score,
+			Severity:        aa.Severity,
 		})
 	}
 
