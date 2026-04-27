@@ -1711,8 +1711,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">Description Notes</span>
       {{if .HygieneResult.PasswordInDesc}}
-      <span class="badge badge-medium">{{len .HygieneResult.PasswordInDesc}} objects</span>
-      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.PasswordInDesc}} objects</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
     </div>
     <div class="exp-body">
@@ -1755,8 +1754,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">Stale User Accounts <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(90+ days no logon)</span></span>
       {{if .HygieneResult.StaleUsers}}
-      <span class="badge badge-medium">{{len .HygieneResult.StaleUsers}} accounts</span>
-      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.StaleUsers}} accounts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
     <div class="exp-body">
@@ -1789,8 +1787,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">Stale Computers <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(45+ days no logon)</span></span>
       {{if .HygieneResult.StaleComputers}}
-      <span class="badge badge-medium">{{len .HygieneResult.StaleComputers}} hosts</span>
-      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.StaleComputers}} hosts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
     <div class="exp-body">
@@ -1822,8 +1819,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">Computers Without LAPS</span>
       {{if gt .Summary.NoLAPSCount 0}}
-      <span class="badge badge-medium">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} hosts</span>
-      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      <span class="badge badge-medium" style="margin-left:auto">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} hosts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All managed</span>{{end}}
     </div>
     <div class="exp-body">
@@ -1855,7 +1851,6 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="exp-header" onclick="toggleExpSection(this)">
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">Fine-Grained Password Policy (PSO)</span>
-      <span class="badge badge-medium">{{len .PSOResult.PSOs}} PSOs</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .PSOResult.PSOs}} PSO(s)</span>
     </div>
     <div class="exp-body">
@@ -1889,11 +1884,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">Protected Users Group</span>
       {{if not .ProtectedUsersResult.ProtectedUsersExists}}
-      <span class="badge badge-critical">Group not found</span>
-      <span class="badge badge-critical" style="margin-left:auto">High</span>
+      <span class="badge badge-medium" style="margin-left:auto">Group not found</span>
       {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
-      <span class="badge badge-medium">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged not protected</span>
-      <span class="badge badge-medium" style="margin-left:auto">High</span>
+      <span class="badge badge-medium" style="margin-left:auto">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged not protected</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All protected</span>{{end}}
       <span class="help-icon" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
     </div>
