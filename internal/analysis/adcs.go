@@ -69,6 +69,7 @@ type CertTemplateFinding struct {
 	IssuancePolicyOID string // ESC13: policy OID linked to group
 	LinkedGroupDN     string // ESC13: privileged group DN
 	Severity          string
+	CVSS              float64
 }
 
 type CAFinding struct {
@@ -78,6 +79,7 @@ type CAFinding struct {
 	WebEnroll bool
 	Details   string
 	Severity  string
+	CVSS      float64
 }
 
 type CAInfo struct {
@@ -186,34 +188,40 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 		// ESC6: EDITF_ATTRIBUTESUBJECTALTNAME2 set on CA
 		// This allows SAN injection for ANY template issued by this CA
 		if editFlags&editFlagAttributeSubjectAltName2 != 0 {
+			esc6Score := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
 			result.CAFindings = append(result.CAFindings, CAFinding{
 				CAName:    ca.Name,
 				CADN:      ca.DN,
 				VulnTypes: []ADCSVulnType{ESC6},
 				Details:   "CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag set — any template issued by this CA allows SAN injection regardless of template settings. Equivalent to ESC1 for all templates.",
-				Severity:  "Critical",
+				Severity:  CVSSSeverity(esc6Score),
+				CVSS:      esc6Score,
 			})
 		}
 
 		// ESC8: flag Web Enrollment as potential (requires HTTP probe to confirm)
+		esc8Score := CVSSScore("AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H")
 		result.CAFindings = append(result.CAFindings, CAFinding{
 			CAName:    ca.Name,
 			CADN:      ca.DN,
 			VulnTypes: []ADCSVulnType{ESC8},
 			WebEnroll: true,
 			Details:   "Verify if Web Enrollment is active: http://" + ca.Server + "/certsrv/ — if accessible and NTLM auth is allowed, PetitPotam/Coercer → certipy relay attack is possible.",
-			Severity:  "High",
+			Severity:  CVSSSeverity(esc8Score),
+			CVSS:      esc8Score,
 		})
 
 		// ESC11: ICPR/DCOM (legacy RPC certificate enrollment) relay
 		// Similar to ESC8 but via MS-ICPR instead of HTTP. No remote check possible —
 		// flag as informational for manual verification.
+		esc11Score := CVSSScore("AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H")
 		result.CAFindings = append(result.CAFindings, CAFinding{
 			CAName:    ca.Name,
 			CADN:      ca.DN,
 			VulnTypes: []ADCSVulnType{ESC11},
 			Details:   "Verify if the ICPR (MS-ICPR/DCOM) enrollment interface is accessible: certipy relay -target 'rpc://" + ca.Server + "' — if NTLM relay is possible via DCOM, an attacker can request certificates as a coerced machine account.",
-			Severity:  "High",
+			Severity:  CVSSSeverity(esc11Score),
+			CVSS:      esc11Score,
 		})
 	}
 
@@ -349,20 +357,24 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	// Check who can actually enroll (ESC1 qualifier)
 	enrollableBy := checkEnrollmentRights(e)
 
-	// Severity: Critical if ESC1 + auth EKU + low-priv can enroll
-	//           Medium  if ESC1 + no low-priv enrollment, or ESC9 (requires additional write access)
-	//           High    otherwise
-	sev := "High"
+	// CVSS 3.1 vector selection:
+	// ESC1 + auth EKU + low-priv enrollable → direct domain escalation: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+	// ESC1 + auth EKU + priv-only enrollment → still exploitable but harder: AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H
+	// ESC9 alone (requires GenericWrite over account): AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
+	// Default (other ESC variants): AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+	var cvssVector string
 	if containsVuln(vulns, ESC1) && authEnabled {
 		if len(enrollableBy) > 0 {
-			sev = "Critical"
+			cvssVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 		} else {
-			sev = "Medium"
+			cvssVector = "AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H"
 		}
 	} else if containsVuln(vulns, ESC9) && !containsVuln(vulns, ESC1) {
-		// ESC9 alone requires GenericWrite over another account — Medium
-		sev = "Medium"
+		cvssVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
+	} else {
+		cvssVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 	}
+	cvssScore := CVSSScore(cvssVector)
 
 	return &CertTemplateFinding{
 		TemplateName:    name,
@@ -373,7 +385,8 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		NoSecurityExt:   noSecurityExt,
 		EKUs:            ekuDisplay,
 		EnrollableBy:    enrollableBy,
-		Severity:        sev,
+		Severity:        CVSSSeverity(cvssScore),
+		CVSS:            cvssScore,
 	}
 }
 

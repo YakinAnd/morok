@@ -31,6 +31,7 @@ type ShadowCredentialFinding struct {
 	TargetDN      string
 	Right         string
 	Severity      string
+	CVSS          float64
 }
 
 type ShadowCredentialsResult struct {
@@ -94,6 +95,7 @@ func AnalyzeShadowCredentials(client *adldap.Client, result *adldap.EnumerationR
 				continue
 			}
 
+			shadowScore := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
 			r.Findings = append(r.Findings, ShadowCredentialFinding{
 				PrincipalName: info.Name,
 				PrincipalType: info.Type,
@@ -102,7 +104,8 @@ func AnalyzeShadowCredentials(client *adldap.Client, result *adldap.EnumerationR
 				TargetType:    targetInfo.typ,
 				TargetDN:      targetDN,
 				Right:         right,
-				Severity:      "Critical",
+				CVSS:          shadowScore,
+				Severity:      CVSSSeverity(shadowScore),
 			})
 		}
 	}

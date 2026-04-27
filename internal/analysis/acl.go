@@ -37,6 +37,8 @@ type DCSyncFinding struct {
 	PrincipalName string
 	PrincipalType string
 	PrincipalDN   string
+	CVSS          float64 // AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N = 9.6
+	Severity      string
 }
 
 // ACLFinding — одна небезпечна ACL знахідка
@@ -53,7 +55,8 @@ type ACLFinding struct {
 
 	// яке право
 	Right    ACLRight
-	Severity string // Critical / High / Medium
+	Severity string  // Critical / High / Medium
+	CVSS     float64 // CVSS 3.1 base score
 }
 
 // ACLResult — результат ACL аналізу
@@ -205,10 +208,13 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 			name == "administrators" || name == "enterprise admins" {
 			continue
 		}
+		score := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N")
 		findings = append(findings, DCSyncFinding{
 			PrincipalName: info.Name,
 			PrincipalType: info.Type,
 			PrincipalDN:   info.DN,
+			CVSS:          score,
+			Severity:      CVSSSeverity(score),
 		})
 	}
 	return findings
@@ -272,8 +278,9 @@ func parseACLEntry(
 				TargetDN:      targetDN,
 				TargetName:    targetName,
 				TargetType:    targetType,
-				Right:         right,
-				Severity:      calcSeverity(right, targetName, principalInfo.Name),
+				Right: right,
+				CVSS: calcACLCVSS(right, targetName),
+				Severity: CVSSSeverity(calcACLCVSS(right, targetName)),
 			})
 		}
 	}
@@ -666,24 +673,57 @@ func filterSystemACL(findings []ACLFinding) []ACLFinding {
 	return filtered
 }
 
-// calcSeverity розраховує severity знахідки
-func calcSeverity(right ACLRight, targetName, principalName string) string {
-	// права на DA або AdminCount об'єкти — завжди Critical
-	if strings.Contains(strings.ToLower(targetName), "domain admins") ||
-		strings.Contains(strings.ToLower(targetName), "enterprise admins") {
-		return "Critical"
-	}
+// calcACLCVSS returns the CVSS 3.1 base score for an ACL finding.
+// Vectors derived from CVSS 3.1 calculator using AD attacker context (PR:L = domain user).
+func calcACLCVSS(right ACLRight, targetName string) float64 {
+	privileged := isPrivilegedTarget(targetName)
 
 	switch right {
 	case RightGenericAll, RightWriteDACL, RightWriteOwner:
-		return "Critical"
-	case RightForceChangePassword, RightAddMember:
-		return "High"
+		if privileged {
+			// Full control over DA/EA — domain compromise: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+			return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
+		}
+		// Full control over arbitrary object: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H
+		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H")
+
+	case RightAddMember:
+		if privileged {
+			// Add member to DA/EA: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+			return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
+		}
+		// Add member to regular group: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
+		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N")
+
+	case RightForceChangePassword:
+		// Account takeover without knowing current password: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
+		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N")
+
 	case RightGenericWrite:
-		return "High"
+		// Write to sensitive attributes (SPN, msDS-KeyCredentialLink, etc.): AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
+		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N")
+
 	default:
-		return "Medium"
+		// AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N
+		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N")
 	}
+}
+
+// isPrivilegedTarget returns true if the target is a high-value AD object
+func isPrivilegedTarget(name string) bool {
+	lower := strings.ToLower(name)
+	privileged := []string{
+		"domain admins", "enterprise admins", "schema admins",
+		"administrators", "domain controllers", "krbtgt",
+		"account operators", "backup operators", "print operators",
+		"server operators", "group policy creator owners",
+	}
+	for _, p := range privileged {
+		if strings.Contains(lower, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // ============================================================

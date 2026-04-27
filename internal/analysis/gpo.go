@@ -37,6 +37,7 @@ type GPOACLFinding struct {
 	PrincipalSID  string
 	Rights        []string
 	Severity      string
+	CVSS          float64
 }
 
 // PasswordPolicy — налаштування парольної політики
@@ -376,16 +377,20 @@ func analyzeGPOPermissions(client *adldap.Client, gpo *GPOFinding, nameMap map[s
 			PrincipalName: principalName,
 			PrincipalSID:  ace.SID,
 			Rights:        rights,
-			Severity:      "High",
 		}
-		// GPO linked to Domain or DC OU → Critical
+		// GPO linked to Domain or DC OU → Critical (AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H)
+		// Otherwise High (AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N)
+		gpoVector := "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N"
 		for _, link := range gpo.LinkedTo {
 			if strings.EqualFold(link, "Domain") ||
 				strings.Contains(strings.ToLower(link), "domain controller") {
-				f.Severity = "Critical"
+				gpoVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 				break
 			}
 		}
+		gpoScore := CVSSScore(gpoVector)
+		f.CVSS = gpoScore
+		f.Severity = CVSSSeverity(gpoScore)
 
 		gpo.ACLFindings = append(gpo.ACLFindings, f)
 		if len(gpo.ACLFindings) == 1 {

@@ -42,6 +42,7 @@ type AdminSDHolderACEFinding struct {
 	AccessMask    uint32
 	Rights        []string
 	Severity      string
+	CVSS          float64
 }
 
 // known privileged group SAMAccountNames (same list used for Protected Users check)
@@ -229,12 +230,15 @@ func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []Admi
 			rights = append(rights, "GenericWrite")
 		}
 
+		// ACE on AdminSDHolder propagates to ALL admin accounts: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+		sdScore := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
 		findings = append(findings, AdminSDHolderACEFinding{
 			PrincipalSID:  sid,
 			PrincipalName: name,
 			AccessMask:    mask,
 			Rights:        rights,
-			Severity:      "Critical",
+			CVSS:          sdScore,
+			Severity:      CVSSSeverity(sdScore),
 		})
 	}
 	return findings

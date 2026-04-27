@@ -31,6 +31,8 @@ type DelegationFinding struct {
 	AllowedTo       []string
 	IsHighRisk      bool
 	RiskReason      string
+	Severity        string
+	CVSS            float64
 }
 
 type DelegationResult struct {
@@ -103,6 +105,8 @@ func findUnconstrainedUsers(client *adldap.Client, result *DelegationResult) err
 		return fmt.Errorf("unconstrained user search failed: %w", err)
 	}
 	for _, entry := range entries {
+		// Unconstrained on user: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
+		unScore := CVSSScore("AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H")
 		result.Findings = append(result.Findings, DelegationFinding{
 			SAMAccountName: entry.GetAttributeValue("sAMAccountName"),
 			DN:             entry.DN,
@@ -110,6 +114,8 @@ func findUnconstrainedUsers(client *adldap.Client, result *DelegationResult) err
 			DelegationType: DelegationUnconstrained,
 			IsHighRisk:     true,
 			RiskReason:     "User account with unconstrained delegation — any connecting user's TGT is cached",
+			CVSS:           unScore,
+			Severity:       CVSSSeverity(unScore),
 		})
 	}
 	return nil
@@ -121,6 +127,8 @@ func findUnconstrainedComputers(client *adldap.Client, result *DelegationResult)
 		return fmt.Errorf("unconstrained computer search failed: %w", err)
 	}
 	for _, entry := range entries {
+		// Unconstrained on computer: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
+		unScore := CVSSScore("AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H")
 		result.Findings = append(result.Findings, DelegationFinding{
 			SAMAccountName: entry.GetAttributeValue("sAMAccountName"),
 			DN:             entry.DN,
@@ -128,6 +136,8 @@ func findUnconstrainedComputers(client *adldap.Client, result *DelegationResult)
 			DelegationType: DelegationUnconstrained,
 			IsHighRisk:     true,
 			RiskReason:     "Computer with unconstrained delegation — compromise leads to TGT harvesting (PrinterBug, PetitPotam)",
+			CVSS:           unScore,
+			Severity:       CVSSSeverity(unScore),
 		})
 	}
 	return nil
@@ -153,6 +163,15 @@ func findConstrainedDelegation(client *adldap.Client, result *DelegationResult) 
 			riskReason = "Protocol Transition enabled (S4U2Self) — can impersonate any user"
 		}
 
+		// Constrained high-risk: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N
+		// Constrained low-risk: AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N
+		var conVector string
+		if isHighRisk {
+			conVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N"
+		} else {
+			conVector = "AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:L/A:N"
+		}
+		conScore := CVSSScore(conVector)
 		result.Findings = append(result.Findings, DelegationFinding{
 			SAMAccountName:  entry.GetAttributeValue("sAMAccountName"),
 			DN:              entry.DN,
@@ -161,6 +180,8 @@ func findConstrainedDelegation(client *adldap.Client, result *DelegationResult) 
 			AllowedServices: allowedTo,
 			IsHighRisk:      isHighRisk,
 			RiskReason:      riskReason,
+			CVSS:            conScore,
+			Severity:        CVSSSeverity(conScore),
 		})
 	}
 	return nil
@@ -189,6 +210,8 @@ func findRBCD(client *adldap.Client, result *DelegationResult) error {
 		return fmt.Errorf("RBCD search failed: %w", err)
 	}
 	for _, entry := range entries {
+		// RBCD: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N
+		rbcdScore := CVSSScore("AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N")
 		result.Findings = append(result.Findings, DelegationFinding{
 			SAMAccountName: entry.GetAttributeValue("sAMAccountName"),
 			DN:             entry.DN,
@@ -196,6 +219,8 @@ func findRBCD(client *adldap.Client, result *DelegationResult) error {
 			DelegationType: DelegationRBCD,
 			IsHighRisk:     true,
 			RiskReason:     "RBCD configured — check who can delegate to this object (potential privilege escalation)",
+			CVSS:           rbcdScore,
+			Severity:       CVSSSeverity(rbcdScore),
 		})
 	}
 	return nil

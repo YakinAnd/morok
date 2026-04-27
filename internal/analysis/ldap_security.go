@@ -19,6 +19,7 @@ type LDAPSecurityFinding struct {
 	Title    string
 	Detail   string
 	Severity string
+	CVSS     float64
 }
 
 type LDAPSecurityResult struct {
@@ -50,10 +51,13 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 	// the DC does not require LDAP signing — traffic can be intercepted / replayed.
 	if rds.PlainLDAP {
 		r.SigningEnforced = false
+		// LDAP MITM → credential capture/relay: AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N
+		ldapSignScore := CVSSScore("AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N")
 		r.Findings = append(r.Findings, LDAPSecurityFinding{
 			Title:    "LDAP signing not enforced",
 			Detail:   "Authenticated bind succeeded over plain LDAP (port 389) without signing. An attacker performing LDAP MITM can read or modify in-flight LDAP traffic. Enforce via GPO: Network security: LDAP client signing requirements = Require signing; Domain controller: LDAP server signing requirements = Require signing.",
-			Severity: "Medium",
+			CVSS:     ldapSignScore,
+			Severity: CVSSSeverity(ldapSignScore),
 		})
 	} else {
 		r.SigningEnforced = true
@@ -71,10 +75,13 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 	}
 
 	if !hasIntegrity && rds.PlainLDAP {
+		// Channel binding bypass → NTLM relay to LDAP: AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N
+		cbScore := CVSSScore("AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N")
 		r.Findings = append(r.Findings, LDAPSecurityFinding{
 			Title:    "LDAP channel binding not advertised",
 			Detail:   fmt.Sprintf("DC does not advertise LDAP integrity OID (%s) in supportedCapabilities. Channel binding may not be enforced, increasing exposure to NTLM relay attacks against LDAP. Check KB4520412/MS Advisory ADV190023.", oidLDAPIntegrity),
-			Severity: "Medium",
+			CVSS:     cbScore,
+			Severity: CVSSSeverity(cbScore),
 		})
 	}
 
@@ -83,10 +90,13 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 		canRead := client.ProbeAnonymousRead()
 		r.AnonReadEnabled = canRead
 		if canRead {
+			// Unauthenticated AD reconnaissance: AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N
+			anonScore := CVSSScore("AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N")
 			r.Findings = append(r.Findings, LDAPSecurityFinding{
 				Title:    "Anonymous LDAP read enabled",
 				Detail:   "Unauthenticated (null session) bind can enumerate AD objects (users, groups). An attacker without credentials can perform reconnaissance. Disable anonymous LDAP access via: HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters → DSHeuristics (set bit 7 to 0) and restrict null session permissions.",
-				Severity: "Medium",
+				CVSS:     anonScore,
+				Severity: CVSSSeverity(anonScore),
 			})
 		}
 	}
@@ -96,10 +106,13 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 	if rds.PlainLDAP {
 		for _, mech := range rds.SupportedSASLMechanisms {
 			if strings.EqualFold(mech, "GSS-SPNEGO") || strings.EqualFold(mech, "GSSAPI") {
+				// Context for relay surface — Low informational: AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N
+				saslScore := CVSSScore("AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N")
 				r.Findings = append(r.Findings, LDAPSecurityFinding{
 					Title:    "NTLM/Kerberos SASL available over plain LDAP",
 					Detail:   fmt.Sprintf("SASL mechanism %s is available over port 389. Combined with unsigned LDAP, this enables NTLM relay to LDAP (e.g. via PetitPotam → ldap_shell / rbcd). Mitigate by enforcing LDAP signing and channel binding.", mech),
-					Severity: "Low",
+					CVSS:     saslScore,
+					Severity: CVSSSeverity(saslScore),
 				})
 				break
 			}

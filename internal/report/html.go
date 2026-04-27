@@ -758,6 +758,24 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .sev-high     { color: #f6ad55; font-weight: 600; }
 .sev-medium   { color: var(--sev-medium); }
 
+/* CVSS score pill */
+.cvss-score {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+}
+[data-theme="light"] .cvss-score {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.12);
+}
+
 /* Severity row left-border indicators */
 tr.row-critical td:first-child { border-left: 3px solid #e53e3e; }
 tr.row-high     td:first-child { border-left: 3px solid #dd6b20; }
@@ -1577,6 +1595,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
+      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" $f.CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
       <span class="mono" style="color:#f6ad55">{{$f.TargetName}}</span>

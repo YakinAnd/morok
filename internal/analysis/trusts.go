@@ -94,6 +94,7 @@ type Trust struct {
 	IsWithinForest bool   // parent-child or tree-root (within same forest)
 	Risks          []string
 	Severity       string
+	CVSS           float64
 }
 
 // FSPFinding — Foreign Security Principal with privileged group membership
@@ -103,6 +104,7 @@ type FSPFinding struct {
 	ExternalSID    string   // SID of the external principal
 	MemberOfGroups []string // privileged groups this FSP is member of
 	Severity       string
+	CVSS           float64
 }
 
 // TrustResult contains all trust-related findings
@@ -198,7 +200,28 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 			}
 		}
 
-		t.Severity = sev
+		var trustVector string
+		switch sev {
+		case "Critical":
+			// Bidirectional external trust without SID filtering: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
+			trustVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
+		case "High":
+			// SID filtering disabled: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N
+			trustVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N"
+		case "Medium":
+			// Bidirectional forest trust: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:N/A:N
+			trustVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:N/A:N"
+		case "Low":
+			// RC4 only: AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N
+			trustVector = "AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N"
+		default:
+			t.Severity = "Info"
+			r.Trusts = append(r.Trusts, t)
+			continue
+		}
+		trustScore := CVSSScore(trustVector)
+		t.CVSS = trustScore
+		t.Severity = CVSSSeverity(trustScore)
 		r.Trusts = append(r.Trusts, t)
 	}
 
@@ -236,11 +259,21 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 				}
 			}
 
+			var fspVector string
+			if sev == "Critical" {
+				// External principal in DA/EA: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+				fspVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+			} else {
+				// External principal in other priv group: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
+				fspVector = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
+			}
+			fspScore := CVSSScore(fspVector)
 			r.FSPs = append(r.FSPs, FSPFinding{
 				FSPDN:          e.DN,
 				ExternalSID:    sid,
 				MemberOfGroups: privGroups,
-				Severity:       sev,
+				CVSS:           fspScore,
+				Severity:       CVSSSeverity(fspScore),
 			})
 		}
 	}

@@ -28,6 +28,7 @@ type SMBSigningFinding struct {
 	Title    string
 	Detail   string
 	Severity string
+	CVSS     float64
 }
 
 // CheckSMBSigning sends an SMB2 Negotiate to host:445 and reads the SecurityMode field.
@@ -86,21 +87,25 @@ func CheckSMBSigning(host string) *SMBSigningResult {
 	r.Dialect = dialect
 
 	if !r.SigningRequired {
-		severity := "High"
 		detail := fmt.Sprintf(
 			"SMB signing is not required on %s (SecurityMode=0x%04x). An attacker with network position can perform NTLM relay attacks: capture authentication via PetitPotam/PrinterBug and relay to SMB (e.g. impacket ntlmrelayx.py -t smb://%s). "+
 				"Mitigate: GPO → Computer Configuration → Windows Settings → Security Settings → Local Policies → Security Options → \"Microsoft network server: Digitally sign communications (always)\" = Enabled.",
 			host, secMode, host,
 		)
+		var smbVector string
 		if !r.SigningEnabled {
-			severity = "High"
+			// signing disabled entirely — easier relay: AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H
+			smbVector = "AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H"
 		} else {
-			severity = "Medium"
+			// signing enabled but not required — relay still possible: AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:N
+			smbVector = "AV:N/AC:H/PR:N/UI:R/S:U/C:H/I:H/A:N"
 		}
+		smbScore := CVSSScore(smbVector)
 		r.Findings = append(r.Findings, SMBSigningFinding{
 			Title:    "SMB signing not required",
 			Detail:   detail,
-			Severity: severity,
+			CVSS:     smbScore,
+			Severity: CVSSSeverity(smbScore),
 		})
 	}
 
