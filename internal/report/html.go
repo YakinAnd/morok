@@ -1199,7 +1199,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </td>
       <td>
         {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>
-        {{else if eq .Severity "High"}}<span class="badge badge-medium">High</span>
+        {{else if eq .Severity "High"}}<span class="badge badge-high">High</span>
         {{else if eq .Severity "Medium"}}<span class="badge" style="background:#744210;color:#fef3c7">Medium</span>
         {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Info</span>{{end}}
       </td>
@@ -1305,10 +1305,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td style="font-size:0.78rem;color:var(--text-secondary)">{{.Mail}}</td>
       <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
           {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No</span>{{end}}</td>
-      <td>{{with index $.UserPrivGroups .DN}}<span class="badge badge-critical" style="font-size:0.72rem">{{.}}</span>{{else}}—{{end}}</td>
-      <td>{{if .SPNs}}<span class="badge badge-medium">Yes</span>{{else}}—{{end}}</td>
-      <td>{{if .DontReqPreauth}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
-      <td>{{if .PasswordNeverExpires}}<span class="badge badge-medium">Yes</span>{{else}}—{{end}}</td>
+      <td>{{with index $.UserPrivGroups .DN}}<span class="badge" style="background:var(--badge-crit-bg);color:var(--badge-crit-txt);font-size:0.72rem">{{.}}</span>{{else}}—{{end}}</td>
+      <td>{{if .SPNs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
+      <td>{{if .DontReqPreauth}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
+      <td>{{if .PasswordNeverExpires}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
       <td class="mono">{{.LastLogon}}</td>
       <td class="mono">{{.PasswordLastSet}}</td>
     </tr>
@@ -1355,7 +1355,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td class="mono">{{.SAMAccountName}}</td>
       <td>{{.GroupType}}</td>
       <td>{{len .Members}}</td>
-      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+      <td>{{if .AdminCount}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
       <td style="color:var(--text-muted)">{{.Description}}</td>
     </tr>
     {{end}}
@@ -1422,7 +1422,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
           {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No</span>{{end}}</td>
       <td>{{if .LAPSEnabled}}<span class="badge badge-ok">✓</span>
-          {{else}}<span class="badge badge-medium">No</span>{{end}}</td>
+          {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">No</span>{{end}}</td>
       <td>{{if .UnconstrainedDelegation}}<span class="badge badge-critical">Yes</span>
           {{else}}—{{end}}</td>
       <td class="mono" style="font-size:0.78rem">{{.LastLogon}}</td>
@@ -1769,7 +1769,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <td>{{.DisplayName}}</td>
         <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
         <td class="mono">{{.PasswordLastSet}}</td>
-        <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}&#8212;{{end}}</td>
+        <td>{{if .AdminCount}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}&#8212;{{end}}</td>
       </tr>
       {{end}}
       </tbody>
@@ -1923,11 +1923,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
       <span class="exp-title">AdminSDHolder</span>
       {{if .AdminSDHolderResult.CustomACEs}}
-      <span class="badge badge-critical">{{len .AdminSDHolderResult.CustomACEs}} backdoor ACE(s)</span>
-      <span class="badge badge-critical" style="margin-left:auto">Critical</span>
+      <span class="badge badge-critical" style="margin-left:auto">{{len .AdminSDHolderResult.CustomACEs}} backdoor ACE(s)</span>
       {{else if .AdminSDHolderResult.OrphanedAdminCount}}
-      <span class="badge badge-medium">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned</span>
-      <span class="badge badge-medium" style="margin-left:auto">Medium</span>
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned adminCount</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
       <span class="help-icon" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
     </div>
@@ -2312,7 +2310,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           {{else if .AuditResult.RecycleBinEnabled}}
             <span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ Enabled</span>
           {{else}}
-            <span class="badge badge-medium">⚠ Disabled</span>
+            <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">⚠ Disabled</span>
           {{end}}
         </td>
       </tr>
@@ -2322,7 +2320,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           {{if .AuditResult.AuditingEnabled}}
             <span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ Configured</span>
           {{else}}
-            <span class="badge badge-high">⚠ NOT configured</span>
+            <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">⚠ NOT configured</span>
           {{end}}
         </td>
       </tr>
@@ -2332,7 +2330,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           {{if eq .AuditResult.MachineAccountQuota 0}}
             <span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">0 — safe ✓</span>
           {{else}}
-            <span class="badge badge-medium">⚠ {{.AuditResult.MachineAccountQuota}} — any user can add computers</span>
+            <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">⚠ {{.AuditResult.MachineAccountQuota}} — any user can add computers</span>
           {{end}}
         </td>
       </tr>
