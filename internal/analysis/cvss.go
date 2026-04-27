@@ -84,3 +84,22 @@ func CVSSSeverity(score float64) string {
 		return "Informational"
 	}
 }
+
+// CVSSForKerberostable returns the CVSS 3.1 base score for a Kerberoastable account.
+// adminCount=true means the account has elevated privileges (DA/service admin),
+// which changes Scope to Changed and raises the score significantly.
+func CVSSForKerberostable(adminCount bool) float64 {
+	if adminCount {
+		// Privileged SPN: offline crack → domain admin: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
+		return CVSSScore("AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H")
+	}
+	// Regular SPN: offline crack → single account compromise: AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N
+	return CVSSScore("AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N")
+}
+
+// CVSSForASREP returns the CVSS 3.1 base score for an AS-REP Roastable account.
+// No pre-authentication required — any unauthenticated attacker can request the hash.
+func CVSSForASREP() float64 {
+	// No pre-auth = no credentials needed: AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N
+	return CVSSScore("AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N")
+}
