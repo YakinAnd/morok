@@ -2332,7 +2332,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td class="mono">{{.Name}}</td>
       <td class="mono" style="font-size:0.75rem">{{.GUID}}</td>
       <td style="font-size:0.8rem">{{joinSPNs .LinkedTo}}</td>
-      <td style="color:#fc8181; font-size:0.8rem">{{index .RiskReasons 0}}</td>
+      <td style="color:#fc8181; font-size:0.8rem">{{if .RiskReasons}}{{index .RiskReasons 0}}{{else}}—{{end}}</td>
     </tr>
     {{end}}
     </tbody>
