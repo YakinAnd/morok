@@ -58,6 +58,8 @@ type ReportData struct {
 	TotalCritical int
 	TotalHigh     int
 	TotalMedium   int
+	// footer
+	Version string
 }
 
 // Summary — короткий підсумок для executive section
@@ -149,6 +151,7 @@ func Generate(
 	data := ReportData{
 	Domain:               result.Domain,
 	GeneratedAt:          time.Now().Format("2006-01-02 15:04:05"),
+	Version:              "0.9.9",
 	AuthMethod:           authMethod,
 	Users:                result.Users,
 	Groups:               result.Groups,
@@ -515,16 +518,16 @@ func templateFuncs() template.FuncMap {
 			}
 			return "sev-medium"
 		},
-		"nodeTypeIcon": func(t graph.NodeType) string {
+		"nodeTypeIcon": func(t graph.NodeType) template.HTML {
 			switch t {
 			case "user":
-				return "👤"
+				return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:middle"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`
 			case "group":
-				return "👥"
+				return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:middle"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`
 			case "computer":
-				return "💻"
+				return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:middle"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`
 			}
-			return "❓"
+			return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;vertical-align:middle"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
 		},
 		"joinSPNs": func(spns []string) string {
 			if len(spns) == 0 {
@@ -720,6 +723,11 @@ const htmlTemplate = `<!DOCTYPE html>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 /* ── Theme variables ─────────────────────────────────────────── */
+:root {
+  --brand-primary: #7c3aed;
+  --brand-light:   #a78bfa;
+  --brand-dark:    #5b21b6;
+}
 html[data-theme="dark"] {
   --bg-page:       #0f1117;
   --bg-card:       #1a1f2e;
@@ -783,7 +791,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-main); line-height: 1; }
-.header-logo-name em { color: #9b5ffe; font-style: normal; }
+.header-logo-name em { color: var(--brand-primary); font-style: normal; }
 .header-logo-tag { font-size: 0.68rem; letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase; }
 .header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
@@ -853,7 +861,14 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .acc-body.open { display: block; }
 .acc-cmd { font-family: monospace; background: var(--bg-code-inner); padding: 4px 8px;
   border-radius: 4px; color: var(--color-ok); font-size: 0.78rem; display: block; margin-top: 4px;
-  word-break: break-all; }
+  word-break: break-word; white-space: pre-wrap; padding-right: 36px; }
+.acc-cmd-wrap { position: relative; display: block; margin-top: 4px; }
+.acc-cmd-wrap .acc-cmd { margin-top: 0; }
+.acc-cmd-copy { position: absolute; top: 4px; right: 4px; background: transparent;
+  border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted);
+  padding: 2px 6px; cursor: pointer; font-size: 0.75rem; transition: all 0.15s; }
+.acc-cmd-copy:hover { color: var(--accent); border-color: var(--accent); }
+.acc-cmd-copy.copied { color: var(--color-ok); border-color: var(--color-ok); }
 .acc-label { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;
   letter-spacing: 0.05em; margin-top: 8px; }
 
@@ -1063,40 +1078,40 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     {{if gt .TotalMedium 0}}<span class="badge badge-medium" style="font-size:0.76rem">{{.TotalMedium}} Medium</span>{{end}}
     {{if and (eq .TotalCritical 0) (eq .TotalHigh 0) (eq .TotalMedium 0)}}<span class="badge badge-ok" style="font-size:0.76rem">Clean</span>{{end}}
   </div>
-  <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
+  <button id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark/light theme" title="Toggle light/dark mode">🌙</button>
 </div>
 
 <div class="global-search-wrap">
-  <input id="gs-input" type="text" placeholder="🔍  Global search across all tabs..."
+  <input id="gs-input" type="text" aria-label="Global search across all report tabs" placeholder="🔍  Global search across all tabs..."
     oninput="gsHighlight(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();gsNavigateFirst();}" autocomplete="off">
   <span id="gs-results"></span>
   <button id="gs-clear" onclick="clearGlobalSearch()" style="background:var(--bg-hover);border:none;color:var(--text-secondary);
     padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82rem;display:none">✕ Clear</button>
 </div>
 
-<div class="nav">
-  <button class="active" onclick="showTab('summary')">Summary</button>
-  <button onclick="showTab('paths')">Attack Paths ({{.Summary.AttackPathsCount}})</button>
-  <button onclick="showTab('graph')">Graph</button>
-  <button onclick="showTab('kerberos')">Kerberos</button>
-  <button onclick="showTab('acl')">ACL ({{.Summary.DangerousACLCount}})</button>
-  <button onclick="showTab('delegation')">Delegation ({{.Summary.DelegationCount}})</button>
-  <button onclick="showTab('exposure')">Exposure</button>
-  <button onclick="showTab('gpo')">GPO</button>
-  <button onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
-  <button onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
-  <button onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
-  <button onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
-  <button onclick="showTab('audit')">Audit {{if gt .Summary.AuditFindingCount 0}}({{.Summary.AuditFindingCount}}){{end}}</button>
-  <button onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
-  <button onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
-  <button onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
+<div class="nav" role="tablist">
+  <button role="tab" aria-selected="true" aria-controls="tab-summary" id="tab-btn-summary" class="active" onclick="showTab('summary')">Summary</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-paths" id="tab-btn-paths" onclick="showTab('paths')">Attack Paths ({{.Summary.AttackPathsCount}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-graph" id="tab-btn-graph" onclick="showTab('graph')">Graph</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-kerberos" id="tab-btn-kerberos" onclick="showTab('kerberos')">Kerberos</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-acl" id="tab-btn-acl" onclick="showTab('acl')">ACL ({{.Summary.DangerousACLCount}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-delegation" id="tab-btn-delegation" onclick="showTab('delegation')">Delegation ({{.Summary.DelegationCount}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-exposure" id="tab-btn-exposure" onclick="showTab('exposure')">Exposure</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-gpo" id="tab-btn-gpo" onclick="showTab('gpo')">GPO</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-adcs" id="tab-btn-adcs" onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-trusts" id="tab-btn-trusts" onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-shadow" id="tab-btn-shadow" onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-ldapsec" id="tab-btn-ldapsec" onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-audit" id="tab-btn-audit" onclick="showTab('audit')">Audit {{if gt .Summary.AuditFindingCount 0}}({{.Summary.AuditFindingCount}}){{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-users" id="tab-btn-users" onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-groups" id="tab-btn-groups" onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-computers" id="tab-btn-computers" onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
 </div>
 
 <div class="content">
 
 <!-- SUMMARY TAB -->
-<div id="tab-summary" class="tab-pane active">
+<div id="tab-summary" class="tab-pane active" role="tabpanel" aria-labelledby="tab-btn-summary" tabindex="0" aria-hidden="false">
 
   <!-- Findings Overview -->
   <div style="padding:20px 24px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:24px">
@@ -1234,11 +1249,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- ATTACK PATHS TAB -->
-<div id="tab-paths" class="tab-pane">
+<div id="tab-paths" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-paths" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Attack Paths to Privileged Groups
     <span>{{.Summary.AttackPathsCount}} path(s) found</span>
-    <span class="help-icon" data-tip="A chain of AD relationships (group memberships, ACL rights, delegation) that leads a low-privileged account to Domain Admins or another privileged group. Depth 1 = direct member. Depth 2+ = indirect via nested groups or ACL abuse. Shorter paths = higher priority.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="A chain of AD relationships (group memberships, ACL rights, delegation) that leads a low-privileged account to Domain Admins or another privileged group. Depth 1 = direct member. Depth 2+ = indirect via nested groups or ACL abuse. Shorter paths = higher priority.">?</span>
   </h2>
   {{if eq .Summary.AttackPathsCount 0}}
     <p style="color:var(--color-ok)">✓ No attack paths to Domain Admins found.</p>
@@ -1269,12 +1284,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           {{end}}
         {{end}}
       </div>
-      <button class="acc-toggle" onclick="toggleAcc(this)">
-        ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
+        <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span>
       </button>
       <div class="acc-body">
         <div class="acc-label">Exploit</div>
-        <span class="acc-cmd">{{pathExploit $path.Nodes $path.TargetGroup}}</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">{{pathExploit $path.Nodes $path.TargetGroup}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">{{pathFix $path.TargetGroup}}</div>
       </div>
@@ -1285,7 +1300,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- GRAPH TAB -->
-<div id="tab-graph" class="tab-pane">
+<div id="tab-graph" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-graph" tabindex="0" aria-hidden="true">
   <h2 class="section-title">Attack Path Graph <span>Layered path view — nodes sized by path count</span></h2>
   <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
     <div style="font-size:0.8rem;color:var(--text-muted)">
@@ -1307,9 +1322,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- TRUSTS TAB -->
-<div id="tab-trusts" class="tab-pane">
+<div id="tab-trusts" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-trusts" tabindex="0" aria-hidden="true">
   <h2 class="section-title">Domain &amp; Forest Trusts {{mitreBadges "trust_abuse"}}
-    <span class="help-icon" data-tip="Domain trusts define authentication paths between domains. SID filtering disabled on a trust allows SID history abuse — an attacker in a trusted domain can forge SIDs to escalate privileges in this domain. Bidirectional forest trusts create lateral movement paths between forests. Foreign Security Principals (FSPs) are accounts from trusted domains added to local groups.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Domain trusts define authentication paths between domains. SID filtering disabled on a trust allows SID history abuse — an attacker in a trusted domain can forge SIDs to escalate privileges in this domain. Bidirectional forest trusts create lateral movement paths between forests. Foreign Security Principals (FSPs) are accounts from trusted domains added to local groups.">?</span>
   </h2>
 
   {{if .TrustResult}}
@@ -1362,7 +1377,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- Foreign Security Principals -->
   <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;align-items:center;gap:6px">
     Foreign Security Principals in Privileged Groups
-    <span class="help-icon" data-tip="Foreign Security Principals (FSPs) are objects representing users or groups from trusted external domains. If an FSP is a member of a privileged local group (Domain Admins, Administrators), an attacker who compromises the external domain gains privilege in this domain too.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Foreign Security Principals (FSPs) are objects representing users or groups from trusted external domains. If an FSP is a member of a privileged local group (Domain Admins, Administrators), an attacker who compromises the external domain gains privilege in this domain too.">?</span>
   </div>
   {{if .TrustResult.FSPs}}
   <div class="path-card" style="margin-bottom:12px;padding:12px 16px;border-color:#e53e3e">
@@ -1393,7 +1408,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- USERS TAB -->
-<div id="tab-users" class="tab-pane">
+<div id="tab-users" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-users" tabindex="0" aria-hidden="true">
   <h2 class="section-title">Users <span>{{.Summary.TotalUsers}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
@@ -1463,7 +1478,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- GROUPS TAB -->
-<div id="tab-groups" class="tab-pane">
+<div id="tab-groups" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-groups" tabindex="0" aria-hidden="true">
   <h2 class="section-title">Groups <span>{{.Summary.TotalGroups}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search groups..." oninput="filterTable('tbl-groups','cnt-groups')">
@@ -1509,7 +1524,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- COMPUTERS TAB -->
-<div id="tab-computers" class="tab-pane">
+<div id="tab-computers" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-computers" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Computers
     <span>{{.Summary.TotalComputers}} total{{if .ForestWide}} — forest-wide{{end}}</span>
@@ -1580,9 +1595,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- KERBEROS TAB -->
-<div id="tab-kerberos" class="tab-pane">
+<div id="tab-kerberos" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-kerberos" tabindex="0" aria-hidden="true">
   <h2 class="section-title">Kerberos Attack Surface
-    <span class="help-icon" data-tip="Kerberos is the primary authentication protocol in AD. Misconfigurations allow offline password cracking (Kerberoasting, AS-REP roasting) without triggering lockouts or alerts — attacker gets a hash and cracks it locally.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Kerberos is the primary authentication protocol in AD. Misconfigurations allow offline password cracking (Kerberoasting, AS-REP roasting) without triggering lockouts or alerts — attacker gets a hash and cracks it locally.">?</span>
   </h2>
   {{if .KerberosResult}}
 
@@ -1590,17 +1605,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     Kerberoastable Accounts
     <span>{{len .KerberosResult.KerberoastableAccounts}}</span>
     {{mitreBadges "kerberoasting"}}
-    <span class="help-icon" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
   </h3>
   {{if .KerberosResult.KerberoastableAccounts}}
   <div style="margin-bottom:8px">
-    <button class="acc-toggle" onclick="toggleAcc(this)" style="background:#1a2a1a;color:var(--color-ok);margin-bottom:4px">
-      ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix — Kerberoasting
+    <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="background:#1a2a1a;color:var(--color-ok);margin-bottom:4px">
+      <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — Kerberoasting
     </button>
     <div class="acc-body">
       <div class="acc-label">Exploit</div>
-      <span class="acc-cmd">GetUserSPNs.py domain/user:pass -dc-ip &lt;DC&gt; -request-user &lt;account&gt; -outputfile kerberoast.txt</span>
-      <span class="acc-cmd" style="margin-top:4px">hashcat -m 13100 kerberoast.txt /usr/share/wordlists/rockyou.txt</span>
+      <div class="acc-cmd-wrap"><code class="acc-cmd">GetUserSPNs.py domain/user:pass -dc-ip &lt;DC&gt; -request-user &lt;account&gt; -outputfile kerberoast.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+      <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">hashcat -m 13100 kerberoast.txt /usr/share/wordlists/rockyou.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
       <div class="acc-label" style="margin-top:10px">Fix</div>
       <div style="color:var(--text-secondary)">Use managed service accounts (gMSA) — auto-rotating 120-char passwords, not crackable. Remove SPNs from regular user accounts. Enable AES-only Kerberos encryption (no RC4).</div>
     </div>
@@ -1637,17 +1652,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     AS-REP Roastable Accounts
     <span>{{len .KerberosResult.ASREPAccounts}}</span>
     {{mitreBadges "asrep"}}
-    <span class="help-icon" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
   </h3>
   {{if .KerberosResult.ASREPAccounts}}
   <div style="margin-bottom:8px">
-    <button class="acc-toggle" onclick="toggleAcc(this)" style="background:#1a2a1a;color:var(--color-ok);margin-bottom:4px">
-      ▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix — AS-REP Roasting
+    <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="background:#1a2a1a;color:var(--color-ok);margin-bottom:4px">
+      <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — AS-REP Roasting
     </button>
     <div class="acc-body">
       <div class="acc-label">Exploit</div>
-      <span class="acc-cmd">GetNPUsers.py domain/ -usersfile users.txt -format hashcat -outputfile asrep.txt -dc-ip &lt;DC&gt;</span>
-      <span class="acc-cmd" style="margin-top:4px">hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt</span>
+      <div class="acc-cmd-wrap"><code class="acc-cmd">GetNPUsers.py domain/ -usersfile users.txt -format hashcat -outputfile asrep.txt -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+      <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
       <div class="acc-label" style="margin-top:10px">Fix</div>
       <div style="color:var(--text-secondary)">Enable "Do not require Kerberos preauthentication" only if absolutely needed. Enforce strong passwords (&gt;25 chars) on affected accounts. Add to Protected Users security group (prevents AS-REP roasting).</div>
     </div>
@@ -1682,13 +1697,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- ACL TAB -->
-<div id="tab-acl" class="tab-pane">
+<div id="tab-acl" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-acl" tabindex="0" aria-hidden="true">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
     <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">
       Dangerous ACL Permissions
       <span>{{.Summary.DangerousACLCount}} finding(s)</span>
       {{mitreBadges "acl_abuse"}}
-      <span class="help-icon" data-tip="Access Control Lists define who can do what to each AD object. Misconfigurations like GenericAll, WriteDACL or ForceChangePassword allow an attacker to take over accounts or escalate to Domain Admin without exploiting any software vulnerability — just abusing legitimate AD permissions.">?</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Access Control Lists define who can do what to each AD object. Misconfigurations like GenericAll, WriteDACL or ForceChangePassword allow an attacker to take over accounts or escalate to Domain Admin without exploiting any software vulnerability — just abusing legitimate AD permissions.">?</span>
     </h2>
     <div class="xp-btns">
       <button onclick="expandAllIn('#tab-acl')">Expand all</button>
@@ -1707,11 +1722,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="mono">{{.PrincipalName}}</span>
     </div>
     {{end}}
-    <button class="acc-toggle" onclick="toggleAcc(this)" style="margin-top:10px">▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix</button>
+    <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="margin-top:10px"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
     <div class="acc-body">
       <div class="acc-label">Exploit</div>
-      <span class="acc-cmd">secretsdump.py domain/user:pass@DC -just-dc-ntlm</span>
-      <span class="acc-cmd" style="margin-top:4px">secretsdump.py -hashes :&lt;NThash&gt; domain/user@DC -just-dc-ntlm</span>
+      <div class="acc-cmd-wrap"><code class="acc-cmd">secretsdump.py domain/user:pass@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+      <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">secretsdump.py -hashes :&lt;NThash&gt; domain/user@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
       <div class="acc-label" style="margin-top:10px">Fix</div>
       <div style="color:var(--text-secondary)">Remove DS-Replication-Get-Changes-All from non-DC accounts. Run: <span class="acc-cmd">Get-ObjectAcl -DistinguishedName "DC=domain,DC=local" | ? {$_.ActiveDirectoryRights -match "Replication"}</span> to audit. Only Domain Controllers and Administrators should have DCSync rights.</div>
     </div>
@@ -1752,10 +1767,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{$f.PrincipalType}} → {{$f.TargetType}}</span>
     </div>
     <div style="padding:0 16px">
-      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix</button>
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{$f.Right}})</div>
-        <span class="acc-cmd">{{aclExploit (print $f.Right) $f.PrincipalName $f.TargetName $.ACLResult.Domain}}</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">{{aclExploit (print $f.Right) $f.PrincipalName $f.TargetName $.ACLResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">{{aclFix (print $f.Right)}}</div>
       </div>
@@ -1768,11 +1783,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- DELEGATION TAB -->
-<div id="tab-delegation" class="tab-pane">
+<div id="tab-delegation" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-delegation" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Delegation Configurations
     <span>{{.Summary.DelegationCount}} finding(s)</span>
-    <span class="help-icon" data-tip="Delegation allows a service to impersonate a user when accessing other services. Unconstrained delegation is the most dangerous — any account authenticating to that machine gives up their Kerberos ticket, which the attacker can reuse. Constrained and RBCD are less severe but still abusable.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Delegation allows a service to impersonate a user when accessing other services. Unconstrained delegation is the most dangerous — any account authenticating to that machine gives up their Kerberos ticket, which the attacker can reuse. Constrained and RBCD are less severe but still abusable.">?</span>
   </h2>
   {{if .DelegationResult}}
   {{if .DelegationResult.Findings}}
@@ -1788,10 +1803,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </div>
     <div style="padding:4px 16px 0">
       <div style="color:#fc8181;font-size:0.8rem;padding-bottom:4px">⚠ {{.RiskReason}}</div>
-      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;🔴 Exploit &nbsp;/&nbsp; 🛡 Fix</button>
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{.DelegationType}})</div>
-        <span class="acc-cmd">{{delegExploit (print .DelegationType)}}</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">{{delegExploit (print .DelegationType)}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">{{delegFix (print .DelegationType)}}</div>
       </div>
@@ -1803,10 +1818,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- EXPOSURE TAB -->
-<div id="tab-exposure" class="tab-pane">
+<div id="tab-exposure" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-exposure" tabindex="0" aria-hidden="true">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
     <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">Exposure &amp; Attack Surface
-      <span class="help-icon" data-tip="Attack surface metrics: stale accounts are unused entry points, LAPS absence means shared local admin passwords enabling lateral movement, old krbtgt password enables persistent Golden Ticket attacks, descriptions often leak credentials or internal IP ranges.">?</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Attack surface metrics: stale accounts are unused entry points, LAPS absence means shared local admin passwords enabling lateral movement, old krbtgt password enables persistent Golden Ticket attacks, descriptions often leak credentials or internal IP ranges.">?</span>
     </h2>
     <div class="xp-btns">
       <button onclick="expandAllIn('#tab-exposure')">Expand all</button>
@@ -1826,7 +1841,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge badge-ok">&#10003; OK — {{.HygieneResult.KrbtgtPwdAgeDays}} days</span>
       {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No data</span>
       {{end}}{{end}}
-      <span class="help-icon" data-tip="The krbtgt account password hash signs all Kerberos tickets. If stolen (DCSync), attackers forge Golden Tickets valid for any user. Rotate every 180 days — must rotate TWICE to fully invalidate old tickets.">?</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="The krbtgt account password hash signs all Kerberos tickets. If stolen (DCSync), attackers forge Golden Tickets valid for any user. Rotate every 180 days — must rotate TWICE to fully invalidate old tickets.">?</span>
     </div>
     <div class="exp-body">
     {{if .HygieneResult}}
@@ -2032,7 +2047,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged not protected</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All protected</span>{{end}}
-      <span class="help-icon" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
     </div>
     <div class="exp-body">
     {{if not .ProtectedUsersResult.ProtectedUsersExists}}
@@ -2071,7 +2086,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{else if .AdminSDHolderResult.OrphanedAdminCount}}
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned adminCount</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
-      <span class="help-icon" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
     </div>
     <div class="exp-body">
     {{if .AdminSDHolderResult.CustomACEs}}
@@ -2118,9 +2133,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- GPO TAB -->
-<div id="tab-gpo" class="tab-pane">
+<div id="tab-gpo" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-gpo" tabindex="0" aria-hidden="true">
   <h2 class="section-title">Group Policy Analysis
-    <span class="help-icon" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
   </h2>
   {{if .GPOResult}}
 
@@ -2181,7 +2196,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult}}{{if .GPOResult.GPOACLFindings}}
   <h3 class="section-title" style="font-size:0.95rem;margin-top:28px;display:flex;align-items:center;gap:6px">
     GPO Write ACL Findings
-    <span class="help-icon" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
   </h3>
   <div class="table-wrap">
   <table>
@@ -2206,10 +2221,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- ADCS TAB -->
-<div id="tab-adcs" class="tab-pane">
+<div id="tab-adcs" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-adcs" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Active Directory Certificate Services
-    <span class="help-icon" data-tip="ADCS misconfigurations allow attackers to forge certificates and authenticate as any domain user including Domain Admins. ESC1: attacker controls Subject Alternative Name → impersonate DA. ESC6: CA-level flag allows SAN injection for all templates. ESC8: NTLM relay to HTTP enrollment endpoint.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="ADCS misconfigurations allow attackers to forge certificates and authenticate as any domain user including Domain Admins. ESC1: attacker controls Subject Alternative Name → impersonate DA. ESC6: CA-level flag allows SAN injection for all templates. ESC8: NTLM relay to HTTP enrollment endpoint.">?</span>
   </h2>
 
   {{if .ADCSResult}}
@@ -2246,11 +2261,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </div>
     <div style="padding:8px 16px">
       <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:8px">{{.Details}}</div>
-      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;Exploit &nbsp;/&nbsp; Fix</button>
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit</div>
-        <span class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca {{.CAName}} -template User -upn admin@{{$.ADCSResult.Domain}}</span>
-        <span class="acc-cmd" style="margin-top:4px">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca {{.CAName}} -template User -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">Run: <code>certutil -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2</code> on CA, then restart CertSvc.</div>
       </div>
@@ -2274,14 +2289,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
     </div>
     <div style="padding:0 16px">
-      <button class="acc-toggle" onclick="toggleAcc(this)">▶ &nbsp;Exploit &nbsp;/&nbsp; Fix</button>
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{range $i,$v := .VulnTypes}}{{if $i}}, {{end}}{{$v}}{{end}})</div>
         {{if .AllowsSANInject}}
-        <span class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{$.ADCSResult.Domain}}</span>
-        <span class="acc-cmd" style="margin-top:4px">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         {{else}}
-        <span class="acc-cmd">certipy find -u user@{{$.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">certipy find -u user@{{$.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         {{end}}
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">Remove CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT from template, restrict enrollment to specific groups, require CA manager approval, or disable the template if unused.</div>
@@ -2295,10 +2310,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- SHADOW CREDENTIALS TAB -->
-<div id="tab-shadow" class="tab-pane">
+<div id="tab-shadow" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-shadow" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Shadow Credentials {{mitreBadges "shadow_credentials"}}
-    <span class="help-icon" data-tip="Shadow Credentials: writing msDS-KeyCredentialLink on a privileged object allows obtaining a TGT without knowing or changing the password. Exploitable via pywhisker or certipy shadow.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Shadow Credentials: writing msDS-KeyCredentialLink on a privileged object allows obtaining a TGT without knowing or changing the password. Exploitable via pywhisker or certipy shadow.">?</span>
   </h2>
   {{if .ShadowCredentialsResult}}
     {{if .ShadowCredentialsResult.Findings}}
@@ -2334,8 +2349,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="path-card" style="margin-top:16px">
       <div class="path-header">Next Steps — exploit with pywhisker / certipy</div>
       <div style="padding:12px 16px">
-        <span class="acc-cmd">pywhisker -d {{.ShadowCredentialsResult.Domain}} -u '&lt;principal&gt;' -p '&lt;pass&gt;' --target '&lt;target&gt;' --action add</span>
-        <span class="acc-cmd" style="margin-top:4px">certipy shadow auto -u '&lt;principal&gt;@{{.ShadowCredentialsResult.Domain}}' -p '&lt;pass&gt;' -account '&lt;target&gt;'</span>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">pywhisker -d {{.ShadowCredentialsResult.Domain}} -u '&lt;principal&gt;' -p '&lt;pass&gt;' --target '&lt;target&gt;' --action add</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy shadow auto -u '&lt;principal&gt;@{{.ShadowCredentialsResult.Domain}}' -p '&lt;pass&gt;' -account '&lt;target&gt;'</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
       </div>
     </div>
     {{else}}
@@ -2347,10 +2362,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </div>
 
 <!-- LDAP SECURITY TAB -->
-<div id="tab-ldapsec" class="tab-pane">
+<div id="tab-ldapsec" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-ldapsec" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     LDAP Security {{mitreBadges "ldap_relay"}}
-    <span class="help-icon" data-tip="LDAP signing prevents man-in-the-middle attacks on LDAP traffic. If signing is not enforced, an attacker between the client and DC can read or modify LDAP requests. NTLM relay to LDAP (via PetitPotam/Coercer) is possible when signing and channel binding are not enforced.">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="LDAP signing prevents man-in-the-middle attacks on LDAP traffic. If signing is not enforced, an attacker between the client and DC can read or modify LDAP requests. NTLM relay to LDAP (via PetitPotam/Coercer) is possible when signing and channel binding are not enforced.">?</span>
   </h2>
   {{if .LDAPSecurityResult}}
   <div class="table-wrap" style="margin-bottom:20px"><table>
@@ -2437,10 +2452,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
 </div>
 
-<div id="tab-audit" class="tab-pane">
+<div id="tab-audit" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-audit" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Audit Policy / Blue Team Visibility {{mitreBadges "audit_defense"}}
-    <span class="help-icon" data-tip="Checks AD Recycle Bin status (deleted object recovery), legacy audit policy configuration (event log visibility), and machine account quota (RBCD abuse vector).">?</span>
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Checks AD Recycle Bin status (deleted object recovery), legacy audit policy configuration (event log visibility), and machine account quota (RBCD abuse vector).">?</span>
   </h2>
   {{if .AuditResult}}
   <div class="table-wrap" style="margin-bottom:20px"><table>
@@ -2570,20 +2585,35 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 // Tab navigation
 // ============================================================
 function showTab(name) {
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(function(p) {
+    p.classList.remove('active');
+    p.setAttribute('aria-hidden', 'true');
+  });
+  document.querySelectorAll('.nav button').forEach(function(b) {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+  });
+  const pane = document.getElementById('tab-' + name);
+  const btn  = document.getElementById('tab-btn-' + name);
+  if (pane) { pane.classList.add('active'); pane.setAttribute('aria-hidden', 'false'); }
+  if (btn)  { btn.classList.add('active');  btn.setAttribute('aria-selected', 'true'); }
   if (name === 'graph') initGraph();
 }
 
 function showTabByClick(e, name) {
   e.stopPropagation();
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  const btn = document.querySelector('.nav button[onclick="showTab(\'' + name + '\')"]');
-  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(function(p) {
+    p.classList.remove('active');
+    p.setAttribute('aria-hidden', 'true');
+  });
+  document.querySelectorAll('.nav button').forEach(function(b) {
+    b.classList.remove('active');
+    b.setAttribute('aria-selected', 'false');
+  });
+  const pane = document.getElementById('tab-' + name);
+  const btn  = document.getElementById('tab-btn-' + name);
+  if (pane) { pane.classList.add('active'); pane.setAttribute('aria-hidden', 'false'); }
+  if (btn)  { btn.classList.add('active');  btn.setAttribute('aria-selected', 'true'); }
   if (name === 'graph') initGraph();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2594,7 +2624,7 @@ function showTabByClick(e, name) {
 function toggleAcc(btn) {
   const body = btn.nextElementSibling;
   const open = body.classList.toggle('open');
-  // replace only the arrow character, preserve the rest of innerHTML
+  btn.setAttribute('aria-expanded', String(open));
   btn.innerHTML = btn.innerHTML.replace(/[▶▼]/, open ? '▼' : '▶');
 }
 
@@ -3098,6 +3128,8 @@ const _aclMitre = {
   'AddMember':           '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1098/" target="_blank" title="Account Manipulation">T1098</a>',
 };
 
+const _ACL_GROUP_LIMIT = 50;
+
 function buildGroupedACL() {
   const allCards = document.querySelectorAll('#acl-findings .acl-card');
   const groups = {};
@@ -3124,6 +3156,8 @@ function buildGroupedACL() {
     return;
   }
 
+  const collapseByDefault = order.length > 3;
+
   order.forEach(function(right) {
     const g     = groups[right];
     const count = g.cards.length;
@@ -3146,11 +3180,31 @@ function buildGroupedACL() {
     const body = document.createElement('div');
     body.className = 'group-body';
     body.style.padding = '8px';
-    g.cards.forEach(function(card) {
+    g.cards.forEach(function(card, idx) {
       var clone = card.cloneNode(true);
       clone.style.display = '';
+      if (idx >= _ACL_GROUP_LIMIT) {
+        clone.classList.add('acl-hidden-overflow');
+        clone.style.display = 'none';
+      }
       body.appendChild(clone);
     });
+    if (g.cards.length > _ACL_GROUP_LIMIT) {
+      const showMore = document.createElement('button');
+      showMore.className = 'show-all-btn';
+      showMore.textContent = 'Show ' + (g.cards.length - _ACL_GROUP_LIMIT) + ' more in this group';
+      showMore.onclick = function() {
+        body.querySelectorAll('.acl-hidden-overflow').forEach(function(el) { el.style.display = ''; });
+        showMore.remove();
+      };
+      body.appendChild(showMore);
+    }
+
+    if (collapseByDefault) {
+      body.style.display = 'none';
+      const ch = header.querySelector('.chevron');
+      if (ch) ch.innerHTML = '&#9658;';
+    }
 
     const chevron = header.querySelector('.chevron');
     if (chevron) chevron.classList.add('group-chevron');
@@ -3234,7 +3288,27 @@ function initTheme() {
   if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
 }
 initTheme();
+
+// ── Copy exploit command to clipboard ─────────────────────────
+function copyCmd(btn) {
+  const cmd = btn.previousElementSibling.textContent;
+  navigator.clipboard.writeText(cmd).then(function() {
+    btn.classList.add('copied');
+    btn.textContent = '✓';
+    setTimeout(function() {
+      btn.classList.remove('copied');
+      btn.textContent = '📋';
+    }, 1500);
+  }).catch(function() { btn.textContent = '✗'; });
+}
 </script>
+
+<footer style="text-align:center;padding:20px 40px;border-top:1px solid var(--border);
+  color:var(--text-muted);font-size:0.8rem;margin-top:40px">
+  Generated by <a href="https://github.com/YakinAnd/adpath" target="_blank" rel="noopener"
+    style="color:var(--accent);text-decoration:none">adpath v{{.Version}}</a>
+  &middot; {{.GeneratedAt}} &middot; Active Directory Attack Path Analysis
+</footer>
 
 </body>
 </html>`
