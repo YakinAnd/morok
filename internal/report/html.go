@@ -54,6 +54,10 @@ type ReportData struct {
 	AuditResult *analysis.AuditResult
 	// v0.9.6
 	SMBSigningResult *analysis.SMBSigningResult
+	// header risk summary
+	TotalCritical int
+	TotalHigh     int
+	TotalMedium   int
 }
 
 // Summary — короткий підсумок для executive section
@@ -172,6 +176,7 @@ func Generate(
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
 	}
+	data.TotalCritical, data.TotalHigh, data.TotalMedium = countRiskTotals(&data)
 
 	// парсимо шаблон
 	tmpl, err := template.New("report").Funcs(templateFuncs()).Parse(htmlTemplate)
@@ -287,6 +292,83 @@ func buildSummary(
 	}
 
 	return s
+}
+
+// countRiskTotals aggregates Critical/High/Medium findings across all modules.
+func countRiskTotals(d *ReportData) (critical, high, medium int) {
+	bucket := func(sev string) {
+		switch sev {
+		case "Critical":
+			critical++
+		case "High":
+			high++
+		case "Medium":
+			medium++
+		}
+	}
+	if d.ACLResult != nil {
+		for _, f := range d.ACLResult.Findings {
+			bucket(f.Severity)
+		}
+		for range d.ACLResult.DCSyncFindings {
+			critical++
+		}
+	}
+	if d.KerberosResult != nil {
+		for _, a := range d.KerberosResult.KerberoastableAccounts {
+			bucket(a.Severity)
+		}
+		for _, a := range d.KerberosResult.ASREPAccounts {
+			bucket(a.Severity)
+		}
+	}
+	if d.ADCSResult != nil {
+		for _, f := range d.ADCSResult.TemplateFindings {
+			bucket(f.Severity)
+		}
+		for _, f := range d.ADCSResult.CAFindings {
+			bucket(f.Severity)
+		}
+	}
+	if d.DelegationResult != nil {
+		for _, f := range d.DelegationResult.Findings {
+			bucket(f.Severity)
+		}
+	}
+	if d.TrustResult != nil {
+		for _, t := range d.TrustResult.Trusts {
+			bucket(t.Severity)
+		}
+		for _, f := range d.TrustResult.FSPs {
+			bucket(f.Severity)
+		}
+	}
+	if d.ShadowCredentialsResult != nil {
+		for _, f := range d.ShadowCredentialsResult.Findings {
+			bucket(f.Severity)
+		}
+	}
+	if d.LDAPSecurityResult != nil {
+		for _, f := range d.LDAPSecurityResult.Findings {
+			bucket(f.Severity)
+		}
+	}
+	if d.SMBSigningResult != nil {
+		for _, f := range d.SMBSigningResult.Findings {
+			bucket(f.Severity)
+		}
+	}
+	if d.GPOResult != nil {
+		for _, f := range d.GPOResult.GPOACLFindings {
+			bucket(f.Severity)
+		}
+	}
+	if d.AdminSDHolderResult != nil {
+		for _, f := range d.AdminSDHolderResult.CustomACEs {
+			bucket(f.Severity)
+		}
+	}
+	return
 }
 
 // buildUserPrivGroups повертає map[userDN]→"DA, EA, ..." для кожного юзера
@@ -578,7 +660,7 @@ func templateFuncs() template.FuncMap {
 				return fmt.Sprintf("0x%04x", d)
 			}
 		},
-		"pathExploit": func(nodes []graph.Node) string {
+		"pathExploit": func(nodes []graph.Node, targetGroup string) string {
 			for _, n := range nodes {
 				if n.Kerberoastable {
 					return "Kerberoast " + n.SAMAccountName + ": GetUserSPNs.py domain/user:pass → crack TGS → use creds to reach DA"
@@ -590,7 +672,37 @@ func templateFuncs() template.FuncMap {
 					return "Compromise " + n.SAMAccountName + " (unconstrained delegation) → harvest DA TGT via SpoolSample/PetitPotam"
 				}
 			}
-			return "Account has transitive DA membership — existing credentials grant DA access (net use \\\\DC\\IPC$ or WinRM)"
+			type tpl struct{ exploit string }
+			exploits := map[string]string{
+				"Domain Admins":              "Transitive DA membership — existing credentials grant full domain compromise via net use \\\\DC\\IPC$, WinRM, or DCSync",
+				"Enterprise Admins":          "Transitive EA membership — forest-wide compromise; can modify schema and enterprise-level objects",
+				"Group Policy Creator Owners": "Member of GPCO — can create/modify GPOs linked to OUs/domain → SYSTEM on any joined machine via scheduled task or startup script",
+				"Account Operators":          "Member of Account Operators — can create/modify users and groups (except protected) → password reset on non-AdminSDHolder accounts",
+				"Backup Operators":           "Member of Backup Operators — SeBackupPrivilege on DC → dump NTDS.dit via diskshadow + robocopy → offline DCSync",
+				"Server Operators":           "Member of Server Operators — can manage services on DCs → install malicious service as SYSTEM → DA escalation",
+				"Print Operators":            "Member of Print Operators — SeLoadDriverPrivilege → load malicious kernel driver on DC → SYSTEM",
+				"DNSAdmins":                  "Member of DnsAdmins — DLL injection via dnscmd ServerLevelPluginDll → SYSTEM on DC running DNS service",
+			}
+			if e, ok := exploits[targetGroup]; ok {
+				return e
+			}
+			return "Account has transitive membership in " + targetGroup + " — existing credentials grant privileged access"
+		},
+		"pathFix": func(targetGroup string) string {
+			fixes := map[string]string{
+				"Domain Admins":              "Enforce least-privilege; remove transitive paths; apply AD Tiered Administration. Audit: Get-ADGroupMember 'Domain Admins' -Recursive",
+				"Enterprise Admins":          "EA should be empty in steady-state; populate only for forest-level changes. Audit: Get-ADGroupMember 'Enterprise Admins' -Recursive",
+				"Group Policy Creator Owners": "Remove non-admins from GPCO; restrict GPO creation to dedicated T0 accounts; monitor SYSVOL for new GPOs. Audit: Get-GPOReport -All -ReportType XML",
+				"Account Operators":          "Empty Account Operators in modern AD; use delegated OUs with specific permissions instead",
+				"Backup Operators":           "Backup Operators on DCs is DA-equivalent; restrict to dedicated T0 backup tier only",
+				"Server Operators":           "Empty Server Operators; use JEA (Just Enough Administration) for delegated server management",
+				"Print Operators":            "Empty Print Operators; manage printers via dedicated service accounts with minimal rights",
+				"DNSAdmins":                  "Restrict DnsAdmins membership; monitor changes to ServerLevelPluginDll registry value on DNS servers",
+			}
+			if f, ok := fixes[targetGroup]; ok {
+				return f
+			}
+			return "Enforce least-privilege; remove transitive group membership paths; apply AD Tiered Administration model"
 		},
 	}
 }
@@ -627,7 +739,11 @@ html[data-theme="dark"] {
   --sev-medium:    #faf089;
   --badge-ok-bg:   #1c4532;   --badge-ok-txt:   #68d391;
   --badge-med-bg:  #744210;   --badge-med-txt:  #f6ad55;
+  --badge-high-bg: #7b2d12;   --badge-high-txt: #fdba74;
   --badge-crit-bg: #742a2a;   --badge-crit-txt: #e53e3e;
+  --text-sev-critical: #fc8181;
+  --text-sev-high:     #fbbf24;
+  --text-sev-medium:   #fde68a;
   --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 html[data-theme="light"] {
@@ -651,6 +767,9 @@ html[data-theme="light"] {
   --badge-med-bg:  #feebc8;   --badge-med-txt:  #744210;
   --badge-high-bg: #fed7ae;   --badge-high-txt: #7b341e;
   --badge-crit-bg: #fed7d7;   --badge-crit-txt: #c53030;
+  --text-sev-critical: #c53030;
+  --text-sev-high:     #c2410c;
+  --text-sev-medium:   #92400e;
   --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 
@@ -754,9 +873,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 [data-theme="light"] .mitre-badge:hover { background: #ddd6fe; }
 
 /* Severity */
-.sev-critical { color: #e53e3e; font-weight: 700; }
-.sev-high     { color: #f6ad55; font-weight: 600; }
-.sev-medium   { color: var(--sev-medium); }
+.sev-critical { color: var(--text-sev-critical); font-weight: 700; }
+.sev-high     { color: var(--text-sev-high); font-weight: 600; }
+.sev-medium   { color: var(--text-sev-medium); }
 
 /* CVSS score pill */
 .cvss-score {
@@ -884,6 +1003,25 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 .graph-warn { position:absolute; top:8px; left:50%; transform:translateX(-50%);
   background:var(--bg-grouped); border:1px solid var(--border); border-radius:6px;
   padding:5px 14px; font-size:0.78rem; color:var(--text-muted); white-space:nowrap; pointer-events:none; }
+@media print {
+  html { background: #fff !important; color: #000 !important; }
+  html[data-theme="dark"] {
+    --bg-page: #fff; --bg-card: #fff; --bg-hover: #f5f5f5;
+    --bg-code: #f5f5f5; --bg-code-inner: #eee; --bg-grouped: #f9f9f9;
+    --bg-input: #fff; --border: #ccc;
+    --text-main: #000; --text-muted: #555; --text-secondary: #333; --text-subtle: #888;
+    --accent: #1a56db; --accent-domain: #c05621; --color-ok: #166534;
+  }
+  .nav, .global-search-wrap, #theme-toggle, .xp-btns, .filter-bar,
+  .show-all-btn, #gs-clear, #graph-tooltip { display: none !important; }
+  .tab-pane { display: block !important; page-break-before: always; }
+  .tab-pane:first-of-type { page-break-before: auto; }
+  .acc-body, .exp-body, .group-body { display: block !important; }
+  .path-card, .acl-card, .card, .exp-section { page-break-inside: avoid; }
+  * { box-shadow: none !important; transition: none !important; }
+  h2.section-title { page-break-after: avoid; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.7em; color: #666; }
+}
 </style>
 </head>
 <body>
@@ -918,6 +1056,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     Domain: <span class="domain">{{.Domain}}</span> &nbsp;|&nbsp;
     Auth: <span style="color:var(--color-ok)">{{.AuthMethod}}</span> &nbsp;|&nbsp;
     Generated: {{.GeneratedAt}}
+  </div>
+  <div style="margin-left:auto;margin-right:60px;display:flex;gap:6px;align-items:center">
+    {{if gt .TotalCritical 0}}<span class="badge badge-critical" style="font-size:0.76rem">{{.TotalCritical}} Critical</span>{{end}}
+    {{if gt .TotalHigh 0}}<span class="badge badge-high" style="font-size:0.76rem">{{.TotalHigh}} High</span>{{end}}
+    {{if gt .TotalMedium 0}}<span class="badge badge-medium" style="font-size:0.76rem">{{.TotalMedium}} Medium</span>{{end}}
+    {{if and (eq .TotalCritical 0) (eq .TotalHigh 0) (eq .TotalMedium 0)}}<span class="badge badge-ok" style="font-size:0.76rem">Clean</span>{{end}}
   </div>
   <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
 </div>
@@ -1130,9 +1274,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </button>
       <div class="acc-body">
         <div class="acc-label">Exploit</div>
-        <span class="acc-cmd">{{pathExploit $path.Nodes}}</span>
+        <span class="acc-cmd">{{pathExploit $path.Nodes $path.TargetGroup}}</span>
         <div class="acc-label" style="margin-top:10px">Fix</div>
-        <div style="color:var(--text-secondary)">Enforce least-privilege group membership; remove transitive paths to Domain Admins; use AD Tiered Administration model. Audit with: <span class="acc-cmd">Get-ADGroupMember 'Domain Admins' -Recursive</span></div>
+        <div style="color:var(--text-secondary)">{{pathFix $path.TargetGroup}}</div>
       </div>
     </div>
   </div>
