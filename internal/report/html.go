@@ -856,9 +856,10 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px; margin-bottom: 32px; }
 .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 20px; }
-.card .value { font-size: 2rem; font-weight: 700; color: var(--accent); }
-.card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;
+  padding: 20px; text-align: center; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; min-height: 90px; }
+.card .value { font-size: 2rem; font-weight: 700; color: var(--accent); line-height: 1; }
+.card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;
   text-transform: uppercase; letter-spacing: 0.05em; }
 .card.critical .value { color: #e53e3e; }
 .card.warning .value { color: #f6ad55; }
@@ -1555,6 +1556,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="">Pwd Exp: all</option>
       <option value="Yes">Never expires</option>
     </select>
+    <select data-col="14" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Group: all</option>
+      {{range .Groups}}<option value="{{.SAMAccountName}}">{{.SAMAccountName}}</option>{{end}}
+    </select>
     <span class="filter-count" id="cnt-users"></span>
     <button onclick="clearFilters('tbl-users','cnt-users')">Clear</button>
   </div>
@@ -1571,10 +1576,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
-        <th class="sortable" onclick="sortTable(this)">Last Logon</th>
-        <th class="sortable" onclick="sortTable(this)">Pwd Last Set</th>
-        <th class="sortable" onclick="sortTable(this)">Created</th>
-        <th class="sortable" onclick="sortTable(this)">Changed</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Last Logon</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Pwd Last Set</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Created</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Changed</th>
         <th class="sortable" onclick="sortTable(this)">Primary Group</th>
         <th>Member Of</th>
         <th>Description</th>
@@ -1697,9 +1702,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
         <th class="sortable" onclick="sortTable(this)">LAPS</th>
         <th class="sortable" onclick="sortTable(this)">Uncons. Deleg.</th>
-        <th class="sortable" onclick="sortTable(this)">Last Logon</th>
-        <th class="sortable" onclick="sortTable(this)">Created</th>
-        <th class="sortable" onclick="sortTable(this)">Changed</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Last Logon</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Created</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Changed</th>
         <th class="sortable" onclick="sortTable(this)">CN</th>
         <th class="mono">SID</th>
         <th>Description</th>
@@ -1860,23 +1865,27 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </div>
 
   {{if .ACLResult}}{{if .ACLResult.DCSyncFindings}}
-  <div style="background:#2d1515;border:1px solid #e53e3e;border-radius:8px;padding:16px;margin-bottom:20px">
-    <div style="font-size:0.9rem;font-weight:600;color:#fc8181;margin-bottom:10px">
-      ☠ DCSync Rights Detected — {{len .ACLResult.DCSyncFindings}} principal(s) can dump all domain password hashes {{mitreBadges "dcsync"}}
+  <div class="path-card" style="margin-bottom:20px">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+      <span class="badge badge-critical">☠ DCSync</span>
+      <span style="color:var(--text-main);font-weight:600">{{len .ACLResult.DCSyncFindings}} principal(s) can dump all domain password hashes</span>
+      {{mitreBadges "dcsync"}}
     </div>
-    {{range .ACLResult.DCSyncFindings}}
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #742a2a">
-      <span class="badge badge-critical">{{.PrincipalType}}</span>
-      <span class="mono">{{.PrincipalName}}</span>
-    </div>
-    {{end}}
-    <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="margin-top:10px"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
-    <div class="acc-body">
-      <div class="acc-label">Exploit</div>
-      <div class="acc-cmd-wrap"><code class="acc-cmd">secretsdump.py domain/user:pass@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-      <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">secretsdump.py -hashes :&lt;NThash&gt; domain/user@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-      <div class="acc-label" style="margin-top:10px">Fix</div>
-      <div style="color:var(--text-secondary)">Remove DS-Replication-Get-Changes-All from non-DC accounts. Run: <span class="acc-cmd">Get-ObjectAcl -DistinguishedName "DC=domain,DC=local" | ? {$_.ActiveDirectoryRights -match "Replication"}</span> to audit. Only Domain Controllers and Administrators should have DCSync rights.</div>
+    <div style="padding:4px 16px 0">
+      {{range .ACLResult.DCSyncFindings}}
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.PrincipalType}}</span>
+        <span class="mono">{{.PrincipalName}}</span>
+      </div>
+      {{end}}
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="margin-top:10px"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit</div>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">secretsdump.py domain/user:pass@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">secretsdump.py -hashes :&lt;NThash&gt; domain/user@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:var(--text-secondary)">Remove DS-Replication-Get-Changes-All from non-DC accounts. Run: <code class="acc-cmd" style="display:inline">Get-ObjectAcl -DistinguishedName "DC=domain,DC=local" | ? {$_.ActiveDirectoryRights -match "Replication"}</code> to audit. Only Domain Controllers and Administrators should have DCSync rights.</div>
+      </div>
     </div>
   </div>
   {{end}}{{end}}
@@ -1942,10 +1951,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{range .DelegationResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
-      <span class="badge badge-critical">{{.DelegationType}}</span>
+      {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>{{else if eq .Severity "High"}}<span class="badge badge-high">High</span>{{else}}<span class="badge badge-medium">{{.Severity}}</span>{{end}}
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.DelegationType}}</span>
       <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.SAMAccountName}}</span>
-      <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.ObjectType}}</span>
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">{{.ObjectType}}</span>
       {{mitreForDeleg (print .DelegationType)}}
       {{if .AllowedServices}}<span style="color:var(--text-muted);font-size:0.78rem">→ {{joinSPNs .AllowedServices}}</span>{{end}}
     </div>
@@ -2024,17 +2034,6 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="exp-body">
     <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:10px">All AD objects with a non-empty description. Admins often leave credentials, IP addresses, or other sensitive data here.</p>
     {{if .HygieneResult.PasswordInDesc}}
-    <div class="filter-bar" style="margin-bottom:8px">
-      <input type="text" placeholder="Search..." oninput="filterTable('tbl-desc','cnt-desc')">
-      <select data-col="1" onchange="filterTable('tbl-desc','cnt-desc')">
-        <option value="">Type: all</option>
-        <option value="user">user</option>
-        <option value="computer">computer</option>
-        <option value="group">group</option>
-      </select>
-      <span class="filter-count" id="cnt-desc"></span>
-      <button onclick="clearFilters('tbl-desc','cnt-desc')">Clear</button>
-    </div>
     <div class="table-wrap">
     <table id="tbl-desc">
       <thead><tr><th>Account</th><th>Type</th><th>Description</th></tr></thead>
@@ -2495,10 +2494,19 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </table>
     </div>
     <div class="path-card" style="margin-top:16px">
-      <div class="path-header">Next Steps — exploit with pywhisker / certipy</div>
-      <div style="padding:12px 16px">
-        <div class="acc-cmd-wrap"><code class="acc-cmd">pywhisker -d {{.ShadowCredentialsResult.Domain}} -u '&lt;principal&gt;' -p '&lt;pass&gt;' --target '&lt;target&gt;' --action add</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy shadow auto -u '&lt;principal&gt;@{{.ShadowCredentialsResult.Domain}}' -p '&lt;pass&gt;' -account '&lt;target&gt;'</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+      <div class="path-header" style="flex-wrap:wrap;gap:8px">
+        <span class="badge badge-critical">Shadow Credentials</span>
+        <span style="color:var(--text-main);font-weight:600">{{len .ShadowCredentialsResult.Findings}} abusable write ACE(s) on msDS-KeyCredentialLink</span>
+      </div>
+      <div style="padding:4px 16px 0">
+        <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
+        <div class="acc-body">
+          <div class="acc-label">Exploit</div>
+          <div class="acc-cmd-wrap"><code class="acc-cmd">pywhisker -d {{.ShadowCredentialsResult.Domain}} -u '&lt;principal&gt;' -p '&lt;pass&gt;' --target '&lt;target&gt;' --action add</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy shadow auto -u '&lt;principal&gt;@{{.ShadowCredentialsResult.Domain}}' -p '&lt;pass&gt;' -account '&lt;target&gt;'</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-label" style="margin-top:10px">Fix</div>
+          <div style="color:var(--text-secondary)">Audit msDS-KeyCredentialLink write ACEs on privileged objects. Remove unnecessary write permissions. Monitor for unauthorized key credential additions via event 5136.</div>
+        </div>
       </div>
     </div>
     {{else}}
@@ -2542,7 +2550,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{range .LDAPSecurityResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
-      <span class="badge {{if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
+      <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else if eq .Severity "High"}}badge-high{{else}}badge-medium{{end}}">{{.Severity}}</span>
       <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
       <span style="margin-left:4px">{{.Title}}</span>
     </div>
