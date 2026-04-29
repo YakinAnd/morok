@@ -501,6 +501,16 @@ func templateFuncs() template.FuncMap {
 		"dec": func(i int) int { return i - 1 },
 		"add": func(a, b int) int { return a + b },
 		"sub": func(a, b int) int { return a - b },
+		"dnToSAM": func(dn string) string {
+			// Extract the first RDN value: "CN=Domain Admins,..." → "Domain Admins"
+			for _, part := range strings.SplitN(dn, ",", 2) {
+				part = strings.TrimSpace(part)
+				if eq := strings.Index(part, "="); eq >= 0 {
+					return part[eq+1:]
+				}
+			}
+			return dn
+		},
 		"severityClass": func(count int) string {
 			if count == 0 {
 				return "badge-ok"
@@ -1520,12 +1530,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h2 class="section-title">Users <span>{{.Summary.TotalUsers}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
-    <select data-col="3" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Enabled: all</option>
       <option value="Yes">Enabled only</option>
       <option value="No">Disabled only</option>
     </select>
-    <select data-col="4" data-match="notempty" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="5" data-match="notempty" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Privileged: all</option>
       <option value="Domain Admins">Domain Admins</option>
       <option value="Enterprise Admins">Enterprise Admins</option>
@@ -1533,15 +1543,15 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="Backup Operators">Backup Operators</option>
       <option value="__notempty__">Any privileged</option>
     </select>
-    <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Kerberoastable: all</option>
       <option value="Yes">Yes</option>
     </select>
-    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">AS-REP: all</option>
       <option value="Yes">Yes</option>
     </select>
-    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="8" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Pwd Exp: all</option>
       <option value="Yes">Never expires</option>
     </select>
@@ -1553,6 +1563,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <thead>
       <tr>
         <th class="sortable" onclick="sortTable(this)">Account</th>
+        <th class="sortable" onclick="sortTable(this)">CN</th>
         <th class="sortable" onclick="sortTable(this)">Display Name</th>
         <th class="sortable" onclick="sortTable(this)">Email</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
@@ -1562,12 +1573,19 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
         <th class="sortable" onclick="sortTable(this)">Last Logon</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Last Set</th>
+        <th class="sortable" onclick="sortTable(this)">Created</th>
+        <th class="sortable" onclick="sortTable(this)">Changed</th>
+        <th class="sortable" onclick="sortTable(this)">Primary Group</th>
+        <th>Member Of</th>
+        <th>Description</th>
+        <th class="mono">SID</th>
       </tr>
     </thead>
     <tbody>
     {{range .Users}}
     <tr>
       <td class="mono">{{.SAMAccountName}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.CN}}</td>
       <td>{{.DisplayName}}</td>
       <td style="font-size:0.78rem;color:var(--text-secondary)">{{.Mail}}</td>
       <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
@@ -1576,8 +1594,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td>{{if .SPNs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
       <td>{{if .DontReqPreauth}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
       <td>{{if .PasswordNeverExpires}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
-      <td class="mono">{{.LastLogon}}</td>
-      <td class="mono">{{.PasswordLastSet}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.LastLogon}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.PasswordLastSet}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.CreatedOn}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.ChangedOn}}</td>
+      <td style="font-size:0.78rem">{{if .PrimaryGroup}}{{.PrimaryGroup}}{{else}}—{{end}}</td>
+      <td style="font-size:0.72rem;max-width:180px">{{range .MemberOf}}<div>{{dnToSAM .}}</div>{{end}}</td>
+      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Description}}</td>
+      <td class="mono" style="font-size:0.7rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
     </tr>
     {{end}}
     </tbody>
@@ -1590,7 +1614,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h2 class="section-title">Groups <span>{{.Summary.TotalGroups}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search groups..." oninput="filterTable('tbl-groups','cnt-groups')">
-    <select data-col="1" onchange="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="2" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Type: all</option>
       <option value="Security">Security</option>
       <option value="Distribution">Distribution</option>
@@ -1598,7 +1622,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="Universal">Universal</option>
       <option value="Local">Local</option>
     </select>
-    <select data-col="3" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="4" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Admin: all</option>
       <option value="Yes">Admins only</option>
     </select>
@@ -1610,20 +1634,30 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <thead>
       <tr>
         <th class="sortable" onclick="sortTable(this)">Name</th>
+        <th class="sortable" onclick="sortTable(this)">CN</th>
         <th class="sortable" onclick="sortTable(this)">Type</th>
         <th class="sortable" onclick="sortTable(this)">Members</th>
         <th class="sortable" onclick="sortTable(this)">Admin</th>
+        <th class="sortable" onclick="sortTable(this)">Created</th>
+        <th class="sortable" onclick="sortTable(this)">Changed</th>
+        <th>Member Of</th>
         <th>Description</th>
+        <th class="mono">SID</th>
       </tr>
     </thead>
     <tbody>
     {{range .Groups}}
     <tr>
       <td class="mono">{{.SAMAccountName}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.CN}}</td>
       <td>{{.GroupType}}</td>
       <td>{{len .Members}}</td>
       <td>{{if .AdminCount}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
-      <td style="color:var(--text-muted)">{{.Description}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.CreatedOn}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.ChangedOn}}</td>
+      <td style="font-size:0.72rem;max-width:180px">{{range .MemberOf}}<div>{{dnToSAM .}}</div>{{end}}</td>
+      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Description}}</td>
+      <td class="mono" style="font-size:0.7rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
     </tr>
     {{end}}
     </tbody>
@@ -1665,6 +1699,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Uncons. Deleg.</th>
         <th class="sortable" onclick="sortTable(this)">Last Logon</th>
         <th class="sortable" onclick="sortTable(this)">Created</th>
+        <th class="sortable" onclick="sortTable(this)">Changed</th>
+        <th class="sortable" onclick="sortTable(this)">CN</th>
+        <th class="mono">SID</th>
         <th>Description</th>
       </tr>
     </thead>
@@ -1694,6 +1731,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           {{else}}—{{end}}</td>
       <td class="mono" style="font-size:0.78rem">{{.LastLogon}}</td>
       <td class="mono" style="font-size:0.78rem">{{.WhenCreated}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.ChangedOn}}</td>
+      <td class="mono" style="font-size:0.78rem">{{.CN}}</td>
+      <td class="mono" style="font-size:0.7rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
       <td style="font-size:0.78rem;color:var(--text-muted)">{{.Description}}</td>
     </tr>
     {{end}}
