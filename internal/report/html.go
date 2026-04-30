@@ -940,8 +940,14 @@ tr.row-low      td:first-child { border-left: 3px solid #68d391; }
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th { background: var(--bg-card); color: var(--text-muted); padding: 10px 14px;
   text-align: left; font-weight: 500; text-transform: uppercase;
-  font-size: 0.75rem; letter-spacing: 0.05em; }
+  font-size: 0.75rem; letter-spacing: 0.05em; position: relative; user-select: none; }
 td { padding: 10px 14px; border-top: 1px solid var(--border); }
+/* Column resize handle */
+.col-rh { position: absolute; right: 0; top: 0; width: 5px; height: 100%;
+  cursor: col-resize; z-index: 2; border-radius: 0 2px 2px 0; }
+.col-rh:hover, .col-rh.active { background: var(--accent); opacity: 0.5; }
+th.col-over { box-shadow: inset 2px 0 0 var(--accent); }
+th.col-dragging { opacity: 0.35; }
 tr:hover td { background: var(--bg-hover); }
 .mono { font-family: monospace; font-size: 0.8rem; color: var(--text-secondary); }
 
@@ -3041,6 +3047,7 @@ function nodeColor(d) {
 // Cycle: none → asc (▲) → desc (▼) → none (original order restored)
 function sortTable(th) {
   const table = th.closest('table');
+  if (table && table._dragOccurred) { table._dragOccurred = false; return; }
   const tbody = table.tBodies[0];
   const ths   = Array.from(th.closest('tr').querySelectorAll('th.sortable'));
   const col   = ths.indexOf(th);
@@ -3512,6 +3519,94 @@ function initTheme() {
   if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
 }
 initTheme();
+
+// ── Column resize & reorder ────────────────────────────────────
+function initTblControls(tbl) {
+  tbl.querySelectorAll('thead th').forEach(function(th) {
+    // resize handle
+    if (!th.querySelector('.col-rh')) {
+      const h = document.createElement('span');
+      h.className = 'col-rh';
+      th.appendChild(h);
+      h.addEventListener('mousedown', function(e) {
+        e.stopPropagation(); e.preventDefault();
+        h.classList.add('active');
+        const x0 = e.pageX, w0 = th.getBoundingClientRect().width;
+        function onMove(ev) {
+          const w = Math.max(44, w0 + ev.pageX - x0);
+          th.style.minWidth = w + 'px'; th.style.width = w + 'px';
+        }
+        function onUp() {
+          h.classList.remove('active');
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    }
+    // drag to reorder
+    th.setAttribute('draggable', 'true');
+    th.addEventListener('dragstart', function(e) {
+      const ths = Array.from(tbl.querySelectorAll('thead th'));
+      tbl._dragFrom = ths.indexOf(th);
+      tbl._dragOccurred = true;
+      th.classList.add('col-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', '');
+    });
+    th.addEventListener('dragend', function() {
+      th.classList.remove('col-dragging');
+      tbl.querySelectorAll('th').forEach(function(t) { t.classList.remove('col-over'); });
+    });
+    th.addEventListener('dragover', function(e) {
+      if (e.target.closest('table') !== tbl) return;
+      e.preventDefault();
+      tbl.querySelectorAll('th').forEach(function(t) { t.classList.remove('col-over'); });
+      th.classList.add('col-over');
+    });
+    th.addEventListener('drop', function(e) {
+      e.preventDefault();
+      const ths = Array.from(tbl.querySelectorAll('thead th'));
+      const to = ths.indexOf(th);
+      const from = tbl._dragFrom;
+      if (from !== undefined && from !== to) moveCol(tbl, from, to);
+      th.classList.remove('col-over');
+    });
+  });
+}
+
+function moveCol(tbl, from, to) {
+  const n = tbl.querySelector('thead tr').children.length;
+  // build position map: order[newPos] = oldPos
+  const order = Array.from({length: n}, function(_, i) { return i; });
+  const moved = order.splice(from, 1)[0];
+  order.splice(to, 0, moved);
+
+  tbl.querySelectorAll('tr').forEach(function(row) {
+    const cells = Array.from(row.children);
+    if (cells.length < n) return;
+    const reordered = order.map(function(i) { return cells[i]; });
+    reordered.forEach(function(cell) { row.appendChild(cell); });
+  });
+
+  // update filter data-col indices so filters still work
+  const wrap = tbl.closest('.table-wrap');
+  if (wrap) {
+    const bar = wrap.previousElementSibling;
+    if (bar) {
+      bar.querySelectorAll('select[data-col]').forEach(function(sel) {
+        const oldCol = parseInt(sel.dataset.col);
+        const newPos = order.indexOf(oldCol);
+        if (newPos !== -1) sel.dataset.col = newPos;
+      });
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('table').forEach(initTblControls);
+});
 
 // ── Copy exploit command to clipboard ─────────────────────────
 function copyCmd(btn) {
