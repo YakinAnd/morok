@@ -1643,8 +1643,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Type</th>
         <th class="sortable" onclick="sortTable(this)">Members</th>
         <th class="sortable" onclick="sortTable(this)">Admin</th>
-        <th class="sortable" onclick="sortTable(this)">Created</th>
-        <th class="sortable" onclick="sortTable(this)">Changed</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Created</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Changed</th>
         <th>Member Of</th>
         <th>Description</th>
         <th class="mono">SID</th>
@@ -1749,102 +1749,120 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- KERBEROS TAB -->
 <div id="tab-kerberos" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-kerberos" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">Kerberos Attack Surface
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Kerberos is the primary authentication protocol in AD. Misconfigurations allow offline password cracking (Kerberoasting, AS-REP roasting) without triggering lockouts or alerts — attacker gets a hash and cracks it locally.">?</span>
-  </h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">Kerberos Attack Surface
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Kerberos is the primary authentication protocol in AD. Misconfigurations allow offline password cracking (Kerberoasting, AS-REP roasting) without triggering lockouts or alerts — attacker gets a hash and cracks it locally.">?</span>
+    </h2>
+    <div class="xp-btns">
+      <button onclick="expandAllIn('#tab-kerberos')">Expand all</button>
+      <button onclick="collapseAllIn('#tab-kerberos')">Collapse all</button>
+    </div>
+  </div>
   {{if .KerberosResult}}
 
-  <h3 class="section-title" style="font-size:0.95rem; margin-top:16px">
-    Kerberoastable Accounts
-    <span>{{len .KerberosResult.KerberoastableAccounts}}</span>
-    {{mitreBadges "kerberoasting"}}
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
-  </h3>
-  {{if .KerberosResult.KerberoastableAccounts}}
-  <div style="margin-bottom:8px">
-    <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="background:#1a2a1a;color:var(--color-ok);margin-bottom:4px">
-      <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — Kerberoasting
-    </button>
-    <div class="acc-body">
-      <div class="acc-label">Exploit</div>
-      <div class="acc-cmd-wrap"><code class="acc-cmd">GetUserSPNs.py domain/user:pass -dc-ip &lt;DC&gt; -request-user &lt;account&gt; -outputfile kerberoast.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-      <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">hashcat -m 13100 kerberoast.txt /usr/share/wordlists/rockyou.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-      <div class="acc-label" style="margin-top:10px">Fix</div>
-      <div style="color:var(--text-secondary)">Use managed service accounts (gMSA) — auto-rotating 120-char passwords, not crackable. Remove SPNs from regular user accounts. Enable AES-only Kerberos encryption (no RC4).</div>
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Kerberoastable Accounts {{mitreBadges "kerberoasting"}}</span>
+      {{if .KerberosResult.KerberoastableAccounts}}
+      <span class="badge badge-high" style="margin-left:auto">{{len .KerberosResult.KerberoastableAccounts}} accounts</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
+    </div>
+    <div class="exp-body">
+    {{if .KerberosResult.KerberoastableAccounts}}
+    <div style="padding:8px 0 4px">
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
+        <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — Kerberoasting
+      </button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit</div>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">GetUserSPNs.py domain/user:pass -dc-ip &lt;DC&gt; -request-user &lt;account&gt; -outputfile kerberoast.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">hashcat -m 13100 kerberoast.txt /usr/share/wordlists/rockyou.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:var(--text-secondary)">Use managed service accounts (gMSA) — auto-rotating 120-char passwords, not crackable. Remove SPNs from regular user accounts. Enable AES-only Kerberos encryption (no RC4).</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th>SPNs</th>
+          <th>Admin</th>
+          <th>CVSS</th>
+          <th>Last Logon</th>
+          <th>Password Last Set</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{range .KerberosResult.KerberoastableAccounts}}
+      <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
+        <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td class="mono">{{.LastLogon}}</td>
+        <td class="mono">{{.PasswordLastSet}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--color-ok)">✓ No Kerberoastable accounts found.</p>{{end}}
     </div>
   </div>
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Account</th>
-        <th>SPNs</th>
-        <th>Admin</th>
-        <th>CVSS</th>
-        <th>Last Logon</th>
-        <th>Password Last Set</th>
-      </tr>
-    </thead>
-    <tbody>
-    {{range .KerberosResult.KerberoastableAccounts}}
-    <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
-      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
-      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
-      <td class="mono">{{.LastLogon}}</td>
-      <td class="mono">{{.PasswordLastSet}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-  {{else}}<p style="color:var(--color-ok)">✓ No Kerberoastable accounts found.</p>{{end}}
 
-  <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
-    AS-REP Roastable Accounts
-    <span>{{len .KerberosResult.ASREPAccounts}}</span>
-    {{mitreBadges "asrep"}}
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
-  </h3>
-  {{if .KerberosResult.ASREPAccounts}}
-  <div style="margin-bottom:8px">
-    <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="background:#1a2a1a;color:var(--color-ok);margin-bottom:4px">
-      <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — AS-REP Roasting
-    </button>
-    <div class="acc-body">
-      <div class="acc-label">Exploit</div>
-      <div class="acc-cmd-wrap"><code class="acc-cmd">GetNPUsers.py domain/ -usersfile users.txt -format hashcat -outputfile asrep.txt -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-      <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-      <div class="acc-label" style="margin-top:10px">Fix</div>
-      <div style="color:var(--text-secondary)">Enable "Do not require Kerberos preauthentication" only if absolutely needed. Enforce strong passwords (&gt;25 chars) on affected accounts. Add to Protected Users security group (prevents AS-REP roasting).</div>
+  <div class="exp-section" style="margin-top:10px">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">AS-REP Roastable Accounts {{mitreBadges "asrep"}}</span>
+      {{if .KerberosResult.ASREPAccounts}}
+      <span class="badge badge-high" style="margin-left:auto">{{len .KerberosResult.ASREPAccounts}} accounts</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
+    </div>
+    <div class="exp-body">
+    {{if .KerberosResult.ASREPAccounts}}
+    <div style="padding:8px 0 4px">
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
+        <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — AS-REP Roasting
+      </button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit</div>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">GetNPUsers.py domain/ -usersfile users.txt -format hashcat -outputfile asrep.txt -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:var(--text-secondary)">Enable "Do not require Kerberos preauthentication" only if absolutely needed. Enforce strong passwords (&gt;25 chars) on affected accounts. Add to Protected Users security group (prevents AS-REP roasting).</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th>Admin</th>
+          <th>CVSS</th>
+          <th>Last Logon</th>
+          <th>Password Last Set</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{range .KerberosResult.ASREPAccounts}}
+      <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
+        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td class="mono">{{.LastLogon}}</td>
+        <td class="mono">{{.PasswordLastSet}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--color-ok)">✓ No AS-REP Roastable accounts found.</p>{{end}}
     </div>
   </div>
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Account</th>
-        <th>Admin</th>
-        <th>CVSS</th>
-        <th>Last Logon</th>
-        <th>Password Last Set</th>
-      </tr>
-    </thead>
-    <tbody>
-    {{range .KerberosResult.ASREPAccounts}}
-    <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
-      <td class="mono">{{.SAMAccountName}}</td>
-      <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
-      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
-      <td class="mono">{{.LastLogon}}</td>
-      <td class="mono">{{.PasswordLastSet}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-  {{else}}<p style="color:var(--color-ok)">✓ No AS-REP Roastable accounts found.</p>{{end}}
 
   {{else}}<p style="color:var(--text-muted)">Kerberos data not available.</p>{{end}}
 </div>
@@ -1916,7 +1934,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{range $i, $f := .ACLResult.Findings}}
   <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
-      <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
+      <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-high{{else if eq $f.Severity "Medium"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
       <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" $f.CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
@@ -1960,7 +1978,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{if .AllowedServices}}<span style="color:var(--text-muted);font-size:0.78rem">→ {{joinSPNs .AllowedServices}}</span>{{end}}
     </div>
     <div style="padding:4px 16px 0">
-      <div style="color:#fc8181;font-size:0.8rem;padding-bottom:4px">⚠ {{.RiskReason}}</div>
+      <div style="color:var(--text-sev-high);font-size:0.8rem;padding-bottom:4px">⚠ {{.RiskReason}}</div>
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{.DelegationType}})</div>
@@ -2244,9 +2262,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tbody>
       {{range .AdminSDHolderResult.CustomACEs}}
       <tr class="row-critical">
-        <td class="mono" style="color:#fc8181">{{.PrincipalName}}</td>
+        <td class="mono">{{.PrincipalName}}</td>
         <td class="mono" style="font-size:0.75rem;color:var(--text-muted)">{{.PrincipalSID}}</td>
-        <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
+        <td style="color:var(--color-warn);font-size:0.82rem">{{joinSPNs .Rights}}</td>
         <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
       </tr>
       {{end}}
@@ -2281,17 +2299,30 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- GPO TAB -->
 <div id="tab-gpo" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-gpo" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">Group Policy Analysis
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
-  </h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">Group Policy Analysis
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
+    </h2>
+    <div class="xp-btns">
+      <button onclick="expandAllIn('#tab-gpo')">Expand all</button>
+      <button onclick="collapseAllIn('#tab-gpo')">Collapse all</button>
+    </div>
+  </div>
   {{if .GPOResult}}
 
   {{if .GPOResult.DefaultPolicy}}
-  <h3 class="section-title" style="font-size:0.95rem; margin-top:16px">
-    Default Domain Password Policy
-  </h3>
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Default Domain Password Policy</span>
+      {{$pp := .GPOResult.DefaultPolicy}}
+      {{if or (lt $pp.MinLength 8) (not $pp.Complexity) (eq $pp.LockoutThreshold 0)}}
+      <span class="badge badge-critical" style="margin-left:auto">Weak</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; OK</span>{{end}}
+    </div>
+    <div class="exp-body" style="padding:16px">
+  {{$pp := .GPOResult.DefaultPolicy}}
   <div class="cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))">
-    {{$pp := .GPOResult.DefaultPolicy}}
     <div class="card {{if lt $pp.MinLength 8}}critical{{else if lt $pp.MinLength 12}}warning{{else}}ok{{end}}">
       <div class="value">{{$pp.MinLength}}</div>
       <div class="label">Min Password Length</div>
@@ -2313,54 +2344,68 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <div class="label">Reversible Encryption</div>
     </div>
   </div>
+    </div>
+  </div>
   {{end}}
 
   {{if .GPOResult.GPOFindings}}
-  <h3 class="section-title" style="font-size:0.95rem; margin-top:24px">
-    Dangerous GPO Findings <span>{{len .GPOResult.GPOFindings}}</span>
-    {{mitreBadges "gpo_abuse"}}
-  </h3>
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr><th>GPO Name</th><th>GUID</th><th>Linked To</th><th>Risk</th></tr>
-    </thead>
-    <tbody>
-    {{range .GPOResult.GPOFindings}}
-    <tr>
-      <td class="mono">{{.Name}}</td>
-      <td class="mono" style="font-size:0.75rem">{{.GUID}}</td>
-      <td style="font-size:0.8rem">{{joinSPNs .LinkedTo}}</td>
-      <td style="color:#fc8181; font-size:0.8rem">{{if .RiskReasons}}{{index .RiskReasons 0}}{{else}}—{{end}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  <div class="exp-section" style="margin-top:10px">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Dangerous GPO Findings {{mitreBadges "gpo_abuse"}}</span>
+      <span class="badge badge-high" style="margin-left:auto">{{len .GPOResult.GPOFindings}} findings</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap" style="margin-bottom:0">
+    <table>
+      <thead>
+        <tr><th>GPO Name</th><th>GUID</th><th>Linked To</th><th>Risk</th></tr>
+      </thead>
+      <tbody>
+      {{range .GPOResult.GPOFindings}}
+      <tr>
+        <td class="mono">{{.Name}}</td>
+        <td class="mono" style="font-size:0.75rem">{{.GUID}}</td>
+        <td style="font-size:0.8rem">{{joinSPNs .LinkedTo}}</td>
+        <td style="color:var(--text-sev-critical);font-size:0.8rem">{{if .RiskReasons}}{{index .RiskReasons 0}}{{else}}—{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
   </div>
   {{end}}
 
   <!-- GPO ACL -->
   {{if .GPOResult}}{{if .GPOResult.GPOACLFindings}}
-  <h3 class="section-title" style="font-size:0.95rem;margin-top:28px;display:flex;align-items:center;gap:6px">
-    GPO Write ACL Findings
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
-  </h3>
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>GPO</th><th>Severity</th><th>CVSS</th><th>Principal</th><th>Rights</th><th>Linked To</th></tr></thead>
-    <tbody>
-    {{range .GPOResult.GPOACLFindings}}
-    <tr>
-      <td class="mono">{{.GPOName}}</td>
-      <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
-      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
-      <td class="mono">{{.PrincipalName}}</td>
-      <td style="color:#f6ad55;font-size:0.82rem">{{joinSPNs .Rights}}</td>
-      <td style="font-size:0.78rem;color:var(--text-secondary)">{{joinSPNs .GPOLinkedTo}}</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
+  <div class="exp-section" style="margin-top:10px">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">GPO Write ACL Findings
+        <span class="help-icon" role="tooltip" tabindex="0" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
+      </span>
+      <span class="badge badge-high" style="margin-left:auto">{{len .GPOResult.GPOACLFindings}} findings</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap" style="margin-bottom:0">
+    <table>
+      <thead><tr><th>GPO</th><th>Severity</th><th>CVSS</th><th>Principal</th><th>Rights</th><th>Linked To</th></tr></thead>
+      <tbody>
+      {{range .GPOResult.GPOACLFindings}}
+      <tr>
+        <td class="mono">{{.GPOName}}</td>
+        <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td class="mono">{{.PrincipalName}}</td>
+        <td style="color:var(--color-warn);font-size:0.82rem">{{joinSPNs .Rights}}</td>
+        <td style="font-size:0.78rem;color:var(--text-secondary)">{{joinSPNs .GPOLinkedTo}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
   </div>
   {{end}}{{end}}
 
@@ -2369,89 +2414,112 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- ADCS TAB -->
 <div id="tab-adcs" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-adcs" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">
-    Active Directory Certificate Services
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="ADCS misconfigurations allow attackers to forge certificates and authenticate as any domain user including Domain Admins. ESC1: attacker controls Subject Alternative Name → impersonate DA. ESC6: CA-level flag allows SAN injection for all templates. ESC8: NTLM relay to HTTP enrollment endpoint.">?</span>
-  </h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">
+      Active Directory Certificate Services
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="ADCS misconfigurations allow attackers to forge certificates and authenticate as any domain user including Domain Admins. ESC1: attacker controls Subject Alternative Name → impersonate DA. ESC6: CA-level flag allows SAN injection for all templates. ESC8: NTLM relay to HTTP enrollment endpoint.">?</span>
+    </h2>
+    <div class="xp-btns">
+      <button onclick="expandAllIn('#tab-adcs')">Expand all</button>
+      <button onclick="collapseAllIn('#tab-adcs')">Collapse all</button>
+    </div>
+  </div>
 
   {{if .ADCSResult}}
 
   <!-- CAs -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Certificate Authorities</div>
-  {{if .ADCSResult.CAs}}
-  <div class="table-wrap" style="margin-bottom:20px">
-  <table>
-    <thead><tr><th>CA Name</th><th>Server</th><th>ESC6</th><th>ESC8 (check)</th></tr></thead>
-    <tbody>
-    {{range .ADCSResult.CAs}}
-    <tr>
-      <td class="mono">{{.Name}}</td>
-      <td class="mono" style="color:var(--text-secondary)">{{.Server}}</td>
-      <td>{{if gt .EditFlags 262143}}<span class="badge badge-critical">YES</span>{{else}}—{{end}}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted)">http://{{.Server}}/certsrv/</td>
-    </tr>
-    {{end}}
-    </tbody>
-  </table>
-  </div>
-  {{else}}<p style="color:var(--text-muted)">No CAs found.</p>{{end}}
-
-  <!-- CA Findings (ESC6) -->
-  {{range .ADCSResult.CAFindings}}
-  {{if eq (index .VulnTypes 0) "ESC6"}}
-  <div class="path-card" style="margin-bottom:10px;border-color:#e53e3e">
-    <div class="path-header" style="flex-wrap:wrap;gap:8px">
-      <span class="badge badge-critical">Critical</span>
-      <span class="badge badge-critical" style="font-family:monospace">ESC6</span>
-      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
-      <span class="mono" style="color:var(--text-main)">{{.CAName}}</span>
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Certificate Authorities</span>
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{if .ADCSResult.CAs}}{{len .ADCSResult.CAs}} CA(s){{else}}No CAs{{end}}</span>
     </div>
-    <div style="padding:8px 16px">
-      <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:8px">{{.Details}}</div>
-      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
-      <div class="acc-body">
-        <div class="acc-label">Exploit</div>
-        <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca {{.CAName}} -template User -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-label" style="margin-top:10px">Fix</div>
-        <div style="color:var(--text-secondary)">Run: <code>certutil -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2</code> on CA, then restart CertSvc.</div>
+    <div class="exp-body">
+    {{if .ADCSResult.CAs}}
+    <div class="table-wrap" style="margin-bottom:0">
+    <table>
+      <thead><tr><th>CA Name</th><th>Server</th><th>ESC6</th><th>ESC8 (check)</th></tr></thead>
+      <tbody>
+      {{range .ADCSResult.CAs}}
+      <tr>
+        <td class="mono">{{.Name}}</td>
+        <td class="mono" style="color:var(--text-secondary)">{{.Server}}</td>
+        <td>{{if gt .EditFlags 262143}}<span class="badge badge-critical">YES</span>{{else}}—{{end}}</td>
+        <td style="font-size:0.78rem;color:var(--text-muted)">http://{{.Server}}/certsrv/</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}<p style="color:var(--text-muted)">No CAs found.</p>{{end}}
+    <!-- CA Findings (ESC6) -->
+    {{range .ADCSResult.CAFindings}}
+    {{if eq (index .VulnTypes 0) "ESC6"}}
+    <div class="path-card" style="margin-top:10px">
+      <div class="path-header" style="flex-wrap:wrap;gap:8px">
+        <span class="badge badge-critical">Critical</span>
+        <span class="badge badge-critical" style="font-family:monospace">ESC6</span>
+        <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+        <span class="mono" style="color:var(--text-main)">{{.CAName}}</span>
+      </div>
+      <div style="padding:8px 16px">
+        <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:8px">{{.Details}}</div>
+        <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
+        <div class="acc-body">
+          <div class="acc-label">Exploit</div>
+          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca {{.CAName}} -template User -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-label" style="margin-top:10px">Fix</div>
+          <div style="color:var(--text-secondary)">Run: <code>certutil -setreg policy\EditFlags -EDITF_ATTRIBUTESUBJECTALTNAME2</code> on CA, then restart CertSvc.</div>
+        </div>
       </div>
     </div>
+    {{end}}
+    {{end}}
+    </div>
   </div>
-  {{end}}
-  {{end}}
 
   <!-- Template Findings -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;margin-top:8px">Vulnerable Templates ({{.Summary.ADCSTemplateCount}}) {{mitreBadges "adcs"}}</div>
-  {{if .ADCSResult.TemplateFindings}}
-  {{range .ADCSResult.TemplateFindings}}
-  {{$tmplSev := .Severity}}
-  <div class="path-card" style="margin-bottom:10px">
-    <div class="path-header" style="flex-wrap:wrap;gap:8px">
-      <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span>
-      {{range .VulnTypes}}<span class="badge {{if eq $tmplSev "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
-      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
-      <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
-      {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
-      {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
+  <div class="exp-section" style="margin-top:10px">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="exp-title">Vulnerable Templates {{mitreBadges "adcs"}}</span>
+      {{if .ADCSResult.TemplateFindings}}
+      <span class="badge badge-critical" style="margin-left:auto">{{.Summary.ADCSTemplateCount}} template(s)</span>
+      {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
-    <div style="padding:0 16px">
-      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
-      <div class="acc-body">
-        <div class="acc-label">Exploit ({{range $i,$v := .VulnTypes}}{{if $i}}, {{end}}{{$v}}{{end}})</div>
-        {{if .AllowsSANInject}}
-        <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        {{else}}
-        <div class="acc-cmd-wrap"><code class="acc-cmd">certipy find -u user@{{$.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        {{end}}
-        <div class="acc-label" style="margin-top:10px">Fix</div>
-        <div style="color:var(--text-secondary)">Remove CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT from template, restrict enrollment to specific groups, require CA manager approval, or disable the template if unused.</div>
+    <div class="exp-body" style="padding:12px">
+    {{if .ADCSResult.TemplateFindings}}
+    {{range .ADCSResult.TemplateFindings}}
+    {{$tmplSev := .Severity}}
+    <div class="path-card" style="margin-bottom:10px">
+      <div class="path-header" style="flex-wrap:wrap;gap:8px">
+        <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span>
+        {{range .VulnTypes}}<span class="badge {{if eq $tmplSev "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
+        <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+        <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
+        {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
+        {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
+      </div>
+      <div style="padding:0 16px">
+        <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
+        <div class="acc-body">
+          <div class="acc-label">Exploit ({{range $i,$v := .VulnTypes}}{{if $i}}, {{end}}{{$v}}{{end}})</div>
+          {{if .AllowsSANInject}}
+          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          {{else}}
+          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy find -u user@{{$.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          {{end}}
+          <div class="acc-label" style="margin-top:10px">Fix</div>
+          <div style="color:var(--text-secondary)">Remove CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT from template, restrict enrollment to specific groups, require CA manager approval, or disable the template if unused.</div>
+        </div>
       </div>
     </div>
+    {{end}}
+    {{else}}<p style="color:var(--color-ok)">✓ No vulnerable certificate templates found.</p>{{end}}
+    </div>
   </div>
-  {{end}}
-  {{else}}<p style="color:var(--color-ok)">✓ No vulnerable certificate templates found.</p>{{end}}
 
   {{else}}<p style="color:var(--text-muted)">ADCS data not available — run with full enum or use adpath adcs command.</p>{{end}}
 </div>
