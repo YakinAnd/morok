@@ -848,7 +848,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* Content */
-.content { padding: 32px 40px; max-width: 1400px; }
+.content { padding: 32px 40px; }
 .tab-pane { display: none; }
 .tab-pane.active { display: block; }
 
