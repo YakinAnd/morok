@@ -1576,10 +1576,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Last Logon</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Pwd Last Set</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Created</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Changed</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Last Logon</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Pwd Last Set</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Created</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Changed</th>
         <th class="sortable" onclick="sortTable(this)">Primary Group</th>
         <th>Member Of</th>
         <th>Description</th>
@@ -1643,8 +1643,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Type</th>
         <th class="sortable" onclick="sortTable(this)">Members</th>
         <th class="sortable" onclick="sortTable(this)">Admin</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Created</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Changed</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Created</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Changed</th>
         <th>Member Of</th>
         <th>Description</th>
         <th class="mono">SID</th>
@@ -1702,9 +1702,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
         <th class="sortable" onclick="sortTable(this)">LAPS</th>
         <th class="sortable" onclick="sortTable(this)">Uncons. Deleg.</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Last Logon</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Created</th>
-        <th class="sortable" onclick="sortTable(this)" style="min-width:88px">Changed</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Last Logon</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Created</th>
+        <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Changed</th>
         <th class="sortable" onclick="sortTable(this)">CN</th>
         <th class="mono">SID</th>
         <th>Description</th>
