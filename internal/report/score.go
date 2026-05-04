@@ -1,5 +1,7 @@
 package report
 
+import "html/template"
+
 // RiskScore holds the aggregated security risk assessment (0–100, A–F).
 type RiskScore struct {
 	Total     int
@@ -8,20 +10,20 @@ type RiskScore struct {
 }
 
 // GradeColor returns a CSS color variable for the grade letter.
-func (r RiskScore) GradeColor() string {
+func (r RiskScore) GradeColor() template.CSS {
 	switch r.Grade {
 	case "A":
-		return "var(--color-ok)"
+		return template.CSS("var(--color-ok)")
 	case "B":
-		return "#84cc16"
+		return template.CSS("#84cc16")
 	case "C":
-		return "var(--text-sev-medium)"
+		return template.CSS("var(--text-sev-medium)")
 	case "D":
-		return "var(--text-sev-high)"
+		return template.CSS("var(--text-sev-high)")
 	case "F":
-		return "var(--text-sev-critical)"
+		return template.CSS("var(--text-sev-critical)")
 	}
-	return "var(--text-main)"
+	return template.CSS("var(--text-main)")
 }
 
 const (

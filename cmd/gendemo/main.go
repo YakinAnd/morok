@@ -644,7 +644,7 @@ func buildADCS() *analysis.ADCSResult {
 		},
 		TemplateFindings: []analysis.CertTemplateFinding{
 			{
-				TemplateName: "UserTemplate-ESC1", CAName: "SEVENKINGDOMS-CA",
+				TemplateName: "UserTemplate", CAName: "SEVENKINGDOMS-CA",
 				VulnTypes:       []analysis.ADCSVulnType{analysis.ESC1},
 				EnrollableBy:    []string{"Domain Users"},
 				AllowsSANInject: true, AuthEnabled: true,
@@ -652,7 +652,7 @@ func buildADCS() *analysis.ADCSResult {
 				Severity: "Critical", CVSS: 9.8, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
 			},
 			{
-				TemplateName: "WebServer-ESC3", CAName: "SEVENKINGDOMS-CA",
+				TemplateName: "WebServer", CAName: "SEVENKINGDOMS-CA",
 				VulnTypes:    []analysis.ADCSVulnType{analysis.ESC3},
 				EnrollableBy: []string{"Night's Watch"},
 				AuthEnabled:  true,

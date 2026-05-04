@@ -100,6 +100,8 @@ func TestGenerateReport(t *testing.T) {
 		fakeLDAPSecResult(),
 		fakeAuditResult(),
 		nil, // SMBSigningResult
+		nil, // SYSVOLResult
+		nil, // LAPSACLResult
 		"Password",
 	)
 	if err != nil {
