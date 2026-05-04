@@ -965,11 +965,12 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   border-radius: 2px; padding: 0 2px; }
 
 /* Nav tabs */
-.nav { display: flex; gap: 0; padding: 0 28px;
+.nav { display: flex; gap: 0; padding: 0 0 0 28px;
   background: var(--bg-card); border-bottom: 1px solid var(--border);
   flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
   position: sticky; top: 0; z-index: 50; }
 .nav::-webkit-scrollbar { display: none; }
+.nav::after { content: ''; min-width: 28px; flex-shrink: 0; }
 .nav button { padding: 10px 13px; border: none; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 0.83rem; border-bottom: 2px solid transparent;
   transition: all 0.2s; white-space: nowrap; flex-shrink: 0; }
