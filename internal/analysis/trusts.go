@@ -94,7 +94,8 @@ type Trust struct {
 	IsWithinForest bool   // parent-child or tree-root (within same forest)
 	Risks          []string
 	Severity       string
-	CVSS           float64
+	CVSS       float64
+	CVSSVector string
 }
 
 // FSPFinding — Foreign Security Principal with privileged group membership
@@ -104,7 +105,8 @@ type FSPFinding struct {
 	ExternalSID    string   // SID of the external principal
 	MemberOfGroups []string // privileged groups this FSP is member of
 	Severity       string
-	CVSS           float64
+	CVSS       float64
+	CVSSVector string
 }
 
 // TrustResult contains all trust-related findings
@@ -221,6 +223,7 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 		}
 		trustScore := CVSSScore(trustVector)
 		t.CVSS = trustScore
+		t.CVSSVector = trustVector
 		t.Severity = CVSSSeverity(trustScore)
 		r.Trusts = append(r.Trusts, t)
 	}
@@ -273,6 +276,7 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 				ExternalSID:    sid,
 				MemberOfGroups: privGroups,
 				CVSS:           fspScore,
+				CVSSVector:     fspVector,
 				Severity:       CVSSSeverity(fspScore),
 			})
 		}

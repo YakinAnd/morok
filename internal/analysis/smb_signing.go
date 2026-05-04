@@ -28,7 +28,8 @@ type SMBSigningFinding struct {
 	Title    string
 	Detail   string
 	Severity string
-	CVSS     float64
+	CVSS       float64
+	CVSSVector string
 }
 
 // CheckSMBSigning sends an SMB2 Negotiate to host:445 and reads the SecurityMode field.
@@ -102,10 +103,11 @@ func CheckSMBSigning(host string) *SMBSigningResult {
 		}
 		smbScore := CVSSScore(smbVector)
 		r.Findings = append(r.Findings, SMBSigningFinding{
-			Title:    "SMB signing not required",
-			Detail:   detail,
-			CVSS:     smbScore,
-			Severity: CVSSSeverity(smbScore),
+			Title:      "SMB signing not required",
+			Detail:     detail,
+			CVSS:       smbScore,
+			CVSSVector: smbVector,
+			Severity:   CVSSSeverity(smbScore),
 		})
 	}
 

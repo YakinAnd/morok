@@ -24,6 +24,7 @@ type KerberoastableAccount struct {
 	LastLogon       string
 	Description     string
 	CVSS            float64
+	CVSSVector      string
 	Severity        string
 }
 
@@ -36,6 +37,7 @@ type ASREPAccount struct {
 	LastLogon       string
 	Description     string
 	CVSS            float64
+	CVSSVector      string
 	Severity        string
 }
 
@@ -82,6 +84,7 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			LastLogon:       u.LastLogon,
 			Description:     u.Description,
 			CVSS:            ac.Score,
+			CVSSVector:      ac.Vector,
 			Severity:        ac.Severity,
 		})
 	}
@@ -104,6 +107,7 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			LastLogon:       u.LastLogon,
 			Description:     u.Description,
 			CVSS:            aa.Score,
+			CVSSVector:      aa.Vector,
 			Severity:        aa.Severity,
 		})
 	}

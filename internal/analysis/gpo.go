@@ -37,7 +37,8 @@ type GPOACLFinding struct {
 	PrincipalSID  string
 	Rights        []string
 	Severity      string
-	CVSS          float64
+	CVSS       float64
+	CVSSVector string
 }
 
 // PasswordPolicy — налаштування парольної політики
@@ -390,6 +391,7 @@ func analyzeGPOPermissions(client *adldap.Client, gpo *GPOFinding, nameMap map[s
 		}
 		gpoScore := CVSSScore(gpoVector)
 		f.CVSS = gpoScore
+		f.CVSSVector = gpoVector
 		f.Severity = CVSSSeverity(gpoScore)
 
 		gpo.ACLFindings = append(gpo.ACLFindings, f)

@@ -27,7 +27,7 @@ adpath/
 │   │   ├── acl.go                  # Dangerous ACL (GenericAll, WriteDACL, ForceChangePassword...)
 │   │   ├── delegation.go           # Unconstrained, Constrained, RBCD delegation
 │   │   ├── gpo.go                  # GPO enumeration + password policy audit
-│   │   ├── adcs.go                 # ADCS ESC1-ESC8 detection
+│   │   ├── adcs.go                 # ADCS ESC1-ESC13 detection
 │   │   ├── trusts.go               # Domain/forest trust analysis + SID filtering
 │   │   ├── shadow_credentials.go   # msDS-KeyCredentialLink write ACE detection
 │   │   ├── ldap_security.go        # LDAP signing/channel binding/anonymous check
@@ -36,7 +36,10 @@ adpath/
 │   │   ├── hygiene.go              # Stale accounts, krbtgt age, LAPS, GPP
 │   │   ├── adminsdholder.go        # AdminSDHolder orphans + custom ACEs
 │   │   ├── protected_users.go      # Protected Users group membership check
-│   │   └── pso.go                  # Fine-Grained Password Policy (PSO)
+│   │   ├── pso.go                  # Fine-Grained Password Policy (PSO)
+│   │   ├── smb_signing.go          # SMB signing check via raw SMB2 Negotiate (port 445)
+│   │   ├── sysvol.go               # SYSVOL audit via SMB2 — non-standard file detection
+│   │   └── laps_acl.go             # LAPS ACL — who can read ms-Mcs-AdmPwd
 │   ├── spinner/
 │   │   └── spinner.go              # CLI spinner — adpath logo rotating during analysis
 │   ├── bloodhound/                 # BloodHound CE v5 JSON export
@@ -56,6 +59,7 @@ github.com/olekukonko/tablewriter
 github.com/anthropics/anthropic-sdk-go  # --ai-report (Pro)
 github.com/joho/godotenv
 golang.org/x/net/proxy                  # --proxy SOCKS5
+github.com/hirochachacha/go-smb2        # SYSVOL audit (SMB2 file listing)
 ```
 
 ---
@@ -156,14 +160,20 @@ golang.org/x/net/proxy                  # --proxy SOCKS5
 
 ### HTML звіт
 - Single file (CSS + D3.js inline)
-- Tabs: Summary, Attack Paths, Graph, Kerberos, ACL, Delegation, GPO, ADCS, Trusts, Shadow Creds, LDAP Security, Audit, Exposure, Users, Groups, Computers
+- Tabs: Summary, Attack Paths, Graph, Kerberos, ACL, Delegation, GPO, ADCS, Trusts, Shadow Creds, LDAP Security, Audit, Exposure, Users, Groups, Computers, SYSVOL
 - D3.js force-directed граф для attack paths
-- Summary: findings chart по severity + категорії
+- Summary: findings chart по severity + категорії (числа з Go template, не JS)
 - SVG adpath logo в header (7 spokes + center node)
 - Light/dark theme toggle
 - Global search через всі tabs
 - MITRE ATT&CK badges (purple T-code, linked до attack.mitre.org) на section headers і per-finding rows
 - Per-finding Exploit/Fix accordion з контекстними командами
+- CVSS scores клікабельні: hover показує вектор, click копіює `CVSS:3.1/AV:N/...`
+- Help icons (?) на всіх section titles з tooltips
+- Collapsible sections (.chevron CSS rotate, не character swap)
+- DCSync findings інтегровані в ACL grouped list (не окрема секція)
+- LAPS Password Read Access секція в Computers tab
+- Severity colors уніфіковані через CSS vars: `--text-sev-critical: #e53e3e`, `--text-sev-high: #dd6b20`, `--text-sev-medium: #d69e2e`
 
 ### CLI Spinner
 - `internal/spinner` — 8-frame анімація, · обертається навколо ⊙ по годинниковій (N→NE→E→SE→S→SW→W→NW)
@@ -370,13 +380,24 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 
 ### v0.9.9 ЗАВЕРШЕНО
 
-- ✅ **HTML report redesign** — великий UI overhaul (`internal/report/html.go`, 811 рядків змін):
+- ✅ **HTML report redesign** — великий UI overhaul (`internal/report/html.go`):
   - ACL tab тепер згрупований за замовчуванням; MITRE badges тільки на group headers
+  - DCSync merged into ACL grouped list (`data-right="DCSync"` acl-card, не окрема секція)
   - Exposure tab: 8 collapsible секцій з count + severity badges
   - "Expand All / Collapse All" кнопки на ACL і Exposure tabs
   - Tables capped at 100 rows; D3 graph capped at 80 nodes (scale fix для великих AD)
-- ✅ **Global search overhaul** — clickable tab buttons в результатах (клік → перехід на tab); Enter → navigate до наступного результату; auto-expand collapsed sections при знаходженні; Clear кнопка прихована коли порожньо; синє підсвічування (замість amber, щоб не конфліктувати з badge-medium)
-- ✅ **CLI Risk Summary** — блок в кінці `adpath enum` output: рахує criticals/highs/mediums по всіх модулях (ACL, ADCS, Shadow, Kerberos, Attack Paths, SMB, LDAP); виводить загальний рейтинг (CRITICAL / HIGH / MEDIUM / LOW) з кольором
+  - Unified severity colors: CSS vars `--text-sev-critical/high/medium` скрізь
+  - Yes/No badges → plain colored text (`.txt-yes`, `.txt-no`, `.txt-warn`)
+  - Collapsible section chevrons: CSS rotate замість character swap
+  - Column resize: видимий separator `th { border-right: 1px solid var(--border) }`
+  - Findings Overview chart: числа з Go template (`{{.TotalCritical}}`), не JS
+  - Users table: видалено колонку "Privileged Groups"; привілейовані рядки підсвічені `.row-priv` (red left border)
+- ✅ **Global search overhaul** — clickable tab buttons в результатах; Enter → navigate; auto-expand collapsed sections; Clear кнопка прихована коли порожньо
+- ✅ **CLI Risk Summary** — рахує criticals/highs/mediums по всіх модулях; загальний рейтинг з кольором
+- ✅ **Help icons** — `?` з tooltip на всіх section titles (Attack Path Graph, Users, Groups, Computers, krbtgt, Description Notes, No LAPS, PSO, Password Policy, Certificate Authorities + всі попередні)
+- ✅ **CVSS click-to-copy** — `CVSSVector string` додано до всіх finding structs (14 типів в 10 файлах); click копіює `CVSS:3.1/AV:N/...`; hover показує вектор
+- ✅ **SYSVOL audit** (`internal/analysis/sysvol.go`) — SMB2/NTLM підключення; рекурсивний обхід SYSVOL без читання вмісту; виявляє GPP XML, executables, archives, scripts поза Scripts\; новий SYSVOL tab в HTML; залежність `go-smb2`
+- ✅ **LAPS ACL detection** (`internal/analysis/laps_acl.go`) — динамічний resolve schemaIDGUID ms-Mcs-AdmPwd зі схеми; парсинг nTSecurityDescriptor кожного LAPS-комп'ютера; виявляє GenericAll/GenericRead/ReadProperty(ms-Mcs-AdmPwd)/ReadProperty(all)/WriteDACL/WriteOwner; секція "LAPS Password Read Access" в Computers tab
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -389,4 +410,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.8 — ADCS ESC9, ESC11, ESC13 detection.*
+*Останнє оновлення: v0.9.9 — SYSVOL audit, LAPS ACL detection, HTML report UI overhaul, CVSS click-to-copy, help icons.*
