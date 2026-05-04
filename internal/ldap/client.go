@@ -561,6 +561,11 @@ func (c *Client) GetDomain() string {
     return c.Domain
 }
 
+// GetHost повертає hostname/IP DC
+func (c *Client) GetHost() string {
+    return c.Host
+}
+
 // ConfigurationDN повертає DN конфігураційного розділу AD
 // (CN=Configuration,DC=...) через RootDSE або обчислює з домену.
 func (c *Client) ConfigurationDN() (string, error) {
