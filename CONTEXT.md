@@ -399,6 +399,21 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **SYSVOL audit** (`internal/analysis/sysvol.go`) — SMB2/NTLM підключення; рекурсивний обхід SYSVOL без читання вмісту; виявляє GPP XML, executables, archives, scripts поза Scripts\; новий SYSVOL tab в HTML; залежність `go-smb2`
 - ✅ **LAPS ACL detection** (`internal/analysis/laps_acl.go`) — динамічний resolve schemaIDGUID ms-Mcs-AdmPwd зі схеми; парсинг nTSecurityDescriptor кожного LAPS-комп'ютера; виявляє GenericAll/GenericRead/ReadProperty(ms-Mcs-AdmPwd)/ReadProperty(all)/WriteDACL/WriteOwner; секція "LAPS Password Read Access" в Computers tab
 
+### P3 UI fixes (post-v0.9.9, на гілці feat/adp-72-73)
+
+- ✅ **ZgotmplZ fix** — `GradeColor()` повертає `template.CSS` → grade letter "F" тепер яскраво-червоний
+- ✅ **Exploit commands** — `pathExploitData` struct з `Description` (prose, без copy) + `Commands []string` (реальні shell-команди з copy button) + `Fix` + `AuditCmd`; copy button тільки на виконуваних командах
+- ✅ **ADCS duplicate ESC** — demo template names виправлені: `UserTemplate`, `WebServer`
+- ✅ **Version sync** — header logo `v0.9.8` → `v{{.Version}}`
+- ✅ **plural() helper** — прибрані всі `(s)` суфікси в executive.go і html.go
+- ✅ **Executive quick stats** — замінені дублюючі findings-counters на environment size (Users/Computers/Groups/KrbtgtAge)
+- ✅ **Policy anchor scroll** — `TopIssue.Anchor` field; "Weak password policy" View button scrolls до `#policy-section`
+- ✅ **SYSVOL tab trailing space** — прибраний
+- ✅ **Risk Score breakdown bars** — `barColor/barWidth/capFor` helpers: колір залежить від % заповнення (critical≥75%, high≥40%, medium<40%)
+- ✅ **Print CSS** — `:not(:first-of-type)` page-break (Executive+Summary разом, Paths з нової сторінки)
+- ✅ **GPCO is-admin node** — `isPrivilegedGroup()` FuncMap; Group Policy Creator Owners отримує червоний бордер у path chain
+- ✅ **UI polish (сесія)** — Attack Path severity badges уніфіковані (`badge-*`); DangerousACLCount включає DCSync; CVSS copy без layout shift (`data-copied` attr + `template.CSS` flash); "Unconstrained Delegation" повна назва колонки; жирний лічильник прибрано з ACL group headers
+
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
 - Стаття, пости на r/netsec, UISGCON
