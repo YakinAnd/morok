@@ -54,6 +54,9 @@ type ReportData struct {
 	AuditResult *analysis.AuditResult
 	// v0.9.6
 	SMBSigningResult *analysis.SMBSigningResult
+	// v0.9.9
+	SYSVOLResult  *analysis.SYSVOLResult
+	LAPSACLResult *analysis.LAPSACLResult
 	// header risk summary
 	TotalCritical int
 	TotalHigh     int
@@ -148,6 +151,8 @@ func Generate(
 	ldapSecResult  *analysis.LDAPSecurityResult,
 	auditResult    *analysis.AuditResult,
 	smbResult      *analysis.SMBSigningResult,
+	sysvolResult   *analysis.SYSVOLResult,
+	lapsACLResult  *analysis.LAPSACLResult,
 	authMethod string,
 ) error {
 
@@ -178,6 +183,8 @@ func Generate(
 	LDAPSecurityResult:      ldapSecResult,
 	AuditResult:             auditResult,
 	SMBSigningResult:        smbResult,
+	SYSVOLResult:            sysvolResult,
+	LAPSACLResult:           lapsACLResult,
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -262,7 +269,7 @@ func buildSummary(
 	}
 
 	if aclResult != nil {
-		s.DangerousACLCount = len(aclResult.Findings)
+		s.DangerousACLCount = len(aclResult.Findings) + len(aclResult.DCSyncFindings)
 		s.DCSyncCount = len(aclResult.DCSyncFindings)
 	}
 
@@ -529,11 +536,11 @@ func templateFuncs() template.FuncMap {
 		},
 		"pathSeverityClass": func(depth int) string {
 			if depth <= 2 {
-				return "sev-critical"
+				return "badge-critical"
 			} else if depth <= 4 {
-				return "sev-high"
+				return "badge-high"
 			}
-			return "sev-medium"
+			return "badge-medium"
 		},
 		"nodeTypeIcon": func(t graph.NodeType) template.HTML {
 			switch t {
@@ -766,9 +773,9 @@ html[data-theme="dark"] {
   --badge-med-bg:  #744210;   --badge-med-txt:  #f6ad55;
   --badge-high-bg: #7b2d12;   --badge-high-txt: #fdba74;
   --badge-crit-bg: #742a2a;   --badge-crit-txt: #e53e3e;
-  --text-sev-critical: #fc8181;
-  --text-sev-high:     #fbbf24;
-  --text-sev-medium:   #fde68a;
+  --text-sev-critical: #e53e3e;
+  --text-sev-high:     #dd6b20;
+  --text-sev-medium:   #d69e2e;
   --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 html[data-theme="light"] {
@@ -839,7 +846,8 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 /* Nav tabs */
 .nav { display: flex; gap: 0; padding: 0 40px;
   background: var(--bg-card); border-bottom: 1px solid var(--border);
-  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  position: sticky; top: 0; z-index: 50; }
 .nav::-webkit-scrollbar { display: none; }
 .nav button { padding: 12px 16px; border: none; background: transparent;
   color: var(--text-muted); cursor: pointer; font-size: 0.85rem; border-bottom: 2px solid transparent;
@@ -862,7 +870,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;
   text-transform: uppercase; letter-spacing: 0.05em; }
 .card.critical .value { color: #e53e3e; }
-.card.warning .value { color: #f6ad55; }
+.card.warning .value { color: var(--text-sev-high); }
 .card.ok .value { color: var(--color-ok); }
 .card[onclick] { cursor: pointer; transition: border-color 0.15s, transform 0.12s; }
 .card[onclick]:hover { border-color: var(--accent); transform: translateY(-2px); }
@@ -895,7 +903,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   font-size: 0.75rem; font-weight: 600; }
 .badge-ok { background: var(--badge-ok-bg); color: var(--badge-ok-txt); }
 .badge-medium { background: var(--badge-med-bg); color: var(--badge-med-txt); }
-.badge-high { background: var(--badge-high-bg, #7b341e); color: var(--badge-high-txt, #fc8181); }
+.badge-high { background: var(--badge-high-bg); color: var(--badge-high-txt); }
 .badge-critical { background: var(--badge-crit-bg); color: var(--badge-crit-txt); }
 .mitre-badge { display: inline-block; padding: 1px 6px; border-radius: 3px;
   font-size: 0.7rem; font-weight: 600; font-family: monospace;
@@ -922,11 +930,19 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   padding: 1px 6px;
   color: var(--text-secondary);
   letter-spacing: 0.03em;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
 }
+.cvss-score:hover { background: rgba(255,255,255,0.16); color: var(--text-main); }
+.cvss-score[data-copied] { background: var(--color-ok) !important; color: #000 !important; border-color: var(--color-ok) !important; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.cvss-score[data-copied]::after { content: '✓'; position: absolute; top: -18px; left: 50%;
+  transform: translateX(-50%); font-size: 11px; color: var(--color-ok); pointer-events: none; }
 [data-theme="light"] .cvss-score {
   background: rgba(0,0,0,0.05);
   border-color: rgba(0,0,0,0.12);
 }
+[data-theme="light"] .cvss-score:hover { background: rgba(0,0,0,0.1); color: var(--text-main); }
 
 /* Severity row left-border indicators */
 tr.row-critical td:first-child { border-left: 3px solid #e53e3e; }
@@ -941,15 +957,19 @@ table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th { background: var(--bg-card); color: var(--text-muted); padding: 10px 14px;
   text-align: left; font-weight: 500; text-transform: uppercase;
   font-size: 0.75rem; letter-spacing: 0.05em; position: relative; user-select: none; }
-td { padding: 10px 14px; border-top: 1px solid var(--border); }
+td { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text-main); }
 /* Column resize handle */
-.col-rh { position: absolute; right: 0; top: 0; width: 5px; height: 100%;
-  cursor: col-resize; z-index: 2; border-radius: 0 2px 2px 0; }
-.col-rh:hover, .col-rh.active { background: var(--accent); opacity: 0.5; }
+.col-rh { position: absolute; right: 0; top: 20%; width: 3px; height: 60%;
+  cursor: col-resize; z-index: 2; border-radius: 2px;
+  background: var(--border); opacity: 0.6; }
+.col-rh:hover, .col-rh.active { background: var(--accent); opacity: 1; width: 4px; }
 th.col-over { box-shadow: inset 2px 0 0 var(--accent); }
 th.col-dragging { opacity: 0.35; }
 tr:hover td { background: var(--bg-hover); }
 .mono { font-family: monospace; font-size: 0.8rem; color: var(--text-secondary); }
+.txt-yes  { color: var(--color-ok); font-weight: 600; }
+.txt-warn { color: var(--text-sev-high); font-weight: 600; }
+.row-priv td:first-child { border-left: 3px solid var(--text-sev-critical); }
 
 /* Attack paths */
 .path-card { background: var(--bg-card); border: 1px solid var(--border);
@@ -961,8 +981,8 @@ tr:hover td { background: var(--bg-hover); }
 .path-node { display: flex; align-items: center; gap: 6px;
   background: var(--bg-hover); border-radius: 6px; padding: 6px 12px;
   font-size: 0.85rem; }
-.path-node.is-admin { border: 1px solid #fc8181; }
-.path-node.is-kerb  { border: 1px solid #f6ad55; }
+.path-node.is-admin { border: 1px solid var(--text-sev-critical); }
+.path-node.is-kerb  { border: 1px solid var(--text-sev-high); }
 .path-arrow { color: var(--text-subtle); font-size: 1.2rem; }
 .path-edge-label { font-size: 0.7rem; color: var(--text-subtle); }
 
@@ -984,13 +1004,11 @@ tr:hover td { background: var(--bg-hover); }
   width:16px; height:16px; border-radius:50%; background:var(--bg-hover); color:var(--text-secondary);
   font-size:10px; font-weight:700; cursor:default; position:relative;
   flex-shrink:0; margin-left:2px; }
-.help-icon::after { content: attr(data-tip);
-  display:none; position:absolute; left:50%; bottom:calc(100% + 8px);
-  transform:translateX(-50%); background:var(--bg-grouped); border:1px solid var(--text-subtle);
-  color:var(--text-main); font-size:0.78rem; font-weight:400; line-height:1.5;
-  padding:10px 14px; border-radius:6px; white-space:pre-wrap; width:300px;
-  z-index:100; pointer-events:none; box-shadow:0 4px 16px rgba(0,0,0,.4); }
-.help-icon:hover::after { display:block; }
+#help-tip { display:none; position:fixed; z-index:1000; background:var(--bg-grouped);
+  border:1px solid var(--text-subtle); color:var(--text-main); font-size:0.78rem;
+  font-weight:400; line-height:1.5; padding:10px 14px; border-radius:6px;
+  white-space:pre-wrap; width:300px; max-width:calc(100vw - 24px);
+  pointer-events:none; box-shadow:0 4px 16px rgba(0,0,0,.4); }
 
 /* Table filters */
 .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
@@ -1025,6 +1043,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 .exp-header:hover { filter:brightness(1.06); }
 .exp-header .exp-title { font-weight:600; color:var(--text-main); font-size:0.9rem; }
 .exp-body { padding:16px; border-top:1px solid var(--border); }
+.chevron { display:inline-block; font-size:11px; color:var(--text-secondary); min-width:12px; user-select:none; }
 
 /* Expand/Collapse all buttons */
 .xp-btns { display:flex; gap:6px; margin-left:auto; }
@@ -1067,6 +1086,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 </style>
 </head>
 <body>
+<div id="help-tip"></div>
 
 <div class="print-cover" style="text-align:center;padding:80px 40px">
   <h1 style="font-size:2.5rem;margin-bottom:16px">Active Directory Security Assessment</h1>
@@ -1139,6 +1159,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button role="tab" aria-selected="false" aria-controls="tab-shadow" id="tab-btn-shadow" onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-ldapsec" id="tab-btn-ldapsec" onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-audit" id="tab-btn-audit" onclick="showTab('audit')">Audit {{if gt .Summary.AuditFindingCount 0}}({{.Summary.AuditFindingCount}}){{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-sysvol" id="tab-btn-sysvol" onclick="showTab('sysvol')">SYSVOL {{if .SYSVOLResult}}{{if .SYSVOLResult.Findings}}({{len .SYSVOLResult.Findings}}){{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-users" id="tab-btn-users" onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-groups" id="tab-btn-groups" onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-computers" id="tab-btn-computers" onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
@@ -1390,7 +1411,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         {{pathSeverity $path.Depth}}
       </span>
       {{if $path.TargetGroup}}
-      <span class="badge" style="background:var(--bg-hover);color:#fc8181">→ {{$path.TargetGroup}}</span>
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-sev-critical)">→ {{$path.TargetGroup}}</span>
       {{end}}
       <span style="color:var(--text-muted); font-size:0.85rem">
         Path {{inc $i}} &nbsp;|&nbsp; Depth: {{$path.Depth}}
@@ -1426,11 +1447,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- GRAPH TAB -->
 <div id="tab-graph" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-graph" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">Attack Path Graph <span>Layered path view — nodes sized by path count</span></h2>
+  <h2 class="section-title">Attack Path Graph <span class="help-icon" role="tooltip" tabindex="0" data-tip="Visual attack path graph — nodes represent AD objects, edges show exploitable relationships. Node size reflects how many attack paths pass through it. Hover for details, scroll to zoom, drag to pan.">?</span> <span>Layered path view — nodes sized by path count</span></h2>
   <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
     <div style="font-size:0.8rem;color:var(--text-muted)">
-      <span style="color:#fc8181">●</span> DA/Admin &nbsp;
-      <span style="color:#f6ad55">●</span> Kerberoastable &nbsp;
+      <span style="color:var(--text-sev-critical)">●</span> DA/Admin &nbsp;
+      <span style="color:var(--text-sev-high)">●</span> Kerberoastable &nbsp;
       <span style="color:#b794f4">●</span> Group &nbsp;
       <span style="color:#90cdf4">●</span> Computer &nbsp;
       <span style="color:#63b3ed">●</span> User
@@ -1487,8 +1508,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         {{else if eq .Severity "Medium"}}<span class="badge" style="background:#744210;color:#fef3c7">Medium</span>
         {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Info</span>{{end}}
       </td>
-      <td>{{if gt .CVSS 0.0}}<span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>{{else}}—{{end}}</td>
-      <td style="font-size:0.78rem;color:#fc8181">
+      <td>{{if gt .CVSS 0.0}}<span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>{{else}}—{{end}}</td>
+      <td style="font-size:0.78rem;color:var(--text-sev-critical)">
         {{range .Risks}}<div>⚠ {{.}}</div>{{end}}
       </td>
     </tr>
@@ -1516,7 +1537,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <tr>
       <td class="mono" style="font-size:0.8rem">{{.ExternalSID}}</td>
       <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
-      <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+      <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
       <td style="font-size:0.82rem;color:var(--text-secondary)">{{joinSPNs .MemberOfGroups}}</td>
     </tr>
     {{end}}
@@ -1534,7 +1555,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- USERS TAB -->
 <div id="tab-users" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-users" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">Users <span>{{.Summary.TotalUsers}} total</span></h2>
+  <h2 class="section-title">Users <span class="help-icon" role="tooltip" tabindex="0" data-tip="All domain user accounts. Rows highlighted in red belong to privileged groups (DA, EA, etc.). Use filters to find Kerberoastable, AS-REP roastable, or expired-password accounts.">?</span> <span>{{.Summary.TotalUsers}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
@@ -1542,27 +1563,19 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="Yes">Enabled only</option>
       <option value="No">Disabled only</option>
     </select>
-    <select data-col="5" data-match="notempty" onchange="filterTable('tbl-users','cnt-users')">
-      <option value="">Privileged: all</option>
-      <option value="Domain Admins">Domain Admins</option>
-      <option value="Enterprise Admins">Enterprise Admins</option>
-      <option value="Administrators">Administrators</option>
-      <option value="Backup Operators">Backup Operators</option>
-      <option value="__notempty__">Any privileged</option>
-    </select>
-    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Kerberoastable: all</option>
       <option value="Yes">Yes</option>
     </select>
-    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">AS-REP: all</option>
       <option value="Yes">Yes</option>
     </select>
-    <select data-col="8" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Pwd Exp: all</option>
       <option value="Yes">Never expires</option>
     </select>
-    <select data-col="14" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="13" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Group: all</option>
       {{range .Groups}}<option value="{{.SAMAccountName}}">{{.SAMAccountName}}</option>{{end}}
     </select>
@@ -1578,7 +1591,6 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Display Name</th>
         <th class="sortable" onclick="sortTable(this)">Email</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
-        <th class="sortable" onclick="sortTable(this)">Privileged Groups</th>
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
@@ -1594,25 +1606,23 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </thead>
     <tbody>
     {{range .Users}}
-    <tr>
+    <tr{{if index $.UserPrivGroups .DN}} class="row-priv"{{end}}>
       <td class="mono">{{.SAMAccountName}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.CN}}</td>
+      <td class="mono">{{.CN}}</td>
       <td>{{.DisplayName}}</td>
-      <td style="font-size:0.78rem;color:var(--text-secondary)">{{.Mail}}</td>
-      <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
-          {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No</span>{{end}}</td>
-      <td>{{with index $.UserPrivGroups .DN}}<span class="badge" style="background:var(--badge-crit-bg);color:var(--badge-crit-txt);font-size:0.72rem">{{.}}</span>{{else}}—{{end}}</td>
-      <td>{{if .SPNs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
-      <td>{{if .DontReqPreauth}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
-      <td>{{if .PasswordNeverExpires}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.LastLogon}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.PasswordLastSet}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.CreatedOn}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.ChangedOn}}</td>
-      <td style="font-size:0.78rem">{{if .PrimaryGroup}}{{.PrimaryGroup}}{{else}}—{{end}}</td>
-      <td style="font-size:0.72rem;max-width:180px">{{range .MemberOf}}<div>{{dnToSAM .}}</div>{{end}}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Description}}</td>
-      <td class="mono" style="font-size:0.7rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
+      <td class="mono">{{.Mail}}</td>
+      <td>{{if .Enabled}}<span class="txt-yes">✓</span>{{else}}—{{end}}</td>
+      <td>{{if .SPNs}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
+      <td>{{if .DontReqPreauth}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
+      <td>{{if .PasswordNeverExpires}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
+      <td class="mono">{{.LastLogon}}</td>
+      <td class="mono">{{.PasswordLastSet}}</td>
+      <td class="mono">{{.CreatedOn}}</td>
+      <td class="mono">{{.ChangedOn}}</td>
+      <td>{{if .PrimaryGroup}}{{.PrimaryGroup}}{{else}}—{{end}}</td>
+      <td style="max-width:180px">{{range .MemberOf}}<div class="mono">{{dnToSAM .}}</div>{{end}}</td>
+      <td style="color:var(--text-muted)">{{.Description}}</td>
+      <td class="mono" style="font-size:0.75rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
     </tr>
     {{end}}
     </tbody>
@@ -1622,7 +1632,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- GROUPS TAB -->
 <div id="tab-groups" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-groups" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">Groups <span>{{.Summary.TotalGroups}} total</span></h2>
+  <h2 class="section-title">Groups <span class="help-icon" role="tooltip" tabindex="0" data-tip="All security and distribution groups. Pay attention to high-member-count groups with sensitive names — attackers target these for privilege escalation via AddMember abuse.">?</span> <span>{{.Summary.TotalGroups}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search groups..." oninput="filterTable('tbl-groups','cnt-groups')">
     <select data-col="2" onchange="filterTable('tbl-groups','cnt-groups')">
@@ -1660,15 +1670,15 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     {{range .Groups}}
     <tr>
       <td class="mono">{{.SAMAccountName}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.CN}}</td>
+      <td class="mono">{{.CN}}</td>
       <td>{{.GroupType}}</td>
       <td>{{len .Members}}</td>
-      <td>{{if .AdminCount}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}—{{end}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.CreatedOn}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.ChangedOn}}</td>
-      <td style="font-size:0.72rem;max-width:180px">{{range .MemberOf}}<div>{{dnToSAM .}}</div>{{end}}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Description}}</td>
-      <td class="mono" style="font-size:0.7rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
+      <td>{{if .AdminCount}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
+      <td class="mono">{{.CreatedOn}}</td>
+      <td class="mono">{{.ChangedOn}}</td>
+      <td style="max-width:180px">{{range .MemberOf}}<div class="mono">{{dnToSAM .}}</div>{{end}}</td>
+      <td style="color:var(--text-muted)">{{.Description}}</td>
+      <td class="mono" style="font-size:0.75rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
     </tr>
     {{end}}
     </tbody>
@@ -1679,7 +1689,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 <!-- COMPUTERS TAB -->
 <div id="tab-computers" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-computers" tabindex="0" aria-hidden="true">
   <h2 class="section-title">
-    Computers
+    Computers <span class="help-icon" role="tooltip" tabindex="0" data-tip="All domain-joined computer accounts. Key columns: unconstrained delegation (high risk), LAPS coverage, OS version. Outdated OS or missing LAPS are common lateral movement enablers.">?</span>
     <span>{{.Summary.TotalComputers}} total{{if .ForestWide}} — forest-wide{{end}}</span>
   </h2>
   <div class="filter-bar">
@@ -1707,7 +1717,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Version</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
         <th class="sortable" onclick="sortTable(this)">LAPS</th>
-        <th class="sortable" onclick="sortTable(this)">Uncons. Deleg.</th>
+        <th class="sortable" onclick="sortTable(this)">Unconstrained Delegation</th>
         <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Last Logon</th>
         <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Created</th>
         <th class="sortable" onclick="sortTable(this)" style="min-width:115px">Changed</th>
@@ -1721,31 +1731,23 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <tr>
       <td class="mono" style="white-space:nowrap">
         {{.SAMAccountName}}
-        {{if .IsGC}}<span style="color:var(--text-subtle);font-size:0.7rem" title="Partial data from Global Catalog">&nbsp;(GC)</span>{{end}}
-        {{if .DNSHostName}}<div style="color:var(--text-muted);font-size:0.75rem">{{.DNSHostName}}</div>{{end}}
+        {{if .IsGC}}<span style="color:var(--text-subtle);font-size:0.72rem" title="Partial data from Global Catalog">&nbsp;(GC)</span>{{end}}
+        {{if .DNSHostName}}<div style="color:var(--text-muted);font-size:0.78rem">{{.DNSHostName}}</div>{{end}}
       </td>
-      <td style="font-size:0.78rem;color:var(--text-secondary)">{{.Domain}}</td>
-      <td style="white-space:nowrap">
-        {{if .OperatingSystem}}{{.OperatingSystem}}
-        {{else}}<span style="color:var(--text-subtle)">—</span>{{end}}
+      <td class="mono">{{.Domain}}</td>
+      <td style="white-space:nowrap">{{if .OperatingSystem}}{{.OperatingSystem}}{{else}}—{{end}}</td>
+      <td class="mono" style="white-space:nowrap">
+        {{if .OperatingSystemVersion}}{{.OperatingSystemVersion}}{{if .OperatingSystemSP}}&nbsp;{{.OperatingSystemSP}}{{end}}{{else}}—{{end}}
       </td>
-      <td class="mono" style="font-size:0.78rem;white-space:nowrap">
-        {{if .OperatingSystemVersion}}{{.OperatingSystemVersion}}
-        {{if .OperatingSystemSP}}&nbsp;{{.OperatingSystemSP}}{{end}}
-        {{else}}—{{end}}
-      </td>
-      <td>{{if .Enabled}}<span class="badge badge-ok">Yes</span>
-          {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No</span>{{end}}</td>
-      <td>{{if .LAPSEnabled}}<span class="badge badge-ok">✓</span>
-          {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">No</span>{{end}}</td>
-      <td>{{if .UnconstrainedDelegation}}<span class="badge badge-critical">Yes</span>
-          {{else}}—{{end}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.LastLogon}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.WhenCreated}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.ChangedOn}}</td>
-      <td class="mono" style="font-size:0.78rem">{{.CN}}</td>
-      <td class="mono" style="font-size:0.7rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
-      <td style="font-size:0.78rem;color:var(--text-muted)">{{.Description}}</td>
+      <td>{{if .Enabled}}<span class="txt-yes">✓</span>{{else}}—{{end}}</td>
+      <td>{{if .LAPSEnabled}}<span class="txt-yes">✓</span>{{else}}—{{end}}</td>
+      <td>{{if .UnconstrainedDelegation}}<span class="badge badge-critical">✓</span>{{else}}—{{end}}</td>
+      <td class="mono">{{.LastLogon}}</td>
+      <td class="mono">{{.WhenCreated}}</td>
+      <td class="mono">{{.ChangedOn}}</td>
+      <td class="mono">{{.CN}}</td>
+      <td class="mono" style="font-size:0.75rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
+      <td style="color:var(--text-muted)">{{.Description}}</td>
     </tr>
     {{end}}
     </tbody>
@@ -1768,16 +1770,16 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">Kerberoastable Accounts {{mitreBadges "kerberoasting"}}</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
       {{if .KerberosResult.KerberoastableAccounts}}
       <span class="badge badge-high" style="margin-left:auto">{{len .KerberosResult.KerberoastableAccounts}} accounts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
     </div>
     <div class="exp-body">
     {{if .KerberosResult.KerberoastableAccounts}}
-    <div style="padding:8px 0 4px">
+    <div style="padding:8px 0 16px">
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
         <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — Kerberoasting
       </button>
@@ -1806,8 +1808,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
         <td class="mono">{{.SAMAccountName}}</td>
         <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
-        <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
-        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td>{{if .AdminCount}}<span class="badge badge-critical">✓</span>{{else}}—{{end}}</td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
         <td class="mono">{{.LastLogon}}</td>
         <td class="mono">{{.PasswordLastSet}}</td>
       </tr>
@@ -1821,16 +1823,16 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">AS-REP Roastable Accounts {{mitreBadges "asrep"}}</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
       {{if .KerberosResult.ASREPAccounts}}
       <span class="badge badge-high" style="margin-left:auto">{{len .KerberosResult.ASREPAccounts}} accounts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
     </div>
     <div class="exp-body">
     {{if .KerberosResult.ASREPAccounts}}
-    <div style="padding:8px 0 4px">
+    <div style="padding:8px 0 16px">
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
         <span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span> — AS-REP Roasting
       </button>
@@ -1857,8 +1859,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{range .KerberosResult.ASREPAccounts}}
       <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
         <td class="mono">{{.SAMAccountName}}</td>
-        <td>{{if .AdminCount}}<span class="badge badge-critical">Yes</span>{{else}}—{{end}}</td>
-        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td>{{if .AdminCount}}<span class="badge badge-critical">✓</span>{{else}}—{{end}}</td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
         <td class="mono">{{.LastLogon}}</td>
         <td class="mono">{{.PasswordLastSet}}</td>
       </tr>
@@ -1888,33 +1890,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </div>
   </div>
 
-  {{if .ACLResult}}{{if .ACLResult.DCSyncFindings}}
-  <div class="path-card" style="margin-bottom:20px">
-    <div class="path-header" style="flex-wrap:wrap;gap:8px">
-      <span class="badge badge-critical">☠ DCSync</span>
-      <span style="color:var(--text-main);font-weight:600">{{len .ACLResult.DCSyncFindings}} principal(s) can dump all domain password hashes</span>
-      {{mitreBadges "dcsync"}}
-    </div>
-    <div style="padding:4px 16px 0">
-      {{range .ACLResult.DCSyncFindings}}
-      <div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
-        <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.PrincipalType}}</span>
-        <span class="mono">{{.PrincipalName}}</span>
-      </div>
-      {{end}}
-      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false" style="margin-top:10px"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
-      <div class="acc-body">
-        <div class="acc-label">Exploit</div>
-        <div class="acc-cmd-wrap"><code class="acc-cmd">secretsdump.py domain/user:pass@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">secretsdump.py -hashes :&lt;NThash&gt; domain/user@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-        <div class="acc-label" style="margin-top:10px">Fix</div>
-        <div style="color:var(--text-secondary)">Remove DS-Replication-Get-Changes-All from non-DC accounts. Run: <code class="acc-cmd" style="display:inline">Get-ObjectAcl -DistinguishedName "DC=domain,DC=local" | ? {$_.ActiveDirectoryRights -match "Replication"}</code> to audit. Only Domain Controllers and Administrators should have DCSync rights.</div>
-      </div>
-    </div>
-  </div>
-  {{end}}{{end}}
   {{if .ACLResult}}
-  {{if .ACLResult.Findings}}
+  {{if or .ACLResult.Findings .ACLResult.DCSyncFindings}}
   <div class="filter-bar" style="margin-bottom:12px">
     <input type="text" id="acl-search" placeholder="Search principal or target..." oninput="filterACL()" style="min-width:220px">
     <select id="acl-severity" onchange="filterACL()">
@@ -1925,6 +1902,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </select>
     <select id="acl-right" onchange="filterACL()">
       <option value="">Right: all</option>
+      <option value="DCSync">DCSync</option>
       <option value="GenericAll">GenericAll</option>
       <option value="WriteDACL">WriteDACL</option>
       <option value="WriteOwner">WriteOwner</option>
@@ -1941,19 +1919,40 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-high{{else if eq $f.Severity "Medium"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
-      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" $f.CVSS}}</span>
+      <span class="cvss-score" data-vector="{{$f.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" $f.CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
-      <span class="mono" style="color:#f6ad55">{{$f.TargetName}}</span>
+      <span class="mono" style="color:var(--text-sev-high)">{{$f.TargetName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{$f.PrincipalType}} → {{$f.TargetType}}</span>
     </div>
-    <div style="padding:0 16px">
+    <div style="padding:0 16px 16px">
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{$f.Right}})</div>
         <div class="acc-cmd-wrap"><code class="acc-cmd">{{aclExploit (print $f.Right) $f.PrincipalName $f.TargetName $.ACLResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">{{aclFix (print $f.Right)}}</div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+  {{range .ACLResult.DCSyncFindings}}
+  <div class="path-card acl-card" style="margin-bottom:10px" data-severity="Critical" data-right="DCSync" data-text="{{.PrincipalName}}">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+      <span class="badge badge-critical">Critical</span>
+      <span class="mono" style="color:var(--text-main)">{{.PrincipalName}}</span>
+      <span style="color:var(--text-subtle)">─▶</span>
+      <span class="mono" style="color:var(--text-sev-high)">Domain Root</span>
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{.PrincipalType}} → Domain</span>
+    </div>
+    <div style="padding:0 16px 16px">
+      <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
+      <div class="acc-body">
+        <div class="acc-label">Exploit (DCSync)</div>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">secretsdump.py DOMAIN/user:pass@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">secretsdump.py -hashes :&lt;NThash&gt; DOMAIN/user@DC -just-dc-ntlm</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-label" style="margin-top:10px">Fix</div>
+        <div style="color:var(--text-secondary)">Remove DS-Replication-Get-Changes-All from non-DC accounts. Run: <code class="acc-cmd" style="display:inline">Get-ObjectAcl -DistinguishedName "DC=domain,DC=local" | ? {$_.ActiveDirectoryRights -match "Replication"}</code> to audit. Only Domain Controllers and Administrators should have DCSync rights.</div>
       </div>
     </div>
   </div>
@@ -1977,13 +1976,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>{{else if eq .Severity "High"}}<span class="badge badge-high">High</span>{{else}}<span class="badge badge-medium">{{.Severity}}</span>{{end}}
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.DelegationType}}</span>
-      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+      <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.SAMAccountName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">{{.ObjectType}}</span>
       {{mitreForDeleg (print .DelegationType)}}
       {{if .AllowedServices}}<span style="color:var(--text-muted);font-size:0.78rem">→ {{joinSPNs .AllowedServices}}</span>{{end}}
     </div>
-    <div style="padding:4px 16px 0">
+    <div style="padding:4px 16px 16px">
       <div style="color:var(--text-sev-high);font-size:0.8rem;padding-bottom:4px">⚠ {{.RiskReason}}</div>
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
@@ -2014,8 +2013,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- krbtgt -->
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">krbtgt Password Age</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="The krbtgt account password hash signs all Kerberos tickets. If stolen (DCSync), attackers forge Golden Tickets valid for any user. Rotate every 180 days — must rotate TWICE to fully invalidate old tickets.">?</span>
       {{if .HygieneResult}}{{if .HygieneResult.KrbtgtAtRisk}}
       <span class="badge badge-critical">&#9888; Golden Ticket Risk</span>
       <span class="badge badge-critical" style="margin-left:auto">Critical</span>
@@ -2023,14 +2023,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge badge-ok">&#10003; OK — {{.HygieneResult.KrbtgtPwdAgeDays}} days</span>
       {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No data</span>
       {{end}}{{end}}
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="The krbtgt account password hash signs all Kerberos tickets. If stolen (DCSync), attackers forge Golden Tickets valid for any user. Rotate every 180 days — must rotate TWICE to fully invalidate old tickets.">?</span>
     </div>
     <div class="exp-body">
     {{if .HygieneResult}}
     {{if .HygieneResult.KrbtgtAtRisk}}
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <span class="badge badge-critical">&#9888; Golden Ticket Risk</span>
-      <span style="color:#fc8181;font-size:0.9rem">krbtgt password last changed <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days ago</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
+      <span style="color:var(--text-sev-critical);font-size:0.9rem">krbtgt password last changed <strong>{{.HygieneResult.KrbtgtPwdAgeDays}} days ago</strong> ({{.HygieneResult.KrbtgtLastSet}})</span>
       <div style="width:100%;font-size:0.8rem;color:var(--text-muted);margin-top:4px">Recommendation: reset krbtgt password twice (interval &gt;10h) to invalidate all existing Kerberos tickets</div>
     </div>
     {{else if gt .HygieneResult.KrbtgtPwdAgeDays 0}}
@@ -2049,8 +2048,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
-      <span class="exp-title">Description Notes</span>
+      <span class="chevron">▼</span>
+      <span class="exp-title">Description Notes</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="AD objects whose description field contains keywords like 'password', 'pass', 'pwd', or 'secret'. Administrators often store credentials in descriptions — readable by any authenticated user.">?</span>
       {{if .HygieneResult.PasswordInDesc}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.PasswordInDesc}} objects</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
@@ -2081,7 +2080,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">Stale User Accounts <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(90+ days no logon)</span></span>
       {{if .HygieneResult.StaleUsers}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.StaleUsers}} accounts</span>
@@ -2097,9 +2096,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr>
         <td class="mono">{{.SAMAccountName}}</td>
         <td>{{.DisplayName}}</td>
-        <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+        <td class="mono" style="color:var(--text-sev-high)">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
         <td class="mono">{{.PasswordLastSet}}</td>
-        <td>{{if .AdminCount}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Yes</span>{{else}}&#8212;{{end}}</td>
+        <td>{{if .AdminCount}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       </tr>
       {{end}}
       </tbody>
@@ -2114,7 +2113,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">Stale Computers <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(45+ days no logon)</span></span>
       {{if .HygieneResult.StaleComputers}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.StaleComputers}} hosts</span>
@@ -2130,7 +2129,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr>
         <td class="mono">{{.SAMAccountName}}</td>
         <td>{{.OperatingSystem}}</td>
-        <td class="mono" style="color:#f6ad55">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+        <td class="mono" style="color:var(--text-sev-high)">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
         <td style="font-size:0.78rem;color:var(--text-muted)">{{.Domain}}</td>
       </tr>
       {{end}}
@@ -2146,8 +2145,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
-      <span class="exp-title">Computers Without LAPS</span>
+      <span class="chevron">▼</span>
+      <span class="exp-title">Computers Without LAPS</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Local Administrator Password Solution (LAPS) rotates local admin passwords per machine. Without it, the same local admin password often exists across all hosts — one compromise leads to mass lateral movement (pass-the-hash).">?</span>
       {{if gt .Summary.NoLAPSCount 0}}
       <span class="badge badge-medium" style="margin-left:auto">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} hosts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All managed</span>{{end}}
@@ -2175,12 +2174,50 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </div>
   {{end}}
 
+  <!-- LAPS ACL -->
+  {{if .LAPSACLResult}}{{if .LAPSACLResult.LAPSFound}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">LAPS Password Read Access</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Checks who has ReadProperty rights on ms-Mcs-AdmPwd (LAPS local admin password attribute) on each LAPS-enabled computer. Any non-privileged principal with this right can retrieve the local administrator password — equivalent to local admin access on that machine.">?</span>
+      {{if .LAPSACLResult.Findings}}
+      <span class="badge badge-high" style="margin-left:auto">{{len .LAPSACLResult.Findings}} finding(s)</span>
+      {{else}}
+      <span class="badge badge-ok" style="margin-left:auto">&#10003; No unexpected access</span>
+      {{end}}
+    </div>
+    <div class="exp-body">
+    {{if .LAPSACLResult.Findings}}
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">Non-privileged principals with read access to LAPS passwords. Each finding means the principal can retrieve the local Administrator password of that computer — use <code style="font-size:0.8rem;background:var(--bg-card);padding:1px 4px;border-radius:3px">Get-AdmPwdPassword</code> or <code style="font-size:0.8rem;background:var(--bg-card);padding:1px 4px;border-radius:3px">crackmapexec --laps</code>.</p>
+    <div class="table-wrap">
+    <table id="tbl-laps-acl">
+      <thead><tr><th>Principal</th><th>Type</th><th>Computer</th><th>Right</th><th>CVSS</th></tr></thead>
+      <tbody>
+      {{range .LAPSACLResult.Findings}}
+      <tr>
+        <td class="mono">{{.PrincipalName}}</td>
+        <td>{{.PrincipalType}}</td>
+        <td class="mono" style="color:var(--text-secondary)">{{.ComputerName}}</td>
+        <td><span class="badge badge-high">{{.Right}}</span></td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{else}}
+    <p style="color:var(--color-ok)">&#10003; No non-privileged principals have read access to LAPS passwords.</p>
+    {{end}}
+    </div>
+  </div>
+  {{end}}{{end}}
+
   <!-- PSO -->
   {{if .PSOResult}}{{if .PSOResult.PSOs}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
-      <span class="exp-title">Fine-Grained Password Policy (PSO)</span>
+      <span class="chevron">▼</span>
+      <span class="exp-title">Fine-Grained Password Policy (PSO)</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Password Settings Objects (PSOs) override the default domain password policy for specific users or groups. Weaker PSOs applied to service accounts are a common misconfiguration — lower complexity or longer max age increases offline cracking risk.">?</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .PSOResult.PSOs}} PSO(s)</span>
     </div>
     <div class="exp-body">
@@ -2211,18 +2248,18 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .ProtectedUsersResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">Protected Users Group</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
       {{if not .ProtectedUsersResult.ProtectedUsersExists}}
       <span class="badge badge-medium" style="margin-left:auto">Group not found</span>
       {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged not protected</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All protected</span>{{end}}
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
     </div>
     <div class="exp-body">
     {{if not .ProtectedUsersResult.ProtectedUsersExists}}
-    <p style="color:#fc8181;font-size:0.85rem">&#9888; Protected Users group not found — may not exist in this domain.</p>
+    <p style="color:var(--text-sev-critical);font-size:0.85rem">&#9888; Protected Users group not found — may not exist in this domain.</p>
     {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
     <div style="color:var(--text-secondary);font-size:0.8rem;margin-bottom:10px">NTLM auth, RC4 encryption, and unconstrained delegation are not blocked for these accounts.</div>
     <div class="table-wrap">
@@ -2250,18 +2287,18 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .AdminSDHolderResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">AdminSDHolder</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
       {{if .AdminSDHolderResult.CustomACEs}}
       <span class="badge badge-critical" style="margin-left:auto">{{len .AdminSDHolderResult.CustomACEs}} backdoor ACE(s)</span>
       {{else if .AdminSDHolderResult.OrphanedAdminCount}}
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned adminCount</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
     </div>
     <div class="exp-body">
     {{if .AdminSDHolderResult.CustomACEs}}
-    <div style="color:#fc8181;font-size:0.8rem;margin-bottom:10px">&#9888; These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
+    <div style="color:var(--text-sev-critical);font-size:0.8rem;margin-bottom:10px">&#9888; These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
     <div class="table-wrap" style="margin-bottom:12px">
     <table>
       <thead><tr><th>Principal</th><th>SID</th><th>Rights</th><th>CVSS</th></tr></thead>
@@ -2271,7 +2308,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <td class="mono">{{.PrincipalName}}</td>
         <td class="mono" style="font-size:0.75rem;color:var(--text-muted)">{{.PrincipalSID}}</td>
         <td style="color:var(--color-warn);font-size:0.82rem">{{joinSPNs .Rights}}</td>
-        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
       </tr>
       {{end}}
       </tbody>
@@ -2319,8 +2356,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult.DefaultPolicy}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
-      <span class="exp-title">Default Domain Password Policy</span>
+      <span class="chevron">▼</span>
+      <span class="exp-title">Default Domain Password Policy</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="The domain-wide password policy applied to all accounts without a PSO. Minimum length &lt; 8, no complexity requirement, or no lockout threshold are critical weaknesses enabling password spraying or brute-force attacks.">?</span>
       {{$pp := .GPOResult.DefaultPolicy}}
       {{if or (lt $pp.MinLength 8) (not $pp.Complexity) (eq $pp.LockoutThreshold 0)}}
       <span class="badge badge-critical" style="margin-left:auto">Weak</span>
@@ -2357,7 +2394,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult.GPOFindings}}
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">Dangerous GPO Findings {{mitreBadges "gpo_abuse"}}</span>
       <span class="badge badge-high" style="margin-left:auto">{{len .GPOResult.GPOFindings}} findings</span>
     </div>
@@ -2387,7 +2424,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult}}{{if .GPOResult.GPOACLFindings}}
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">GPO Write ACL Findings
         <span class="help-icon" role="tooltip" tabindex="0" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
       </span>
@@ -2402,7 +2439,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr>
         <td class="mono">{{.GPOName}}</td>
         <td><span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
-        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
         <td class="mono">{{.PrincipalName}}</td>
         <td style="color:var(--color-warn);font-size:0.82rem">{{joinSPNs .Rights}}</td>
         <td style="font-size:0.78rem;color:var(--text-secondary)">{{joinSPNs .GPOLinkedTo}}</td>
@@ -2436,8 +2473,8 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- CAs -->
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
-      <span class="exp-title">Certificate Authorities</span>
+      <span class="chevron">▼</span>
+      <span class="exp-title">Certificate Authorities</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Active Directory Certificate Services (ADCS) — Enterprise CAs issue certificates used for authentication. Columns show ESC6 (EDITF_ATTRIBUTESUBJECTALTNAME2 flag) and ESC8 (HTTP enrollment endpoint) — both allow privilege escalation to Domain Admin.">?</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{if .ADCSResult.CAs}}{{len .ADCSResult.CAs}} CA(s){{else}}No CAs{{end}}</span>
     </div>
     <div class="exp-body">
@@ -2465,10 +2502,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <div class="path-header" style="flex-wrap:wrap;gap:8px">
         <span class="badge badge-critical">Critical</span>
         <span class="badge badge-critical" style="font-family:monospace">ESC6</span>
-        <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+        <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
         <span class="mono" style="color:var(--text-main)">{{.CAName}}</span>
       </div>
-      <div style="padding:8px 16px">
+      <div style="padding:8px 16px 16px">
         <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:8px">{{.Details}}</div>
         <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
         <div class="acc-body">
@@ -2488,7 +2525,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- Template Findings -->
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>
+      <span class="chevron">▼</span>
       <span class="exp-title">Vulnerable Templates {{mitreBadges "adcs"}}</span>
       {{if .ADCSResult.TemplateFindings}}
       <span class="badge badge-critical" style="margin-left:auto">{{.Summary.ADCSTemplateCount}} template(s)</span>
@@ -2502,12 +2539,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <div class="path-header" style="flex-wrap:wrap;gap:8px">
         <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else}}badge-medium{{end}}">{{.Severity}}</span>
         {{range .VulnTypes}}<span class="badge {{if eq $tmplSev "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
-        <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+        <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
         <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
         {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
         {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
       </div>
-      <div style="padding:0 16px">
+      <div style="padding:0 16px 16px">
         <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
         <div class="acc-body">
           <div class="acc-label">Exploit ({{range $i,$v := .VulnTypes}}{{if $i}}, {{end}}{{$v}}{{end}})</div>
@@ -2561,7 +2598,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <td>{{.TargetType}}</td>
         <td><span class="badge badge-medium" style="font-family:monospace;font-size:0.75rem">{{.Right}}</span></td>
         <td><span class="badge badge-critical">{{.Severity}}</span></td>
-        <td><span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span></td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
       </tr>
       {{end}}
       </tbody>
@@ -2572,7 +2609,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <span class="badge badge-critical">Shadow Credentials</span>
         <span style="color:var(--text-main);font-weight:600">{{len .ShadowCredentialsResult.Findings}} abusable write ACE(s) on msDS-KeyCredentialLink</span>
       </div>
-      <div style="padding:4px 16px 0">
+      <div style="padding:4px 16px 16px">
         <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
         <div class="acc-body">
           <div class="acc-label">Exploit</div>
@@ -2625,7 +2662,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "Critical"}}badge-critical{{else if eq .Severity "High"}}badge-high{{else}}badge-medium{{end}}">{{.Severity}}</span>
-      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+      <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
       <span style="margin-left:4px">{{.Title}}</span>
     </div>
     <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
@@ -2667,7 +2704,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "High"}}badge-high{{else if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
-      <span class="cvss-score" title="CVSS 3.1 Base Score">{{printf "%.1f" .CVSS}}</span>
+      <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
       <span style="margin-left:4px">{{.Title}}</span>
     </div>
     <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
@@ -2761,6 +2798,66 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
 </div>
 
+<!-- SYSVOL AUDIT TAB -->
+<div id="tab-sysvol" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-sysvol" tabindex="0" aria-hidden="true">
+  <h2 class="section-title">SYSVOL Audit <span class="help-icon" role="tooltip" tabindex="0" data-tip="Scans the SYSVOL share for non-standard files without reading their content. Flags: GPP Preferences XML (potential cPassword, MS14-025), executables, archives, and script files outside standard Scripts\\ directories.">?</span></h2>
+
+  {{if .SYSVOLResult}}
+  {{if .SYSVOLResult.Error}}
+  <p style="color:var(--text-muted)">SYSVOL not accessible — {{.SYSVOLResult.Error}}</p>
+  {{else if not .SYSVOLResult.Scanned}}
+  <p style="color:var(--text-muted)">SYSVOL scan was not performed.</p>
+  {{else if not .SYSVOLResult.Findings}}
+  <p style="color:var(--color-ok)">✓ No non-standard files found in SYSVOL.</p>
+  {{else}}
+  <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
+    Found {{len .SYSVOLResult.Findings}} non-standard file(s). File contents were not read — inspect manually for credentials.
+  </p>
+  <div class="table-wrap">
+  <table id="tbl-sysvol">
+    <thead>
+      <tr>
+        <th>Path</th>
+        <th>Type</th>
+        <th>Size</th>
+        <th>Severity</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody>
+    {{range .SYSVOLResult.Findings}}
+    <tr>
+      <td class="mono" style="font-size:0.75rem;word-break:break-all">{{.Path}}</td>
+      <td><span class="badge {{if eq .Severity "High"}}badge-high{{else}}badge-medium{{end}}" style="white-space:nowrap">{{.FileType}}</span></td>
+      <td style="color:var(--text-muted)">{{.Size}} B</td>
+      <td><span class="badge {{if eq .Severity "High"}}badge-high{{else}}badge-medium{{end}}">{{.Severity}}</span></td>
+      <td style="color:var(--text-secondary);font-size:0.82rem">{{.Detail}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="exp-section" style="margin-top:20px">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">Remediation</span>
+    </div>
+    <div class="exp-body" style="padding:16px">
+      <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:8px">Check GPP Preferences XML files for cPassword:</p>
+      <pre style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px;font-size:0.78rem;color:var(--text-main);overflow-x:auto">Get-GPPPassword  # PowerSploit
+python3 gpp-decrypt.py &lt;cpassword&gt;
+findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
+      <p style="color:var(--text-secondary);font-size:0.85rem;margin:12px 0 8px">Check scripts for hardcoded credentials:</p>
+      <pre style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px;font-size:0.78rem;color:var(--text-main);overflow-x:auto">findstr /S /I "password pass pwd secret" \\{{.SYSVOLResult.Domain}}\SYSVOL\*.ps1 *.bat *.cmd *.vbs</pre>
+    </div>
+  </div>
+  {{end}}
+  {{else}}
+  <p style="color:var(--text-muted)">SYSVOL scan not available.</p>
+  {{end}}
+</div>
+
 </div><!-- /content -->
 
 <script>
@@ -2774,17 +2871,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     {
       label: 'Critical',
       color: '#e53e3e',
-      count: {{.Summary.CriticalCount}} + {{.Summary.DangerousACLCount}} + {{.Summary.ADCSCriticalCount}} + {{.Summary.DCSyncCount}}
+      count: {{.TotalCritical}}
     },
     {
       label: 'High',
       color: '#dd6b20',
-      count: {{.Summary.KerberoastableCount}} + {{.Summary.ASREPCount}} + {{.Summary.DelegationCount}} + {{.Summary.ShadowCredCount}}
+      count: {{.TotalHigh}}
     },
     {
       label: 'Medium',
       color: '#d69e2e',
-      count: {{.Summary.PasswordNeverExpires}} + {{.Summary.AdminCount}} + {{.Summary.StaleUsersCount}} + {{.Summary.AuditFindingCount}}
+      count: {{.TotalMedium}}
     },
     {
       label: 'Info',
@@ -2932,7 +3029,7 @@ function initGraph() {
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', (d, i) => i === 1 ? '#fc8181' : '#4a5568');
+    .attr('fill', (d, i) => i === 1 ? '#e53e3e' : '#4a5568');
 
   const g = svg.append('g');
 
@@ -2953,7 +3050,7 @@ function initGraph() {
     .data(data.edges).enter().append('line')
     .attr('stroke', d => {
       const tgt = data.nodes.find(n => n.id === (d.target.id || d.target));
-      return (tgt && tgt.adminCount) ? '#fc8181' : '#4a5568';
+      return (tgt && tgt.adminCount) ? '#e53e3e' : '#4a5568';
     })
     .attr('stroke-opacity', 0.7)
     .attr('stroke-width', 2)
@@ -2982,8 +3079,8 @@ function initGraph() {
         '<div style="font-weight:600;color:var(--text-main);margin-bottom:4px">' + d.label + '</div>' +
         '<div style="color:var(--text-muted);font-size:0.75rem;word-break:break-all">' + d.id + '</div>' +
         '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
-        (d.adminCount ? '<span style="background:#742a2a;color:#fc8181;padding:2px 6px;border-radius:3px;font-size:11px">Admin</span>' : '') +
-        (d.kerberoastable ? '<span style="background:#744210;color:#f6ad55;padding:2px 6px;border-radius:3px;font-size:11px">Kerberoastable</span>' : '') +
+        (d.adminCount ? '<span style="background:#742a2a;color:#e53e3e;padding:2px 6px;border-radius:3px;font-size:11px">Admin</span>' : '') +
+        (d.kerberoastable ? '<span style="background:#744210;color:#dd6b20;padding:2px 6px;border-radius:3px;font-size:11px">Kerberoastable</span>' : '') +
         (d.asrepRoastable ? '<span style="background:#742a2a;color:#feb2b2;padding:2px 6px;border-radius:3px;font-size:11px">AS-REP</span>' : '') +
         '<span style="background:var(--bg-hover);color:var(--text-secondary);padding:2px 6px;border-radius:3px;font-size:11px">' + d.type + '</span>' +
         '<span style="background:var(--bg-hover);color:var(--text-secondary);padding:2px 6px;border-radius:3px;font-size:11px">' + (pathCount[d.id]||0) + ' edge(s)</span>' +
@@ -3005,7 +3102,7 @@ function initGraph() {
   node.append('circle')
     .attr('r', d => nodeRadius(d, pathCount, maxCount))
     .attr('fill', d => nodeColor(d))
-    .attr('stroke', d => d.asrepRoastable ? '#fc8181' : (d.adminCount ? '#feb2b2' : getComputedStyle(document.documentElement).getPropertyValue('--border').trim()))
+    .attr('stroke', d => d.asrepRoastable ? '#e53e3e' : (d.adminCount ? '#e53e3e' : getComputedStyle(document.documentElement).getPropertyValue('--border').trim()))
     .attr('stroke-width', d => d.adminCount || d.asrepRoastable ? 3 : 1.5)
     .attr('cursor', 'pointer');
 
@@ -3035,8 +3132,8 @@ function nodeRadius(d, pathCount, maxCount) {
 }
 
 function nodeColor(d) {
-  if (d.adminCount)     return '#fc8181';
-  if (d.kerberoastable) return '#f6ad55';
+  if (d.adminCount)     return '#e53e3e';
+  if (d.kerberoastable) return '#dd6b20';
   if (d.asrepRoastable) return '#feb2b2';
   if (d.type === 'group')    return '#b794f4';
   if (d.type === 'computer') return '#90cdf4';
@@ -3298,7 +3395,7 @@ function gsHighlight(query) {
       if (expHeader && expHeader.classList.contains('exp-header')) {
         expBody.style.display = '';
         const ch = expHeader.querySelector('.chevron');
-        if (ch) ch.innerHTML = '&#9660;';
+        if (ch) ch.textContent = '▼';
       }
     }
   });
@@ -3310,7 +3407,7 @@ function gsHighlight(query) {
     if (body.querySelector('.gs-match') && body.style.display === 'none') {
       body.style.display = '';
       const ch = groupHeader.querySelector('.group-chevron');
-      if (ch) ch.innerHTML = '&#9660;';
+      if (ch) ch.textContent = '▼';
     }
   });
 }
@@ -3351,6 +3448,7 @@ function clearGlobalSearch() {
 
 // MITRE badge HTML per ACL right
 const _aclMitre = {
+  'DCSync':              '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1003/006/" target="_blank" title="OS Credential Dumping: DCSync">T1003.006</a>',
   'GenericAll':          '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
   'WriteDACL':           '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
   'WriteOwner':          '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1222/" target="_blank" title="Permission Modification">T1222</a><a class="mitre-badge" href="https://attack.mitre.org/techniques/T1484/" target="_blank" title="Domain Policy Modification">T1484</a>',
@@ -3392,7 +3490,7 @@ function buildGroupedACL() {
   order.forEach(function(right) {
     const g     = groups[right];
     const count = g.cards.length;
-    const sevClass = g.severity === 'Critical' ? 'badge-critical' : g.severity === 'High' ? 'badge-medium' : 'badge-ok';
+    const sevClass = g.severity === 'Critical' ? 'badge-critical' : g.severity === 'High' ? 'badge-high' : g.severity === 'Medium' ? 'badge-medium' : 'badge-ok';
     const mitreBadges = _aclMitre[right] || '';
 
     const section = document.createElement('div');
@@ -3402,9 +3500,8 @@ function buildGroupedACL() {
     header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-grouped);border-bottom:1px solid var(--border);cursor:pointer;user-select:none';
     header.dataset.right = right;
     header.innerHTML =
-      '<span class="chevron" style="color:var(--text-muted);font-size:12px;min-width:10px">&#9660;</span>' +
+      '<span class="chevron">▼</span>' +
       '<span class="badge badge-critical" style="font-family:monospace">' + right + '</span>' +
-      '<span style="color:var(--text-main);font-weight:600">' + count + ' finding' + (count !== 1 ? 's' : '') + '</span>' +
       mitreBadges +
       '<span class="badge ' + sevClass + '" style="margin-left:auto">' + g.severity + '</span>';
 
@@ -3434,7 +3531,7 @@ function buildGroupedACL() {
     if (collapseByDefault) {
       body.style.display = 'none';
       const ch = header.querySelector('.chevron');
-      if (ch) ch.innerHTML = '&#9658;';
+      if (ch) ch.textContent = '▶';
     }
 
     const chevron = header.querySelector('.chevron');
@@ -3444,7 +3541,7 @@ function buildGroupedACL() {
       var open = body.style.display !== 'none';
       body.style.display = open ? 'none' : '';
       const ch = header.querySelector('.group-chevron');
-      if (ch) ch.innerHTML = open ? '&#9658;' : '&#9660;';
+      if (ch) ch.textContent = open ? '▶' : '▼';
     };
 
     section.appendChild(header);
@@ -3458,27 +3555,30 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── Collapsible exposure sections ────────────────────────────
+document.addEventListener('click', function(e) {
+  if (e.target.classList.contains('help-icon')) e.stopPropagation();
+}, true);
+
 function toggleExpSection(header) {
   const body = header.nextElementSibling;
   const open = body.style.display !== 'none';
   body.style.display = open ? 'none' : '';
-  header.querySelector('.chevron').innerHTML = open ? '&#9658;' : '&#9660;';
+  const ch = header.querySelector('.chevron');
+  if (ch) ch.textContent = open ? '▶' : '▼';
 }
 
 function expandAllIn(sel) {
-  // Exposure static sections
   document.querySelectorAll(sel + ' .exp-body').forEach(function(b) { b.style.display = ''; });
-  document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.innerHTML = '&#9660;'; });
-  // ACL dynamically built groups
+  document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.textContent = '▼'; });
   document.querySelectorAll(sel + ' .group-body').forEach(function(b) { b.style.display = ''; });
-  document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.innerHTML = '&#9660;'; });
+  document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.textContent = '▼'; });
 }
 
 function collapseAllIn(sel) {
   document.querySelectorAll(sel + ' .exp-body').forEach(function(b) { b.style.display = 'none'; });
-  document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.innerHTML = '&#9658;'; });
+  document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.textContent = '▶'; });
   document.querySelectorAll(sel + ' .group-body').forEach(function(b) { b.style.display = 'none'; });
-  document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.innerHTML = '&#9658;'; });
+  document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.textContent = '▶'; });
 }
 
 // ── Row limit (large tables) ──────────────────────────────────
@@ -3519,6 +3619,43 @@ function initTheme() {
   if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
 }
 initTheme();
+
+// ── Smart help-icon tooltip ───────────────────────────────────
+(function() {
+  var tip = document.createElement('div');
+  tip.id = 'help-tip';
+  document.body.appendChild(tip);
+  var active = null;
+  function tipTarget(t) {
+    if (!t.closest) return null;
+    return t.closest('.help-icon') || t.closest('.cvss-score');
+  }
+  function show(el) {
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    tip.textContent = text;
+    tip.style.display = 'block';
+    var r = el.getBoundingClientRect();
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    var top = r.top - th - 8;
+    var left = r.left + r.width / 2 - tw / 2;
+    if (left < 8) left = 8;
+    if (left + tw > window.innerWidth - 8) left = window.innerWidth - tw - 8;
+    if (top < 8) top = r.bottom + 8;
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+    active = el;
+  }
+  function hide() { tip.style.display = 'none'; active = null; }
+  document.addEventListener('mouseover', function(e) {
+    var el = tipTarget(e.target);
+    if (el && el !== active) show(el);
+  });
+  document.addEventListener('mouseout', function(e) {
+    if (tipTarget(e.target)) hide();
+  });
+  document.addEventListener('scroll', hide, true);
+})();
 
 // ── Column resize & reorder ────────────────────────────────────
 function initTblControls(tbl) {
@@ -3609,16 +3746,45 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ── Copy exploit command to clipboard ─────────────────────────
+function _copyText(text, onDone) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(onDone).catch(function() { _copyFallback(text, onDone); });
+  } else {
+    _copyFallback(text, onDone);
+  }
+}
+function _copyFallback(text, onDone) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:absolute;left:-9999px;top:0;width:2px;height:2px';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select(); ta.setSelectionRange(0, 99999);
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  if (onDone) onDone();
+}
+
+function copyCVSS(el) {
+  var vec = el.dataset.vector;
+  if (!vec) return;
+  var full = 'CVSS:3.1/' + vec;
+  _copyText(full, function() {
+    el.setAttribute('data-copied', '');
+    setTimeout(function() { el.removeAttribute('data-copied'); }, 1800);
+  });
+}
+
 function copyCmd(btn) {
   const cmd = btn.previousElementSibling.textContent;
-  navigator.clipboard.writeText(cmd).then(function() {
+  _copyText(cmd, function() {
     btn.classList.add('copied');
     btn.textContent = '✓';
     setTimeout(function() {
       btn.classList.remove('copied');
       btn.textContent = '📋';
     }, 1500);
-  }).catch(function() { btn.textContent = '✗'; });
+  });
 }
 </script>
 

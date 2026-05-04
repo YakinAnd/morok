@@ -43,6 +43,8 @@ func main() {
 		buildLDAPSecurity(),
 		buildAudit(),
 		buildSMBSigning(),
+		buildSYSVOL(),
+		buildLAPSACL(),
 		"Password",
 	)
 	if err != nil {
@@ -448,7 +450,7 @@ func buildKerberos() *analysis.KerberosResult {
 				SAMAccountName: "svc_sql", DN: "CN=svc_sql,CN=Users," + baseDN,
 				SPNs: []string{"MSSQLSvc/kingslanding.sevenkingdoms.local:1433", "MSSQLSvc/kingslanding:1433"},
 				AdminCount: false, PasswordLastSet: "2022-07-01 09:00:00",
-				LastLogon: "2026-04-29 04:00:00", CVSS: 8.8, Severity: "High",
+				LastLogon: "2026-04-29 04:00:00", CVSS: 8.8, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H", Severity: "High",
 			},
 			{
 				SAMAccountName: "svc_backup", DN: "CN=svc_backup,CN=Users," + baseDN,
@@ -456,20 +458,20 @@ func buildKerberos() *analysis.KerberosResult {
 				AdminCount: false, PasswordLastSet: "2021-03-10 08:00:00",
 				LastLogon: "2026-04-28 23:00:11",
 				Description: "backup service - do not disable",
-				CVSS: 9.1, Severity: "Critical",
+				CVSS: 9.1, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H", Severity: "Critical",
 			},
 			{
 				SAMAccountName: "jsnow", DN: "CN=jsnow,CN=Users," + baseDN,
 				SPNs: []string{"HTTP/winterfell.sevenkingdoms.local", "HTTP/winterfell"},
 				AdminCount: false, PasswordLastSet: "2025-06-12 14:22:00",
-				LastLogon: "2026-04-29 07:44:11", CVSS: 7.5, Severity: "High",
+				LastLogon: "2026-04-29 07:44:11", CVSS: 7.5, CVSSVector: "AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H", Severity: "High",
 			},
 		},
 		ASREPAccounts: []analysis.ASREPAccount{
 			{
 				SAMAccountName: "tyrion", DN: "CN=tyrion,CN=Users," + baseDN,
 				AdminCount: false, PasswordLastSet: "2025-09-14 10:00:00",
-				LastLogon: "2026-04-26 11:22:00", CVSS: 7.5, Severity: "High",
+				LastLogon: "2026-04-26 11:22:00", CVSS: 7.5, CVSSVector: "AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:H", Severity: "High",
 			},
 		},
 		AnalyzedAt: time.Now(),
@@ -485,35 +487,35 @@ func buildACL() *analysis.ACLResult {
 				PrincipalName: "Night's Watch", PrincipalType: "group",
 				TargetDN: "CN=Domain Admins,CN=Users," + baseDN,
 				TargetName: "Domain Admins", TargetType: "group",
-				Right: analysis.RightGenericAll, Severity: "Critical", CVSS: 9.9,
+				Right: analysis.RightGenericAll, Severity: "Critical", CVSS: 9.9, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
 			},
 			{
 				PrincipalDN: "CN=tyrion,CN=Users," + baseDN,
 				PrincipalName: "tyrion", PrincipalType: "user",
 				TargetDN: "CN=Small Council,CN=Users," + baseDN,
 				TargetName: "Small Council", TargetType: "group",
-				Right: analysis.RightWriteDACL, Severity: "Critical", CVSS: 9.1,
+				Right: analysis.RightWriteDACL, Severity: "Critical", CVSS: 9.1, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
 			},
 			{
 				PrincipalDN: "CN=cersei,CN=Users," + baseDN,
 				PrincipalName: "cersei", PrincipalType: "user",
 				TargetDN: "CN=jsnow,CN=Users," + baseDN,
 				TargetName: "jsnow", TargetType: "user",
-				Right: analysis.RightForceChangePassword, Severity: "High", CVSS: 8.1,
+				Right: analysis.RightForceChangePassword, Severity: "High", CVSS: 8.1, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
 			},
 			{
 				PrincipalDN: "CN=Small Council,CN=Users," + baseDN,
 				PrincipalName: "Small Council", PrincipalType: "group",
 				TargetDN: "CN=Remote Desktop Users,CN=Builtin," + baseDN,
 				TargetName: "Remote Desktop Users", TargetType: "group",
-				Right: analysis.RightAddMember, Severity: "High", CVSS: 8.0,
+				Right: analysis.RightAddMember, Severity: "High", CVSS: 8.0, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
 			},
 		},
 		DCSyncFindings: []analysis.DCSyncFinding{
 			{
 				PrincipalDN:   "CN=cersei,CN=Users," + baseDN,
 				PrincipalName: "cersei", PrincipalType: "user",
-				Severity: "Critical", CVSS: 10.0,
+				Severity: "Critical", CVSS: 10.0, CVSSVector: "AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H",
 			},
 		},
 	}
@@ -529,7 +531,7 @@ func buildDelegation() *analysis.DelegationResult {
 				ObjectType: "computer", DelegationType: analysis.DelegationUnconstrained,
 				AllowedServices: []string{}, IsHighRisk: true,
 				RiskReason: "Unconstrained delegation on DC — any user authenticating triggers TGT cache exposure.",
-				Severity: "Critical", CVSS: 9.0,
+				Severity: "Critical", CVSS: 9.0, CVSSVector: "AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:H",
 			},
 			{
 				SAMAccountName: "svc_sql",
@@ -539,7 +541,7 @@ func buildDelegation() *analysis.DelegationResult {
 				AllowedTo:       []string{"REDKEEP$"},
 				IsHighRisk: false,
 				RiskReason: "Constrained delegation permits service impersonation to REDKEEP SQL.",
-				Severity: "Medium", CVSS: 6.5,
+				Severity: "Medium", CVSS: 6.5, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N",
 			},
 		},
 	}
@@ -566,7 +568,7 @@ func buildGPO() *analysis.GPOResult {
 						PrincipalName: "Night's Watch", PrincipalSID: "S-1-5-21-3850359155-1265902998-2437639109-1200",
 						Rights:    []string{"GpoApply"},
 						GPOLinkedTo: []string{"OU=Workstations," + baseDN},
-						Severity:  "High", CVSS: 7.8,
+						Severity:  "High", CVSS: 7.8, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
 					},
 				},
 			},
@@ -647,7 +649,7 @@ func buildADCS() *analysis.ADCSResult {
 				EnrollableBy:    []string{"Domain Users"},
 				AllowsSANInject: true, AuthEnabled: true,
 				EKUs:     []string{"Client Authentication"},
-				Severity: "Critical", CVSS: 9.8,
+				Severity: "Critical", CVSS: 9.8, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
 			},
 			{
 				TemplateName: "WebServer-ESC3", CAName: "SEVENKINGDOMS-CA",
@@ -655,7 +657,7 @@ func buildADCS() *analysis.ADCSResult {
 				EnrollableBy: []string{"Night's Watch"},
 				AuthEnabled:  true,
 				EKUs:         []string{"Certificate Request Agent"},
-				Severity:     "High", CVSS: 8.1,
+				Severity:     "High", CVSS: 8.1, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
 			},
 		},
 		CAFindings: []analysis.CAFinding{
@@ -664,7 +666,7 @@ func buildADCS() *analysis.ADCSResult {
 				CADN:      "CN=SEVENKINGDOMS-CA,CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration," + baseDN,
 				VulnTypes: []analysis.ADCSVulnType{analysis.ESC8},
 				WebEnroll: true, Details: "HTTP enrollment endpoint exposed without HTTPS",
-				Severity: "High", CVSS: 8.0,
+				Severity: "High", CVSS: 8.0, CVSSVector: "AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N",
 			},
 		},
 	}
@@ -691,7 +693,7 @@ func buildAdminSDHolder() *analysis.AdminSDHolderResult {
 				PrincipalName: "Night's Watch",
 				PrincipalSID:  "S-1-5-21-3850359155-1265902998-2437639109-1200",
 				Rights:        []string{"GenericAll"},
-				Severity:      "Critical", CVSS: 9.9,
+				Severity:      "Critical", CVSS: 9.9, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
 			},
 		},
 	}
@@ -723,7 +725,7 @@ func buildTrusts() *analysis.TrustResult {
 				FSPDN:          "CN=S-1-5-21-1111111111-2222222222-3333333333-1104,CN=ForeignSecurityPrincipals," + baseDN,
 				ExternalSID:    "S-1-5-21-1111111111-2222222222-3333333333-1104",
 				MemberOfGroups: []string{"Backup Operators"},
-				Severity:       "High", CVSS: 8.0,
+				Severity:       "High", CVSS: 8.0, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
 			},
 		},
 	}
@@ -738,7 +740,7 @@ func buildShadowCreds() *analysis.ShadowCredentialsResult {
 				PrincipalDN: "CN=Night's Watch,CN=Users," + baseDN,
 				TargetName: "KINGSLANDING$", TargetType: "computer",
 				TargetDN: "CN=KINGSLANDING,OU=Domain Controllers," + baseDN,
-				Right: "WriteProperty(msDS-KeyCredentialLink)", Severity: "Critical",
+				Right: "WriteProperty(msDS-KeyCredentialLink)", Severity: "Critical", CVSS: 9.0, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N",
 			},
 		},
 	}
@@ -756,7 +758,7 @@ func buildLDAPSecurity() *analysis.LDAPSecurityResult {
 			{
 				Title:    "LDAP signing not enforced",
 				Detail:   "Domain controller does not require LDAP signing. Allows relay attacks (LDAP relay via NTLM coercion).",
-				Severity: "High", CVSS: 8.1,
+				Severity: "High", CVSS: 8.1, CVSSVector: "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
 			},
 		},
 	}
@@ -788,8 +790,81 @@ func buildSMBSigning() *analysis.SMBSigningResult {
 		Host:      "kingslanding.sevenkingdoms.local",
 		Reachable: true,
 		Findings: []analysis.SMBSigningFinding{
-			{Title: "SMB signing not required on CASTLEBLACK", Detail: "castleblack.sevenkingdoms.local (192.168.56.22) — signing not required, relay attack possible.", Severity: "High", CVSS: 8.1},
-			{Title: "SMB signing not required on DRAGONSTONE", Detail: "dragonstone.sevenkingdoms.local (192.168.56.25) — signing not required.", Severity: "High", CVSS: 8.1},
+			{Title: "SMB signing not required on CASTLEBLACK", Detail: "castleblack.sevenkingdoms.local (192.168.56.22) — signing not required, relay attack possible.", Severity: "High", CVSS: 8.1, CVSSVector: "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"},
+			{Title: "SMB signing not required on DRAGONSTONE", Detail: "dragonstone.sevenkingdoms.local (192.168.56.25) — signing not required.", Severity: "High", CVSS: 8.1, CVSSVector: "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"},
+		},
+	}
+}
+
+func buildSYSVOL() *analysis.SYSVOLResult {
+	return &analysis.SYSVOLResult{
+		Domain:  "sevenkingdoms.local",
+		Scanned: true,
+		Findings: []analysis.SYSVOLFinding{
+			{
+				Path:     `sevenkingdoms.local\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\Machine\Preferences\Groups\Groups.xml`,
+				FileType: analysis.SYSVOLFileGPPXML,
+				Size:     1024,
+				Detail:   "GPP Preferences XML — may contain cPassword (AES-256 key is public, MS14-025).",
+				Severity: "High",
+			},
+			{
+				Path:     `sevenkingdoms.local\Policies\{6AC1786C-016F-11D2-945F-00C04fB984F9}\Machine\Preferences\Services\Services.xml`,
+				FileType: analysis.SYSVOLFileGPPXML,
+				Size:     512,
+				Detail:   "GPP Preferences XML — may contain cPassword (AES-256 key is public, MS14-025).",
+				Severity: "High",
+			},
+			{
+				Path:     `sevenkingdoms.local\Policies\{A1B2C3D4-0000-0000-0000-000000000001}\Machine\deploy.ps1`,
+				FileType: analysis.SYSVOLFileScript,
+				Size:     2048,
+				Detail:   "Script file outside standard Scripts\\ subdirectory — may contain hardcoded credentials.",
+				Severity: "Medium",
+			},
+		},
+	}
+}
+
+func buildLAPSACL() *analysis.LAPSACLResult {
+	return &analysis.LAPSACLResult{
+		Domain:       "sevenkingdoms.local",
+		LAPSAttrGUID: "f0c8c3d5-3b6e-4f97-9b6d-0e8a4d8b4c2c",
+		LAPSFound:    true,
+		Findings: []analysis.LAPSACLFinding{
+			{
+				PrincipalName: "jorah.mormont",
+				PrincipalType: "user",
+				PrincipalDN:   "CN=jorah.mormont,CN=Users,DC=sevenkingdoms,DC=local",
+				ComputerName:  "KINGSLANDING$",
+				ComputerDN:    "CN=KINGSLANDING,OU=Domain Controllers,DC=sevenkingdoms,DC=local",
+				Right:         "ReadProperty(ms-Mcs-AdmPwd)",
+				CVSS:          7.7,
+				CVSSVector:    "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+				Severity:      "High",
+			},
+			{
+				PrincipalName: "Spys",
+				PrincipalType: "group",
+				PrincipalDN:   "CN=Spys,CN=Users,DC=sevenkingdoms,DC=local",
+				ComputerName:  "CASTLEBLACK$",
+				ComputerDN:    "CN=CASTLEBLACK,OU=Servers,DC=north,DC=sevenkingdoms,DC=local",
+				Right:         "ReadProperty(ms-Mcs-AdmPwd)",
+				CVSS:          7.7,
+				CVSSVector:    "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+				Severity:      "High",
+			},
+			{
+				PrincipalName: "samwell.tarly",
+				PrincipalType: "user",
+				PrincipalDN:   "CN=samwell.tarly,CN=Users,DC=north,DC=sevenkingdoms,DC=local",
+				ComputerName:  "CASTLEBLACK$",
+				ComputerDN:    "CN=CASTLEBLACK,OU=Servers,DC=north,DC=sevenkingdoms,DC=local",
+				Right:         "GenericAll",
+				CVSS:          7.7,
+				CVSSVector:    "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+				Severity:      "High",
+			},
 		},
 	}
 }
