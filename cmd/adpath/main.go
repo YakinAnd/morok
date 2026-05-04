@@ -332,6 +332,8 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	var psoResult *analysis.PSOResult
 	var adcsResult *analysis.ADCSResult
 	var shadowResult *analysis.ShadowCredentialsResult
+	var sysvolResult *analysis.SYSVOLResult
+	var lapsACLResult *analysis.LAPSACLResult
 
 	if !stealth {
 		aclResult, _ = analysis.AnalyzeACL(client, result)
@@ -343,6 +345,8 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		psoResult, _ = analysis.AnalyzePSO(client)
 		adcsResult, _ = analysis.AnalyzeADCS(client)
 		shadowResult, _ = analysis.AnalyzeShadowCredentials(client, result)
+		sysvolResult = analysis.ScanSYSVOL(client)
+		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
 	// ── Variant A terminal output ─────────────────────────────
@@ -360,7 +364,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		case username == "":
 			authMethod = "Anonymous"
 		}
-		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, authMethod); err != nil {
+		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, sysvolResult, lapsACLResult, authMethod); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
 		fmt.Println()
