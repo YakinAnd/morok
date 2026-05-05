@@ -274,7 +274,9 @@ func connectAndBind() (*adldap.Client, error) {
 
 func runEnum(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
-	printBanner()
+	if !quietMode {
+		printBanner()
+	}
 
 	client, err := connectAndBind()
 	if err != nil {
@@ -400,9 +402,11 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, sysvolResult, lapsACLResult, authMethod); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
-		fmt.Println()
-		color.Cyan("  REPORT")
-		color.White("  %-28s %s", "saved to", outPath)
+		if !quietMode {
+			fmt.Println()
+			color.Cyan("  REPORT")
+			color.White("  %-28s %s", "saved to", outPath)
+		}
 	}
 
 	// ── JSON export ───────────────────────────────────────────
@@ -439,6 +443,34 @@ var (
 	medPrefix  = color.New(color.FgYellow).SprintFunc()
 	dimText    = color.New(color.Faint).SprintFunc()
 )
+
+// truncateTargets joins targets, breaking only on item boundaries and appending "+N more"
+// when the combined string would exceed maxLen. Never cuts mid-word.
+func truncateTargets(targets []string, maxLen int) string {
+	if len(targets) == 0 {
+		return ""
+	}
+	const sep = ", "
+	var included []string
+	total := 0
+	for i, t := range targets {
+		addLen := len(t)
+		if i > 0 {
+			addLen += len(sep)
+		}
+		remaining := len(targets) - i - 1
+		suffix := ""
+		if remaining > 0 {
+			suffix = fmt.Sprintf(", +%d more", remaining)
+		}
+		if total+addLen+len(suffix) > maxLen && len(included) > 0 {
+			return strings.Join(included, sep) + fmt.Sprintf(", +%d more", len(targets)-len(included))
+		}
+		included = append(included, t)
+		total += addLen
+	}
+	return strings.Join(included, sep)
+}
 
 // joinTrunc joins up to max names with " / " and appends "(+N more)" if needed.
 func joinTrunc(names []string, max int) string {
@@ -720,6 +752,9 @@ func printEnumSummary(
 			addGroup(f.PrincipalName, "DCSync", domain, "Critical")
 		}
 		for _, f := range acl.Findings {
+			if strings.TrimSpace(f.TargetName) == "" {
+				continue // skip unresolvable targets
+			}
 			addGroup(f.PrincipalName, string(f.Right), f.TargetName, f.Severity)
 		}
 		shown := 0
@@ -728,15 +763,43 @@ func printEnumSummary(
 				break
 			}
 			g := groups[name]
+			// Check if this principal has any non-empty targets
+			hasValid := false
+			for _, targets := range g.rights {
+				for _, t := range targets {
+					if strings.TrimSpace(t) != "" {
+						hasValid = true
+						break
+					}
+				}
+				if hasValid {
+					break
+				}
+			}
+			if !hasValid {
+				continue
+			}
 			pfx := highPrefix("[!] ")
 			if g.sev == "Critical" {
 				pfx = critPrefix("[!!]")
 			}
 			fmt.Printf("  %s  %s\n", pfx, name)
 			for right, targets := range g.rights {
-				targetStr := strings.Join(targets, ", ")
-				if len(targetStr) > 60 {
-					targetStr = targetStr[:57] + "..."
+				// Filter empty targets (unresolved SIDs)
+				valid := make([]string, 0, len(targets))
+				for _, t := range targets {
+					if strings.TrimSpace(t) != "" {
+						valid = append(valid, t)
+					}
+				}
+				if len(valid) == 0 {
+					continue
+				}
+				var targetStr string
+				if verbose {
+					targetStr = strings.Join(valid, ", ")
+				} else {
+					targetStr = truncateTargets(valid, 70)
 				}
 				fmt.Printf("        %-20s → %s\n", dimText(right), targetStr)
 			}
@@ -802,9 +865,11 @@ func printEnumSummary(
 				break
 			}
 			fmt.Printf("  %s  %s\n", critPrefix("[!!]"), name)
-			targetStr := strings.Join(shadowGroups[name], ", ")
-			if len(targetStr) > 70 {
-				targetStr = targetStr[:67] + "..."
+			var targetStr string
+			if verbose {
+				targetStr = strings.Join(shadowGroups[name], ", ")
+			} else {
+				targetStr = truncateTargets(shadowGroups[name], 70)
 			}
 			fmt.Printf("        %s %s\n", dimText("→"), targetStr)
 			shown++
