@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
-
 	"github.com/YakinAnd/adpath/internal/analysis"
 	"github.com/YakinAnd/adpath/internal/graph"
 	adldap "github.com/YakinAnd/adpath/internal/ldap"
@@ -211,7 +209,6 @@ func Generate(
 		return fmt.Errorf("template render error: %w", err)
 	}
 
-	color.Cyan("\n  report saved to: %s", outputPath)
 	return nil
 }
 

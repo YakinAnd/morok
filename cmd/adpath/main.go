@@ -224,14 +224,16 @@ func connectAndBind() (*adldap.Client, error) {
 	client.ProxyURL = proxyURL
 	if scopeDN != "" {
 		client.BaseDN = scopeDN
-		color.White("  %-28s %s", "scope", scopeDN)
+		if !quietMode {
+			color.White("  %-28s %s", "scope", scopeDN)
+		}
 	}
 
 	if proxyURL != "" && ccachePath != "" {
 		return nil, fmt.Errorf("--proxy and --ccache cannot be used together: Kerberos ccache is not supported through SOCKS5 proxy")
 	}
 
-	if proxyURL != "" {
+	if proxyURL != "" && !quietMode {
 		color.White("  proxy             %s", proxyURL)
 	}
 
@@ -256,13 +258,17 @@ func connectAndBind() (*adldap.Client, error) {
 			return nil, fmt.Errorf("auth error: %w", err)
 		}
 	default:
-		color.Yellow("  no credentials — anonymous bind (limited enumeration)")
+		if !quietMode {
+			color.Yellow("  no credentials — anonymous bind (limited enumeration)")
+		}
 		if err := client.AnonymousBind(); err != nil {
 			client.Close()
 			return nil, fmt.Errorf("anonymous bind failed: %w", err)
 		}
-		color.White("  %-28s %s", "RootDSE", "✓ readable")
-		color.Yellow("  %-28s %s", "hint", "obtain any domain account for full enumeration")
+		if !quietMode {
+			color.White("  %-28s %s", "RootDSE", "✓ readable")
+			color.Yellow("  %-28s %s", "hint", "obtain any domain account for full enumeration")
+		}
 	}
 
 	return client, nil
