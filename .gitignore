@@ -7,3 +7,5 @@ dist/
 report*.html
 adpath
 *.html
+.DS_Store
+**/.DS_Store

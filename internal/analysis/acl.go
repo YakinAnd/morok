@@ -37,26 +37,25 @@ type DCSyncFinding struct {
 	PrincipalName string
 	PrincipalType string
 	PrincipalDN   string
-	CVSS          float64 // AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N = 9.6
+	CVSS          float64
+	CVSSVector    string
 	Severity      string
 }
 
 // ACLFinding — одна небезпечна ACL знахідка
 type ACLFinding struct {
-	// хто має право
 	PrincipalDN   string
 	PrincipalName string
-	PrincipalType string // user / group / computer
+	PrincipalType string
 
-	// на кого має право
 	TargetDN   string
 	TargetName string
 	TargetType string
 
-	// яке право
-	Right    ACLRight
-	Severity string  // Critical / High / Medium
-	CVSS     float64 // CVSS 3.1 base score
+	Right      ACLRight
+	Severity   string
+	CVSS       float64
+	CVSSVector string
 }
 
 // ACLResult — результат ACL аналізу
@@ -208,12 +207,14 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 			name == "administrators" || name == "enterprise admins" {
 			continue
 		}
-		score := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N")
+		const dcSyncVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N"
+		score := CVSSScore(dcSyncVec)
 		findings = append(findings, DCSyncFinding{
 			PrincipalName: info.Name,
 			PrincipalType: info.Type,
 			PrincipalDN:   info.DN,
 			CVSS:          score,
+			CVSSVector:    dcSyncVec,
 			Severity:      CVSSSeverity(score),
 		})
 	}
@@ -271,6 +272,7 @@ func parseACLEntry(
 
 
 		for _, right := range rights {
+			cvss, vec := calcACLCVSS(right, targetName)
 			findings = append(findings, ACLFinding{
 				PrincipalDN:   principalInfo.DN,
 				PrincipalName: principalInfo.Name,
@@ -278,9 +280,10 @@ func parseACLEntry(
 				TargetDN:      targetDN,
 				TargetName:    targetName,
 				TargetType:    targetType,
-				Right: right,
-				CVSS: calcACLCVSS(right, targetName),
-				Severity: CVSSSeverity(calcACLCVSS(right, targetName)),
+				Right:      right,
+				CVSS:       cvss,
+				CVSSVector: vec,
+				Severity:   CVSSSeverity(cvss),
 			})
 		}
 	}
@@ -675,38 +678,30 @@ func filterSystemACL(findings []ACLFinding) []ACLFinding {
 
 // calcACLCVSS returns the CVSS 3.1 base score for an ACL finding.
 // Vectors derived from CVSS 3.1 calculator using AD attacker context (PR:L = domain user).
-func calcACLCVSS(right ACLRight, targetName string) float64 {
+func calcACLCVSS(right ACLRight, targetName string) (float64, string) {
 	privileged := isPrivilegedTarget(targetName)
-
+	var vec string
 	switch right {
 	case RightGenericAll, RightWriteDACL, RightWriteOwner:
 		if privileged {
-			// Full control over DA/EA — domain compromise: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
-			return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
+			vec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+		} else {
+			vec = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H"
 		}
-		// Full control over arbitrary object: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H
-		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H")
-
 	case RightAddMember:
 		if privileged {
-			// Add member to DA/EA: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
-			return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
+			vec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+		} else {
+			vec = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
 		}
-		// Add member to regular group: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
-		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N")
-
 	case RightForceChangePassword:
-		// Account takeover without knowing current password: AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
-		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N")
-
+		vec = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
 	case RightGenericWrite:
-		// Write to sensitive attributes (SPN, msDS-KeyCredentialLink, etc.): AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
-		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N")
-
+		vec = "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N"
 	default:
-		// AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N
-		return CVSSScore("AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N")
+		vec = "AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N"
 	}
+	return CVSSScore(vec), vec
 }
 
 // isPrivilegedTarget returns true if the target is a high-value AD object

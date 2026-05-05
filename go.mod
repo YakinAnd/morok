@@ -8,10 +8,12 @@ require (
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
+	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667 // indirect
 	github.com/go-ldap/ldap/v3 v3.4.12 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
+	github.com/hirochachacha/go-smb2 v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect

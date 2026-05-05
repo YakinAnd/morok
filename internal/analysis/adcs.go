@@ -69,7 +69,8 @@ type CertTemplateFinding struct {
 	IssuancePolicyOID string // ESC13: policy OID linked to group
 	LinkedGroupDN     string // ESC13: privileged group DN
 	Severity          string
-	CVSS              float64
+	CVSS       float64
+	CVSSVector string
 }
 
 type CAFinding struct {
@@ -79,7 +80,8 @@ type CAFinding struct {
 	WebEnroll bool
 	Details   string
 	Severity  string
-	CVSS      float64
+	CVSS       float64
+	CVSSVector string
 }
 
 type CAInfo struct {
@@ -188,40 +190,42 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 		// ESC6: EDITF_ATTRIBUTESUBJECTALTNAME2 set on CA
 		// This allows SAN injection for ANY template issued by this CA
 		if editFlags&editFlagAttributeSubjectAltName2 != 0 {
-			esc6Score := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
+			const esc6Vec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+			esc6Score := CVSSScore(esc6Vec)
 			result.CAFindings = append(result.CAFindings, CAFinding{
-				CAName:    ca.Name,
-				CADN:      ca.DN,
-				VulnTypes: []ADCSVulnType{ESC6},
-				Details:   "CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag set — any template issued by this CA allows SAN injection regardless of template settings. Equivalent to ESC1 for all templates.",
-				Severity:  CVSSSeverity(esc6Score),
-				CVSS:      esc6Score,
+				CAName:     ca.Name,
+				CADN:       ca.DN,
+				VulnTypes:  []ADCSVulnType{ESC6},
+				Details:    "CA has EDITF_ATTRIBUTESUBJECTALTNAME2 flag set — any template issued by this CA allows SAN injection regardless of template settings. Equivalent to ESC1 for all templates.",
+				Severity:   CVSSSeverity(esc6Score),
+				CVSS:       esc6Score,
+				CVSSVector: esc6Vec,
 			})
 		}
 
-		// ESC8: flag Web Enrollment as potential (requires HTTP probe to confirm)
-		esc8Score := CVSSScore("AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H")
+		const esc8Vec = "AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H"
+		esc8Score := CVSSScore(esc8Vec)
 		result.CAFindings = append(result.CAFindings, CAFinding{
-			CAName:    ca.Name,
-			CADN:      ca.DN,
-			VulnTypes: []ADCSVulnType{ESC8},
-			WebEnroll: true,
-			Details:   "Verify if Web Enrollment is active: http://" + ca.Server + "/certsrv/ — if accessible and NTLM auth is allowed, PetitPotam/Coercer → certipy relay attack is possible.",
-			Severity:  CVSSSeverity(esc8Score),
-			CVSS:      esc8Score,
+			CAName:     ca.Name,
+			CADN:       ca.DN,
+			VulnTypes:  []ADCSVulnType{ESC8},
+			WebEnroll:  true,
+			Details:    "Verify if Web Enrollment is active: http://" + ca.Server + "/certsrv/ — if accessible and NTLM auth is allowed, PetitPotam/Coercer → certipy relay attack is possible.",
+			Severity:   CVSSSeverity(esc8Score),
+			CVSS:       esc8Score,
+			CVSSVector: esc8Vec,
 		})
 
-		// ESC11: ICPR/DCOM (legacy RPC certificate enrollment) relay
-		// Similar to ESC8 but via MS-ICPR instead of HTTP. No remote check possible —
-		// flag as informational for manual verification.
-		esc11Score := CVSSScore("AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H")
+		const esc11Vec = "AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H"
+		esc11Score := CVSSScore(esc11Vec)
 		result.CAFindings = append(result.CAFindings, CAFinding{
-			CAName:    ca.Name,
-			CADN:      ca.DN,
-			VulnTypes: []ADCSVulnType{ESC11},
-			Details:   "Verify if the ICPR (MS-ICPR/DCOM) enrollment interface is accessible: certipy relay -target 'rpc://" + ca.Server + "' — if NTLM relay is possible via DCOM, an attacker can request certificates as a coerced machine account.",
-			Severity:  CVSSSeverity(esc11Score),
-			CVSS:      esc11Score,
+			CAName:     ca.Name,
+			CADN:       ca.DN,
+			VulnTypes:  []ADCSVulnType{ESC11},
+			Details:    "Verify if the ICPR (MS-ICPR/DCOM) enrollment interface is accessible: certipy relay -target 'rpc://" + ca.Server + "' — if NTLM relay is possible via DCOM, an attacker can request certificates as a coerced machine account.",
+			Severity:   CVSSSeverity(esc11Score),
+			CVSS:       esc11Score,
+			CVSSVector: esc11Vec,
 		})
 	}
 
@@ -387,6 +391,7 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		EnrollableBy:    enrollableBy,
 		Severity:        CVSSSeverity(cvssScore),
 		CVSS:            cvssScore,
+		CVSSVector:      cvssVector,
 	}
 }
 

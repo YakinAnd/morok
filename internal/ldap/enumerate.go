@@ -31,6 +31,10 @@ type LDAPUser struct {
 	LastLogon        string
 	PasswordLastSet  string
 	ObjectSid        string
+	CN               string
+	CreatedOn        string
+	ChangedOn        string
+	PrimaryGroup     string // resolved name, e.g. "Domain Users"
 }
 
 // LDAPGroup представляє групу AD
@@ -42,6 +46,10 @@ type LDAPGroup struct {
 	AdminCount     bool
 	GroupType      string
 	ObjectSid      string
+	CN             string
+	CreatedOn      string
+	ChangedOn      string
+	MemberOf       []string // DNs of parent groups (nested membership)
 }
 
 // LDAPComputer представляє комп'ютер AD
@@ -62,6 +70,8 @@ type LDAPComputer struct {
 	LAPSEnabled             bool
 	Domain                  string // e.g. "north.sevenkingdoms.local"
 	IsGC                    bool   // true if data came from GC (may be partial)
+	CN                      string
+	ChangedOn               string
 }
 
 // EnumerationResult містить всі зібрані дані
@@ -104,6 +114,10 @@ var userAttributes = []string{
 	"lastLogonTimestamp",
 	"pwdLastSet",
 	"objectSid",
+	"cn",
+	"whenCreated",
+	"whenChanged",
+	"primaryGroupID",
 }
 
 var groupAttributes = []string{
@@ -114,6 +128,10 @@ var groupAttributes = []string{
 	"adminCount",
 	"groupType",
 	"objectSid",
+	"cn",
+	"whenCreated",
+	"whenChanged",
+	"memberOf",
 }
 
 var computerAttributes = []string{
@@ -129,7 +147,9 @@ var computerAttributes = []string{
 	"objectSid",
 	"description",
 	"whenCreated",
+	"whenChanged",
 	"ms-MCS-AdmPwdExpirationTime",
+	"cn",
 }
 
 // ============================================================
@@ -144,7 +164,9 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 		CollectedAt: time.Now(),
 	}
 
-	color.White("\n  enumerating %s ...", c.Domain)
+	if !c.Quiet {
+		color.White("\n  enumerating %s ...", c.Domain)
+	}
 
 	// Users
 	users, err := c.EnumerateUsers()
@@ -159,6 +181,9 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 		return nil, fmt.Errorf("group enumeration failed: %w", err)
 	}
 	result.Groups = groups
+
+	// Resolve user primary groups now that we have both users and groups
+	resolvePrimaryGroups(result.Users, result.Groups)
 
 	// Computers — try forest-wide (GC), fall back to domain-only
 	computers, forestWide, err := c.enumerateComputersForest()
@@ -254,6 +279,10 @@ func parseUser(entry *goldap.Entry) LDAPUser {
 		LastLogon:            parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		PasswordLastSet:      parseFileTime(entry.GetAttributeValue("pwdLastSet")),
 		ObjectSid:            parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
+		CN:           entry.GetAttributeValue("cn"),
+		CreatedOn:    parseADDateTime(entry.GetAttributeValue("whenCreated")),
+		ChangedOn:    parseADDateTime(entry.GetAttributeValue("whenChanged")),
+		PrimaryGroup: entry.GetAttributeValue("primaryGroupID"), // raw RID; resolved in EnumerateAll
 	}
 }
 
@@ -266,6 +295,10 @@ func parseGroup(entry *goldap.Entry) LDAPGroup {
 		AdminCount:     entry.GetAttributeValue("adminCount") == "1",
 		GroupType:      parseGroupType(entry.GetAttributeValue("groupType")),
 		ObjectSid:      parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
+		CN:             entry.GetAttributeValue("cn"),
+		CreatedOn:      parseADDateTime(entry.GetAttributeValue("whenCreated")),
+		ChangedOn:      parseADDateTime(entry.GetAttributeValue("whenChanged")),
+		MemberOf:       entry.GetAttributeValues("memberOf"),
 	}
 }
 
@@ -289,6 +322,8 @@ func parseComputer(entry *goldap.Entry) LDAPComputer {
 		WhenCreated:             parseGeneralizedTime(entry.GetAttributeValue("whenCreated")),
 		LAPSEnabled:             lapsExpiry != "",
 		Domain:                  dnToDomainLabel(entry.DN),
+		CN:                      entry.GetAttributeValue("cn"),
+		ChangedOn:               parseADDateTime(entry.GetAttributeValue("whenChanged")),
 	}
 }
 
@@ -435,7 +470,9 @@ func (c *Client) EnumerateComputersForest() ([]LDAPComputer, bool, error) {
 func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 	gcEntries, err := c.SearchGC(FilterAllComputers, computerAttributes)
 	if err != nil {
-		color.White("  GC unavailable (%v), domain-only", err)
+		if !c.Quiet {
+			color.White("  GC unavailable (%v), domain-only", err)
+		}
 		computers, err := c.EnumerateComputers()
 		return computers, false, err
 	}
@@ -468,7 +505,9 @@ func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 				computers = append(computers, comp)
 			}
 		} else {
-			color.White("  cannot reach %s (%v), using partial GC data", childDomain, err)
+			if !c.Quiet {
+				color.White("  cannot reach %s (%v), using partial GC data", childDomain, err)
+			}
 			for _, e := range entries {
 				comp := parseComputer(e)
 				comp.IsGC = true
@@ -486,7 +525,9 @@ func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Ent
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)
 	}
-	color.White("  querying %s via %s", domain, addrs[0])
+	if !c.Quiet {
+		color.White("  querying %s via %s", domain, addrs[0])
+	}
 	return c.SearchDomain(addrs[0], baseDN, FilterAllComputers, computerAttributes)
 }
 
@@ -532,6 +573,47 @@ func parseGeneralizedTime(val string) string {
 		}
 	}
 	return val
+}
+
+// parseADDateTime parses LDAP generalized time → "2023-01-01 12:00:00" (date + time).
+func parseADDateTime(val string) string {
+	if val == "" {
+		return ""
+	}
+	for _, layout := range []string{"20060102150405.0Z", "20060102150405Z", "20060102150405.0-0700", "20060102150405-0700"} {
+		if t, err := time.Parse(layout, val); err == nil {
+			return t.UTC().Format("2006-01-02 15:04:05")
+		}
+	}
+	return val
+}
+
+// resolvePrimaryGroups replaces each user's PrimaryGroup (currently holding the raw RID string)
+// with the SAMAccountName of the matching group, looked up by the last sub-authority of the group SID.
+func resolvePrimaryGroups(users []LDAPUser, groups []LDAPGroup) {
+	// Build RID → SAMAccountName from the last component of each group's SID.
+	ridToName := make(map[string]string, len(groups))
+	for _, g := range groups {
+		if g.ObjectSid == "" {
+			continue
+		}
+		idx := strings.LastIndex(g.ObjectSid, "-")
+		if idx < 0 {
+			continue
+		}
+		rid := g.ObjectSid[idx+1:]
+		ridToName[rid] = g.SAMAccountName
+	}
+
+	for i := range users {
+		rid := users[i].PrimaryGroup
+		if rid == "" {
+			continue
+		}
+		if name, ok := ridToName[rid]; ok {
+			users[i].PrimaryGroup = name
+		}
+	}
 }
 
 // parseSIDBytes конвертує raw objectSid bytes в рядок S-1-5-...

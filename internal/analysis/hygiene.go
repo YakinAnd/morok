@@ -120,7 +120,9 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		}
 	}
 
-	printHygieneResult(hr)
+	if !Quiet {
+		printHygieneResult(hr)
+	}
 	return hr
 }
 

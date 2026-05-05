@@ -42,7 +42,8 @@ type AdminSDHolderACEFinding struct {
 	AccessMask    uint32
 	Rights        []string
 	Severity      string
-	CVSS          float64
+	CVSS       float64
+	CVSSVector string
 }
 
 // known privileged group SAMAccountNames (same list used for Protected Users check)
@@ -117,7 +118,9 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 		entries, err = searchWithSDControl(client, adminSDHolderDN)
 		if err != nil || len(entries) == 0 {
 			// no access to AdminSDHolder — still return orphaned findings
-			printAdminSDHolderResult(r, false)
+			if !Quiet {
+				printAdminSDHolderResult(r, false)
+			}
 			return r, nil
 		}
 	}
@@ -131,7 +134,9 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 		}
 	}
 
-	printAdminSDHolderResult(r, false)
+	if !Quiet {
+		printAdminSDHolderResult(r, false)
+	}
 	return r, nil
 }
 
@@ -231,13 +236,15 @@ func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []Admi
 		}
 
 		// ACE on AdminSDHolder propagates to ALL admin accounts: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
-		sdScore := CVSSScore("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
+		const sdVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+		sdScore := CVSSScore(sdVec)
 		findings = append(findings, AdminSDHolderACEFinding{
 			PrincipalSID:  sid,
 			PrincipalName: name,
 			AccessMask:    mask,
 			Rights:        rights,
 			CVSS:          sdScore,
+			CVSSVector:    sdVec,
 			Severity:      CVSSSeverity(sdScore),
 		})
 	}

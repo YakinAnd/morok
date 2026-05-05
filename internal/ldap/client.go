@@ -28,6 +28,7 @@ type Client struct {
 	conn       *goldap.Conn
 	saslWrap   *saslConn // non-nil only for Kerberos ccache connections
 	Verbose    bool
+	Quiet      bool // suppress all informational output (for CI/--quiet mode)
 }
 
 // NewClient створює новий Client
@@ -60,7 +61,9 @@ func (c *Client) Connect() error {
 	conn, wrap, err := c.dialWithTimeout(address, false)
 	if err != nil {
 		// fallback на LDAPS port 636
-		color.White("  port 389 failed, trying LDAPS 636...")
+		if !c.Quiet {
+			color.White("  port 389 failed, trying LDAPS 636...")
+		}
 		c.Port = 636
 		address = fmt.Sprintf("%s:%d", c.Host, c.Port)
 		conn, wrap, err = c.dialWithTimeout(address, true)
@@ -177,7 +180,9 @@ func (c *Client) Bind() error {
 		}
 	}
 
-	color.Green("  authenticated     %s@%s", c.Username, c.Domain)
+	if !c.Quiet {
+		color.Green("  authenticated     %s@%s", c.Username, c.Domain)
+	}
 	return nil
 }
 
@@ -198,7 +203,9 @@ func (c *Client) BindNTLM() error {
 		return fmt.Errorf("NTLM bind failed: %w", err)
 	}
 
-	color.Green("  authenticated     %s\\%s  (PTH/NTLM)", netbiosDomain, c.Username)
+	if !c.Quiet {
+		color.Green("  authenticated     %s\\%s  (PTH/NTLM)", netbiosDomain, c.Username)
+	}
 	return nil
 }
 
@@ -238,7 +245,9 @@ func (c *Client) BindKerberos() error {
 		}
 	}
 
-	color.Green("  authenticated     %s  (PTT/Kerberos)", c.Username)
+	if !c.Quiet {
+		color.Green("  authenticated     %s  (PTT/Kerberos)", c.Username)
+	}
 	return nil
 }
 
@@ -254,7 +263,9 @@ func (c *Client) AnonymousBind() error {
 	}
 
 	c.IsAnon = true
-	color.Yellow("  null session      anonymous bind OK")
+	if !c.Quiet {
+		color.Yellow("  null session      anonymous bind OK")
+	}
 	return nil
 }
 
@@ -535,7 +546,9 @@ func (c *Client) kerberosHost() string {
 	}
 	names, err := net.LookupAddr(c.Host)
 	if err != nil || len(names) == 0 {
-		color.Yellow("[!] Reverse DNS lookup for %s failed: %v — using IP for SPN (may fail)", c.Host, err)
+		if !c.Quiet {
+			color.Yellow("[!] Reverse DNS lookup for %s failed: %v — using IP for SPN (may fail)", c.Host, err)
+		}
 		return c.Host
 	}
 	// LookupAddr returns names with a trailing dot; strip it
@@ -559,6 +572,11 @@ func domainToBaseDN(domain string) string {
 // GetDomain повертає домен
 func (c *Client) GetDomain() string {
     return c.Domain
+}
+
+// GetHost повертає hostname/IP DC
+func (c *Client) GetHost() string {
+    return c.Host
 }
 
 // ConfigurationDN повертає DN конфігураційного розділу AD
