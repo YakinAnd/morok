@@ -900,7 +900,6 @@ html[data-theme="dark"] {
   --accent:        #63b3ed;
   --accent-domain: #f6ad55;
   --color-ok:      #68d391;
-  --sev-medium:    #faf089;
   --badge-ok-bg:   #1c4532;   --badge-ok-txt:   #68d391;
   --badge-med-bg:  #744210;   --badge-med-txt:  #f6ad55;
   --badge-high-bg: #7b2d12;   --badge-high-txt: #fdba74;
@@ -908,6 +907,13 @@ html[data-theme="dark"] {
   --text-sev-critical: #e53e3e;
   --text-sev-high:     #dd6b20;
   --text-sev-medium:   #d69e2e;
+  --node-user:     #63b3ed;
+  --node-computer: #90cdf4;
+  --node-group:    #b794f4;
+  --node-admin:    #fc8181;
+  --mark-bg:       #f6e05e;
+  --mark-txt:      #1a202c;
+  --chart-count-txt: #ffffff;
   --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 html[data-theme="light"] {
@@ -926,7 +932,6 @@ html[data-theme="light"] {
   --accent:        #2b6cb0;
   --accent-domain: #c05621;
   --color-ok:      #276749;
-  --sev-medium:    #b7791f;
   --badge-ok-bg:   #c6f6d5;   --badge-ok-txt:   #276749;
   --badge-med-bg:  #feebc8;   --badge-med-txt:  #744210;
   --badge-high-bg: #fed7ae;   --badge-high-txt: #7b341e;
@@ -934,6 +939,13 @@ html[data-theme="light"] {
   --text-sev-critical: #c53030;
   --text-sev-high:     #c2410c;
   --text-sev-medium:   #92400e;
+  --node-user:     #2b6cb0;
+  --node-computer: #2c5282;
+  --node-group:    #6b46c1;
+  --node-admin:    #c53030;
+  --mark-bg:       #fef08a;
+  --mark-txt:      #1a202c;
+  --chart-count-txt: #1a202c;
   --gs-match-bg:   #1a56db;   --gs-match-txt:   #ffffff;
 }
 
@@ -1002,7 +1014,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .card .value { font-size: 2rem; font-weight: 700; color: var(--accent); line-height: 1; }
 .card .label { font-size: 0.8rem; color: var(--text-muted); margin-top: 6px;
   text-transform: uppercase; letter-spacing: 0.05em; }
-.card.critical .value { color: #e53e3e; }
+.card.critical .value { color: var(--text-sev-critical); }
 .card.warning .value { color: var(--text-sev-high); }
 .card.ok .value { color: var(--color-ok); }
 .card[onclick] { cursor: pointer; transition: border-color 0.15s, transform 0.12s; }
@@ -1074,14 +1086,15 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 [data-theme="light"] .cvss-score {
   background: rgba(0,0,0,0.05);
   border-color: rgba(0,0,0,0.12);
+  color: var(--text-main);
 }
 [data-theme="light"] .cvss-score:hover { background: rgba(0,0,0,0.1); color: var(--text-main); }
 
 /* Severity row left-border indicators */
-tr.row-critical td:first-child { border-left: 3px solid #e53e3e; }
-tr.row-high     td:first-child { border-left: 3px solid #dd6b20; }
-tr.row-medium   td:first-child { border-left: 3px solid #d69e2e; }
-tr.row-low      td:first-child { border-left: 3px solid #68d391; }
+tr.row-critical td:first-child { border-left: 3px solid var(--text-sev-critical); }
+tr.row-high     td:first-child { border-left: 3px solid var(--text-sev-high); }
+tr.row-medium   td:first-child { border-left: 3px solid var(--text-sev-medium); }
+tr.row-low      td:first-child { border-left: 3px solid var(--color-ok); }
 
 /* Tables */
 .table-wrap { overflow-x: auto; border-radius: 8px;
@@ -1596,9 +1609,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div style="font-size:0.8rem;color:var(--text-muted)">
       <span style="color:var(--text-sev-critical)">●</span> DA/Admin &nbsp;
       <span style="color:var(--text-sev-high)">●</span> Kerberoastable &nbsp;
-      <span style="color:#b794f4">●</span> Group &nbsp;
-      <span style="color:#90cdf4">●</span> Computer &nbsp;
-      <span style="color:#63b3ed">●</span> User
+      <span style="color:var(--node-group)">●</span> Group &nbsp;
+      <span style="color:var(--node-computer)">●</span> Computer &nbsp;
+      <span style="color:var(--node-user)">●</span> User
     </div>
     <button onclick="resetZoom()" style="margin-left:auto;padding:4px 12px;background:var(--bg-hover);border:none;color:var(--text-secondary);border-radius:4px;cursor:pointer;font-size:0.8rem">Reset Zoom</button>
   </div>
@@ -1649,7 +1662,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td>
         {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>
         {{else if eq .Severity "High"}}<span class="badge badge-high">High</span>
-        {{else if eq .Severity "Medium"}}<span class="badge" style="background:#744210;color:#fef3c7">Medium</span>
+        {{else if eq .Severity "Medium"}}<span class="badge badge-medium">Medium</span>
         {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">Info</span>{{end}}
       </td>
       <td>{{if gt .CVSS 0.0}}<span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>{{else}}—{{end}}</td>
@@ -1670,7 +1683,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <span class="help-icon" role="tooltip" tabindex="0" data-tip="Foreign Security Principals (FSPs) are objects representing users or groups from trusted external domains. If an FSP is a member of a privileged local group (Domain Admins, Administrators), an attacker who compromises the external domain gains privilege in this domain too.">?</span>
   </div>
   {{if .TrustResult.FSPs}}
-  <div class="path-card" style="margin-bottom:12px;padding:12px 16px;border-color:#e53e3e">
+  <div class="path-card" style="margin-bottom:12px;padding:12px 16px;border-color:var(--text-sev-critical)">
     <span class="badge badge-critical" style="margin-bottom:8px;display:inline-block">⚠ {{len .TrustResult.FSPs}} external principal(s) in privileged groups</span>
   </div>
   <div class="table-wrap">
@@ -3011,20 +3024,21 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
   var chart = document.getElementById('findings-chart');
   if (!chart) return;
 
+  var cs = getComputedStyle(document.documentElement);
   var findings = [
     {
       label: 'Critical',
-      color: '#e53e3e',
+      color: cs.getPropertyValue('--text-sev-critical').trim(),
       count: {{.TotalCritical}}
     },
     {
       label: 'High',
-      color: '#dd6b20',
+      color: cs.getPropertyValue('--text-sev-high').trim(),
       count: {{.TotalHigh}}
     },
     {
       label: 'Medium',
-      color: '#d69e2e',
+      color: cs.getPropertyValue('--text-sev-medium').trim(),
       count: {{.TotalMedium}}
     },
     {
@@ -3045,7 +3059,7 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
       '<div style="width:64px;font-size:12px;color:var(--text-muted);text-align:right;font-weight:500">' + f.label + '</div>' +
       '<div style="flex:1;background:var(--bg-hover);border-radius:4px;height:22px;overflow:hidden">' +
         '<div style="width:'+pct+'%;background:'+f.color+';height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;transition:width .5s ease;min-width:'+(f.count > 0 ? '28px' : '0')+';">' +
-          (f.count > 0 ? '<span style="font-size:11px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4)">'+f.count+'</span>' : '') +
+          (f.count > 0 ? '<span style="font-size:11px;font-weight:600;color:var(--chart-count-txt);text-shadow:0 1px 2px rgba(0,0,0,.4)">'+f.count+'</span>' : '') +
         '</div>' +
       '</div>' +
       '<div style="width:36px;font-size:13px;font-weight:600;color:'+f.color+';text-align:right">'+f.count+'</div>';
@@ -3173,7 +3187,7 @@ function initGraph() {
     .attr('orient', 'auto')
     .append('path')
     .attr('d', 'M0,-5L10,0L0,5')
-    .attr('fill', (d, i) => i === 1 ? '#e53e3e' : '#4a5568');
+    .attr('fill', (d, i) => i === 1 ? getComputedStyle(document.documentElement).getPropertyValue('--node-admin').trim() : '#4a5568');
 
   const g = svg.append('g');
 
@@ -3223,9 +3237,9 @@ function initGraph() {
         '<div style="font-weight:600;color:var(--text-main);margin-bottom:4px">' + d.label + '</div>' +
         '<div style="color:var(--text-muted);font-size:0.75rem;word-break:break-all">' + d.id + '</div>' +
         '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
-        (d.adminCount ? '<span style="background:#742a2a;color:#e53e3e;padding:2px 6px;border-radius:3px;font-size:11px">Admin</span>' : '') +
-        (d.kerberoastable ? '<span style="background:#744210;color:#dd6b20;padding:2px 6px;border-radius:3px;font-size:11px">Kerberoastable</span>' : '') +
-        (d.asrepRoastable ? '<span style="background:#742a2a;color:#feb2b2;padding:2px 6px;border-radius:3px;font-size:11px">AS-REP</span>' : '') +
+        (d.adminCount ? '<span class="badge badge-critical" style="padding:2px 6px;font-size:11px">Admin</span>' : '') +
+        (d.kerberoastable ? '<span class="badge badge-medium" style="padding:2px 6px;font-size:11px">Kerberoastable</span>' : '') +
+        (d.asrepRoastable ? '<span class="badge badge-high" style="padding:2px 6px;font-size:11px">AS-REP</span>' : '') +
         '<span style="background:var(--bg-hover);color:var(--text-secondary);padding:2px 6px;border-radius:3px;font-size:11px">' + d.type + '</span>' +
         '<span style="background:var(--bg-hover);color:var(--text-secondary);padding:2px 6px;border-radius:3px;font-size:11px">' + (pathCount[d.id]||0) + ' edge(s)</span>' +
         '</div>';
@@ -3246,7 +3260,11 @@ function initGraph() {
   node.append('circle')
     .attr('r', d => nodeRadius(d, pathCount, maxCount))
     .attr('fill', d => nodeColor(d))
-    .attr('stroke', d => d.asrepRoastable ? '#e53e3e' : (d.adminCount ? '#e53e3e' : getComputedStyle(document.documentElement).getPropertyValue('--border').trim()))
+    .attr('stroke', d => {
+      const s = getComputedStyle(document.documentElement);
+      if (d.asrepRoastable || d.adminCount) return s.getPropertyValue('--node-admin').trim();
+      return s.getPropertyValue('--border').trim();
+    })
     .attr('stroke-width', d => d.adminCount || d.asrepRoastable ? 3 : 1.5)
     .attr('cursor', 'pointer');
 
@@ -3276,12 +3294,14 @@ function nodeRadius(d, pathCount, maxCount) {
 }
 
 function nodeColor(d) {
-  if (d.adminCount)     return '#e53e3e';
-  if (d.kerberoastable) return '#dd6b20';
-  if (d.asrepRoastable) return '#feb2b2';
-  if (d.type === 'group')    return '#b794f4';
-  if (d.type === 'computer') return '#90cdf4';
-  return '#63b3ed';
+  const s = getComputedStyle(document.documentElement);
+  const get = v => s.getPropertyValue(v).trim();
+  if (d.adminCount)     return get('--node-admin');
+  if (d.kerberoastable) return get('--text-sev-high');
+  if (d.asrepRoastable) return get('--text-sev-critical');
+  if (d.type === 'group')    return get('--node-group');
+  if (d.type === 'computer') return get('--node-computer');
+  return get('--node-user');
 }
 
 // ── Table sorting ─────────────────────────────────────────────
@@ -3347,7 +3367,7 @@ function highlightCell(cell, query) {
     re.lastIndex = 0;
     const wrap = document.createElement('span');
     wrap.innerHTML = tn.textContent.replace(re,
-      m => '<mark style="background:#f6e05e;color:#1a202c;border-radius:2px;padding:0 1px">' + m + '</mark>');
+      m => '<mark style="background:var(--mark-bg);color:var(--mark-txt);border-radius:2px;padding:0 1px">' + m + '</mark>');
     tn.parentNode.replaceChild(wrap, tn);
   });
 }
@@ -3755,6 +3775,10 @@ function toggleTheme() {
   html.setAttribute('data-theme', next);
   localStorage.setItem('adpath-theme', next);
   document.getElementById('theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
+  // Re-apply node colors now that CSS variables have changed
+  if (typeof graphInitialized !== 'undefined' && graphInitialized) {
+    d3.selectAll('#graph-svg .nodes circle').attr('fill', d => nodeColor(d));
+  }
 }
 function initTheme() {
   const saved = localStorage.getItem('adpath-theme') || 'dark';
