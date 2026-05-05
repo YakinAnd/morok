@@ -191,6 +191,24 @@ The `--quiet` output is plain ASCII with no ANSI color codes — safe for Jenkin
 
 ---
 
+## Scoring & Severity Ratings
+
+Severity scores and risk ratings in adpath are based on empirical
+research and known attack patterns, but should be treated as
+**indicative estimates**, not definitive measurements.
+
+Current limitations:
+- Scores may vary depending on environment and configuration
+- Some attack paths lack sufficient real-world data for precise calibration
+- Weightings are subject to change as research matures
+
+We encourage practitioners to use these ratings as a **starting point**
+for their own assessment, not as a final verdict.
+
+Inaccuracies or edge cases? → open an issue or contact us.
+
+---
+
 ## License
 
 adpath is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
