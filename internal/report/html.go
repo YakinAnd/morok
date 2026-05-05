@@ -189,7 +189,7 @@ func Generate(
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
 	}
-	data.TotalCritical, data.TotalHigh, data.TotalMedium = countRiskTotals(&data)
+	data.TotalCritical, data.TotalHigh, data.TotalMedium = CountRiskTotals(&data)
 	data.RiskScore = CalculateRiskScore(&data)
 	data.TopIssues = BuildTopIssues(&data)
 
@@ -309,8 +309,9 @@ func buildSummary(
 	return s
 }
 
-// countRiskTotals aggregates Critical/High/Medium findings across all modules.
-func countRiskTotals(d *ReportData) (critical, high, medium int) {
+// CountRiskTotals aggregates Critical/High/Medium findings across all modules.
+// Exported so the CLI footer can use the same counting logic as the HTML header.
+func CountRiskTotals(d *ReportData) (critical, high, medium int) {
 	bucket := func(sev string) {
 		switch sev {
 		case "Critical":

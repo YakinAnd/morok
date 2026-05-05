@@ -35,6 +35,7 @@ var (
 	jsonExportPath string // --json: output dir for AD JSON export (compatible with BloodHound CE)
 	maxDepth       int
 	verbose        bool
+	quietMode      bool   // --quiet: suppress detailed output, print only risk verdict (CI mode)
 	wordlistPath   string // --wordlist: path to username wordlist for kerb-enum
 	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
 )
@@ -160,6 +161,7 @@ func init() {
 	enumCmd.Flags().StringVar(&jsonExportPath, "json", "", "Export AD objects as JSON to directory (e.g. json_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
 	enumCmd.Flags().BoolVar(&stealth, "stealth", false, "Stealth mode — minimal LDAP queries, no GC, no ACL/GPO/ADCS/delegation analysis")
+	enumCmd.Flags().BoolVar(&quietMode, "quiet", false, "Quiet mode — print only risk verdict line (for CI/scripting)")
 
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
 	enumUsersCmd.MarkFlagRequired("wordlist")
@@ -270,6 +272,7 @@ func connectAndBind() (*adldap.Client, error) {
 // ============================================================
 
 func runEnum(cmd *cobra.Command, args []string) error {
+	startTime := time.Now()
 	printBanner()
 
 	client, err := connectAndBind()
@@ -349,8 +352,37 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
+	// ── Compute risk totals (single source of truth for CLI + HTML) ──
+	cliRiskData := &report.ReportData{
+		AttackPaths:             paths,
+		ACLResult:               aclResult,
+		KerberosResult:          kr,
+		DelegationResult:        dr,
+		ADCSResult:              adcsResult,
+		HygieneResult:           hr,
+		ShadowCredentialsResult: shadowResult,
+		LDAPSecurityResult:      ldapSecResult,
+		SMBSigningResult:        smbResult,
+		GPOResult:               gr,
+		AdminSDHolderResult:     adminSDResult,
+		TrustResult:             trustResult,
+	}
+	if result != nil {
+		for _, c := range result.Computers {
+			if c.Enabled && !c.LAPSEnabled {
+				cliRiskData.Summary.NoLAPSCount++
+			}
+		}
+	}
+	if gr != nil && gr.DefaultPolicy != nil {
+		pp := gr.DefaultPolicy
+		cliRiskData.Summary.WeakPasswordPolicy = pp.MinLength < 8 || !pp.Complexity || pp.LockoutThreshold == 0
+	}
+	cliCrit, cliHigh, cliMed := report.CountRiskTotals(cliRiskData)
+	cliRiskScore := report.CalculateRiskScore(cliRiskData)
+
 	// ── Variant A terminal output ─────────────────────────────
-	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult)
+	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult, trustResult, cliCrit, cliHigh, cliMed, cliRiskScore)
 
 	// ── HTML report (opt-in via --report) ────────────────────
 	if reportPath != "" {
@@ -384,6 +416,12 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// ── Timing footer ─────────────────────────────────────────
+	if !quietMode {
+		fmt.Println()
+		color.White("  %s", dimText(fmt.Sprintf("enumeration completed in %s", fmtDuration(time.Since(startTime)))))
+	}
+
 	return nil
 }
 
@@ -413,6 +451,34 @@ func joinTrunc(names []string, max int) string {
 	return fmt.Sprintf("%s  (+%d more)", shown, len(names)-max)
 }
 
+// fmtDuration formats elapsed time as Xms / X.Xs / XmYs.
+func fmtDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	return fmt.Sprintf("%dm%ds", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// riskVerdict maps a risk grade to a verbal severity label.
+func riskVerdict(s report.RiskScore) string {
+	switch s.Grade {
+	case "F":
+		return "CRITICAL"
+	case "D":
+		return "HIGH"
+	case "C":
+		return "MEDIUM"
+	case "B":
+		return "LOW"
+	case "A":
+		return "MINIMAL"
+	}
+	return "UNKNOWN"
+}
+
 func printEnumSummary(
 	rds *adldap.RootDSEInfo,
 	result *adldap.EnumerationResult,
@@ -425,7 +491,24 @@ func printEnumSummary(
 	hr *analysis.HygieneResult,
 	ldapSec *analysis.LDAPSecurityResult,
 	audit *analysis.AuditResult,
+	trustResult *analysis.TrustResult,
+	critTotal, highTotal, medTotal int,
+	riskScore report.RiskScore,
 ) {
+	// Quiet mode: single machine-readable line for CI
+	if quietMode {
+		verdict := riskVerdict(riskScore)
+		fmt.Printf("RISK %s (%s · %d/100) — %d critical, %d high, %d medium\n",
+			verdict, riskScore.Grade, riskScore.Total, critTotal, highTotal, medTotal)
+		return
+	}
+
+	// Verbose mode disables per-section truncation
+	limit := enumMaxItems
+	if verbose {
+		limit = 0 // 0 = no limit (checked with: limit > 0 && shown >= limit)
+	}
+
 	fmt.Println()
 
 	// ── DOMAIN ────────────────────────────────────────────────
@@ -465,6 +548,42 @@ func printEnumSummary(
 		}
 	}
 
+	// ── DOMAIN SUMMARY one-liner ──────────────────────────────
+	if result != nil {
+		adminCount := 0
+		for _, u := range result.Users {
+			if u.AdminCount {
+				adminCount++
+			}
+		}
+		trustCount := 0
+		if trustResult != nil {
+			trustCount = len(trustResult.Trusts)
+		}
+		aclCount := 0
+		if acl != nil {
+			aclCount = len(acl.Findings) + len(acl.DCSyncFindings)
+		}
+		adcsCount := 0
+		if adcs != nil {
+			adcsCount = len(adcs.TemplateFindings) + len(adcs.CAFindings)
+		}
+		krbtgtAge := 0
+		if hr != nil {
+			krbtgtAge = hr.KrbtgtPwdAgeDays
+		}
+		trustSuffix := ""
+		if trustCount > 0 {
+			trustSuffix = fmt.Sprintf(" · %d trust(s)", trustCount)
+		}
+		fmt.Println()
+		color.Cyan("  SUMMARY")
+		color.White("  %s · %d users · %d computers · %d groups · %d admins%s",
+			domain, len(result.Users), len(result.Computers), len(result.Groups), adminCount, trustSuffix)
+		color.White("  %d attack paths · %d ACL findings · %d ADCS · krbtgt: %dd",
+			len(paths), aclCount, adcsCount, krbtgtAge)
+	}
+
 	// ── USERS ─────────────────────────────────────────────────
 	if result != nil {
 		fmt.Println()
@@ -498,7 +617,7 @@ func printEnumSummary(
 		}
 		if hr != nil {
 			if len(hr.StaleUsers) > 0 {
-				fmt.Printf("  %s  %-20s %d accounts  %s\n", medPrefix("[-]"), "stale (>90d)", len(hr.StaleUsers), dimText("no logon"))
+				fmt.Printf("  %s  %-20s %d accounts  %s\n", medPrefix("[-]"), "stale (>90d)", len(hr.StaleUsers), dimText("no logon · CIS: 90d threshold"))
 			}
 			if hr.KrbtgtAtRisk {
 				fmt.Printf("  %s  %-20s %s  %s\n", highPrefix("[!]"), "krbtgt age", fmt.Sprintf("%d days", hr.KrbtgtPwdAgeDays), dimText("golden ticket risk"))
@@ -539,7 +658,7 @@ func printEnumSummary(
 				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "unconstrained deleg", joinTrunc(unconstrComp, enumMaxItems))
 			}
 			if hr != nil && len(hr.StaleComputers) > 0 {
-				fmt.Printf("  %s  %-20s %d hosts  %s\n", medPrefix("[-]"), "stale (>45d)", len(hr.StaleComputers), dimText("no logon"))
+				fmt.Printf("  %s  %-20s %d hosts  %s\n", medPrefix("[-]"), "stale (>45d)", len(hr.StaleComputers), dimText("no logon · CIS: 45d threshold"))
 			}
 		}
 	}
@@ -564,41 +683,66 @@ func printEnumSummary(
 		}
 	}
 
-	// ── ACL ───────────────────────────────────────────────────
+	// ── ACL (grouped by principal) ────────────────────────────
 	if acl != nil && (len(acl.Findings) > 0 || len(acl.DCSyncFindings) > 0) {
 		fmt.Println()
-		critCount, highCount := 0, 0
+		aclCrit, aclHigh := 0, 0
 		for _, f := range acl.Findings {
 			if f.Severity == "Critical" {
-				critCount++
+				aclCrit++
 			} else {
-				highCount++
+				aclHigh++
 			}
 		}
-		critCount += len(acl.DCSyncFindings)
-		color.Cyan("  ACL      %s", dimText(fmt.Sprintf("%d critical · %d high", critCount, highCount)))
-		shown := 0
-		for _, f := range acl.DCSyncFindings {
-			if shown >= enumMaxItems {
-				break
+		aclCrit += len(acl.DCSyncFindings)
+		color.Cyan("  ACL      %s", dimText(fmt.Sprintf("%d critical · %d high", aclCrit, aclHigh)))
+
+		// group: principal → right → []targets
+		type aclEntry struct {
+			rights map[string][]string
+			sev    string
+		}
+		groups := make(map[string]*aclEntry)
+		var groupOrder []string
+		addGroup := func(principal, right, target, sev string) {
+			if _, ok := groups[principal]; !ok {
+				groups[principal] = &aclEntry{rights: make(map[string][]string), sev: sev}
+				groupOrder = append(groupOrder, principal)
 			}
-			fmt.Printf("  %s  %-18s %-14s →  %s\n", critPrefix("[!!]"), f.PrincipalName, "DCSync", domain)
-			shown++
+			g := groups[principal]
+			g.rights[right] = append(g.rights[right], target)
+			if sev == "Critical" {
+				g.sev = "Critical"
+			}
+		}
+		for _, f := range acl.DCSyncFindings {
+			addGroup(f.PrincipalName, "DCSync", domain, "Critical")
 		}
 		for _, f := range acl.Findings {
-			if shown >= enumMaxItems {
+			addGroup(f.PrincipalName, string(f.Right), f.TargetName, f.Severity)
+		}
+		shown := 0
+		for _, name := range groupOrder {
+			if limit > 0 && shown >= limit {
 				break
 			}
+			g := groups[name]
 			pfx := highPrefix("[!] ")
-			if f.Severity == "Critical" {
+			if g.sev == "Critical" {
 				pfx = critPrefix("[!!]")
 			}
-			fmt.Printf("  %s  %-18s %-14s →  %s\n", pfx, f.PrincipalName, string(f.Right), f.TargetName)
+			fmt.Printf("  %s  %s\n", pfx, name)
+			for right, targets := range g.rights {
+				targetStr := strings.Join(targets, ", ")
+				if len(targetStr) > 60 {
+					targetStr = targetStr[:57] + "..."
+				}
+				fmt.Printf("        %-20s → %s\n", dimText(right), targetStr)
+			}
 			shown++
 		}
-		total := len(acl.Findings) + len(acl.DCSyncFindings)
-		if total > enumMaxItems {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath acl -d %s ...)", total-enumMaxItems, domain)))
+		if limit > 0 && len(groups) > limit {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath acl -d %s ...)", len(groups)-limit, domain)))
 		}
 	}
 
@@ -616,7 +760,7 @@ func printEnumSummary(
 		color.Cyan("  ADCS     %s", dimText(fmt.Sprintf("%d critical · %d high", critCount, highCount)))
 		shown := 0
 		for _, f := range adcs.TemplateFindings {
-			if shown >= enumMaxItems {
+			if limit > 0 && shown >= limit {
 				break
 			}
 			pfx := highPrefix("[!] ")
@@ -627,32 +771,45 @@ func printEnumSummary(
 			if len(f.VulnTypes) > 0 {
 				escLabel = string(f.VulnTypes[0])
 			}
-			fmt.Printf("  %s  %-18s %s  %s\n", pfx, f.TemplateName, dimText("("+escLabel+")"), "")
+			fmt.Printf("  %s  %-18s %s\n", pfx, f.TemplateName, dimText("("+escLabel+")"))
 			shown++
 		}
-		if len(adcs.TemplateFindings) > enumMaxItems {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath adcs -d %s ...)", len(adcs.TemplateFindings)-enumMaxItems, domain)))
+		if limit > 0 && len(adcs.TemplateFindings) > limit {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath adcs -d %s ...)", len(adcs.TemplateFindings)-limit, domain)))
 		}
 	}
 
-	// ── SHADOW CREDENTIALS ────────────────────────────────────
+	// ── SHADOW CREDENTIALS (grouped by principal) ─────────────
 	if shadow != nil && len(shadow.Findings) > 0 {
 		fmt.Println()
-		color.Cyan("  SHADOW CREDS  %s", dimText(fmt.Sprintf("%d finding(s)", len(shadow.Findings))))
-		shown := 0
+		color.Cyan("  SHADOW CREDS  %s  %s",
+			dimText(fmt.Sprintf("%d finding(s)", len(shadow.Findings))),
+			dimText("(detection only — exploit: pywhisker / certipy shadow)"))
+
+		// group by principal → []targets
+		shadowGroups := make(map[string][]string)
+		var shadowOrder []string
 		for _, f := range shadow.Findings {
-			if shown >= enumMaxItems {
+			if _, ok := shadowGroups[f.PrincipalName]; !ok {
+				shadowOrder = append(shadowOrder, f.PrincipalName)
+			}
+			shadowGroups[f.PrincipalName] = append(shadowGroups[f.PrincipalName], f.TargetName)
+		}
+		shown := 0
+		for _, name := range shadowOrder {
+			if limit > 0 && shown >= limit {
 				break
 			}
-			pfx := highPrefix("[!] ")
-			if f.Severity == "Critical" {
-				pfx = critPrefix("[!!]")
+			fmt.Printf("  %s  %s\n", critPrefix("[!!]"), name)
+			targetStr := strings.Join(shadowGroups[name], ", ")
+			if len(targetStr) > 70 {
+				targetStr = targetStr[:67] + "..."
 			}
-			fmt.Printf("  %s  %-18s →  %s\n", pfx, f.PrincipalName, f.TargetName)
+			fmt.Printf("        %s %s\n", dimText("→"), targetStr)
 			shown++
 		}
-		if len(shadow.Findings) > enumMaxItems {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath shadow -d %s ...)", len(shadow.Findings)-enumMaxItems, domain)))
+		if limit > 0 && len(shadowOrder) > limit {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath shadow -d %s ...)", len(shadowOrder)-limit, domain)))
 		}
 	}
 
@@ -662,7 +819,7 @@ func printEnumSummary(
 		color.Cyan("  ATTACK PATHS  %s", dimText(fmt.Sprintf("%d found", len(paths))))
 		shown := 0
 		for _, p := range paths {
-			if shown >= enumMaxItems {
+			if limit > 0 && shown >= limit {
 				break
 			}
 			names := make([]string, len(p.Nodes))
@@ -673,8 +830,8 @@ func printEnumSummary(
 			fmt.Printf("  %s  %s  %s\n", critPrefix("[!!]"), chain, dimText(fmt.Sprintf("(depth %d → %s)", p.Depth, p.TargetGroup)))
 			shown++
 		}
-		if len(paths) > enumMaxItems {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more)", len(paths)-enumMaxItems)))
+		if limit > 0 && len(paths) > limit {
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more)", len(paths)-limit)))
 		}
 	} else if result != nil {
 		fmt.Println()
@@ -685,74 +842,21 @@ func printEnumSummary(
 	fmt.Println()
 	color.White("  " + strings.Repeat("─", 60))
 
-	// count totals for risk rating
-	critTotal, highTotal, medTotal := 0, 0, 0
-	if acl != nil {
-		critTotal += len(acl.DCSyncFindings)
-		for _, f := range acl.Findings {
-			if f.Severity == "Critical" {
-				critTotal++
-			} else {
-				highTotal++
-			}
-		}
-	}
-	if adcs != nil {
-		for _, f := range adcs.TemplateFindings {
-			if f.Severity == "Critical" {
-				critTotal++
-			} else {
-				highTotal++
-			}
-		}
-	}
-	if shadow != nil {
-		for _, f := range shadow.Findings {
-			if f.Severity == "Critical" {
-				critTotal++
-			} else {
-				highTotal++
-			}
-		}
-	}
-	if kr != nil {
-		highTotal += len(kr.KerberoastableAccounts) + len(kr.ASREPAccounts)
-	}
-	for _, p := range paths {
-		if p.Depth <= 2 {
-			critTotal++
-		} else {
-			medTotal++
-		}
-	}
-	if smb != nil && smb.Reachable && !smb.SigningRequired {
-		highTotal++
-	}
-	if ldapSec != nil {
-		for _, f := range ldapSec.Findings {
-			if f.Severity == "High" {
-				highTotal++
-			} else {
-				medTotal++
-			}
-		}
-	}
-
-	riskLabel := "LOW"
-	riskColor := color.New(color.FgGreen)
-	if critTotal > 0 {
-		riskLabel = "CRITICAL"
-		riskColor = color.New(color.FgRed, color.Bold)
-	} else if highTotal > 0 {
-		riskLabel = "HIGH"
-		riskColor = color.New(color.FgRed)
-	} else if medTotal > 0 {
-		riskLabel = "MEDIUM"
-		riskColor = color.New(color.FgYellow)
+	verdict := riskVerdict(riskScore)
+	scoreColor := color.New(color.FgGreen)
+	switch riskScore.Grade {
+	case "F":
+		scoreColor = color.New(color.FgRed, color.Bold)
+	case "D":
+		scoreColor = color.New(color.FgRed)
+	case "C":
+		scoreColor = color.New(color.FgYellow)
+	case "B":
+		scoreColor = color.New(color.FgCyan)
 	}
 
 	fmt.Printf("  RISK  ")
-	riskColor.Printf("%s", riskLabel)
+	scoreColor.Printf("%s  (%s · %d/100)", verdict, riskScore.Grade, riskScore.Total)
 	fmt.Printf("   %s  %s  %s\n",
 		critPrefix(fmt.Sprintf("[!!] %d critical", critTotal)),
 		highPrefix(fmt.Sprintf("[!] %d high", highTotal)),
