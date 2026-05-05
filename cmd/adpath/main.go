@@ -153,7 +153,7 @@ func init() {
 		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
 		cmd.Flags().StringVar(&proxyURL, "proxy", "", "SOCKS5 proxy URL (e.g. socks5://127.0.0.1:1080) — PTT/ccache not supported through proxy")
 		cmd.Flags().StringVar(&scopeDN, "scope", "", "Restrict enumeration to specific OU/DN (e.g. OU=Finance,DC=corp,DC=local)")
-		cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
+		cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output — show all findings without truncation (enum: disables 5-item limit per section)")
 		cmd.MarkFlagRequired("domain")
 	}
 
