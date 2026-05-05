@@ -815,16 +815,16 @@ func templateFuncs() template.FuncMap {
 			}
 			cap := caps[cat]
 			if cap == 0 {
-				return template.CSS("var(--text-sev-medium)")
+				return template.CSS("var(--bar-sev-medium)")
 			}
 			pct := score * 100 / cap
 			switch {
 			case pct >= 75:
-				return template.CSS("var(--text-sev-critical)")
+				return template.CSS("var(--bar-sev-critical)")
 			case pct >= 40:
-				return template.CSS("var(--text-sev-high)")
+				return template.CSS("var(--bar-sev-high)")
 			default:
-				return template.CSS("var(--text-sev-medium)")
+				return template.CSS("var(--bar-sev-medium)")
 			}
 		},
 		"capFor": func(cat string) int {
@@ -907,6 +907,9 @@ html[data-theme="dark"] {
   --text-sev-critical: #e53e3e;
   --text-sev-high:     #dd6b20;
   --text-sev-medium:   #d69e2e;
+  --bar-sev-critical:  #e53e3e;
+  --bar-sev-high:      #dd6b20;
+  --bar-sev-medium:    #d69e2e;
   --node-user:     #63b3ed;
   --node-computer: #90cdf4;
   --node-group:    #b794f4;
@@ -939,6 +942,9 @@ html[data-theme="light"] {
   --text-sev-critical: #c53030;
   --text-sev-high:     #c2410c;
   --text-sev-medium:   #92400e;
+  --bar-sev-critical:  #e53e3e;
+  --bar-sev-high:      #ed8936;
+  --bar-sev-medium:    #d69e2e;
   --node-user:     #2b6cb0;
   --node-computer: #2c5282;
   --node-group:    #6b46c1;
@@ -3025,9 +3031,9 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
   if (!chart) return;
 
   var findings = [
-    { label: 'Critical', color: 'var(--text-sev-critical)', count: {{.TotalCritical}} },
-    { label: 'High',     color: 'var(--text-sev-high)',     count: {{.TotalHigh}} },
-    { label: 'Medium',   color: 'var(--text-sev-medium)',   count: {{.TotalMedium}} },
+    { label: 'Critical', color: 'var(--bar-sev-critical)', count: {{.TotalCritical}} },
+    { label: 'High',     color: 'var(--bar-sev-high)',     count: {{.TotalHigh}} },
+    { label: 'Medium',   color: 'var(--bar-sev-medium)',   count: {{.TotalMedium}} },
     { label: 'Info',     color: 'var(--accent)',             count: {{.Summary.TotalUsers}} + {{.Summary.TotalGroups}} + {{.Summary.TotalComputers}} }
   ];
 
