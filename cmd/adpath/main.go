@@ -281,6 +281,7 @@ func connectAndBind() (*adldap.Client, error) {
 
 func runEnum(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
+	analysis.Quiet = quietMode
 	if !quietMode {
 		printBanner()
 	}

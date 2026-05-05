@@ -282,7 +282,9 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 		}
 	}
 
-	printTrustResult(r, false)
+	if !Quiet {
+		printTrustResult(r, false)
+	}
 	return r, nil
 }
 

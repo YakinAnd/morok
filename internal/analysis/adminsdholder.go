@@ -118,7 +118,9 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 		entries, err = searchWithSDControl(client, adminSDHolderDN)
 		if err != nil || len(entries) == 0 {
 			// no access to AdminSDHolder — still return orphaned findings
-			printAdminSDHolderResult(r, false)
+			if !Quiet {
+				printAdminSDHolderResult(r, false)
+			}
 			return r, nil
 		}
 	}
@@ -132,7 +134,9 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 		}
 	}
 
-	printAdminSDHolderResult(r, false)
+	if !Quiet {
+		printAdminSDHolderResult(r, false)
+	}
 	return r, nil
 }
 

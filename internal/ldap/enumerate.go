@@ -164,7 +164,9 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 		CollectedAt: time.Now(),
 	}
 
-	color.White("\n  enumerating %s ...", c.Domain)
+	if !c.Quiet {
+		color.White("\n  enumerating %s ...", c.Domain)
+	}
 
 	// Users
 	users, err := c.EnumerateUsers()
@@ -468,7 +470,9 @@ func (c *Client) EnumerateComputersForest() ([]LDAPComputer, bool, error) {
 func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 	gcEntries, err := c.SearchGC(FilterAllComputers, computerAttributes)
 	if err != nil {
-		color.White("  GC unavailable (%v), domain-only", err)
+		if !c.Quiet {
+			color.White("  GC unavailable (%v), domain-only", err)
+		}
 		computers, err := c.EnumerateComputers()
 		return computers, false, err
 	}
@@ -501,7 +505,9 @@ func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 				computers = append(computers, comp)
 			}
 		} else {
-			color.White("  cannot reach %s (%v), using partial GC data", childDomain, err)
+			if !c.Quiet {
+				color.White("  cannot reach %s (%v), using partial GC data", childDomain, err)
+			}
 			for _, e := range entries {
 				comp := parseComputer(e)
 				comp.IsGC = true
@@ -519,7 +525,9 @@ func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Ent
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)
 	}
-	color.White("  querying %s via %s", domain, addrs[0])
+	if !c.Quiet {
+		color.White("  querying %s via %s", domain, addrs[0])
+	}
 	return c.SearchDomain(addrs[0], baseDN, FilterAllComputers, computerAttributes)
 }
 

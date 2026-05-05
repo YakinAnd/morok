@@ -125,7 +125,9 @@ func AnalyzeProtectedUsers(result *adldap.EnumerationResult) *ProtectedUsersResu
 		})
 	}
 
-	printProtectedUsersResult(r, false)
+	if !Quiet {
+		printProtectedUsersResult(r, false)
+	}
 	return r
 }
 
