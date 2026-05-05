@@ -1,12 +1,38 @@
 package report
 
-import "html/template"
+import (
+	"html/template"
+	"sort"
+)
 
 // RiskScore holds the aggregated security risk assessment (0–100, A–F).
 type RiskScore struct {
 	Total     int
 	Grade     string
 	Breakdown map[string]int
+}
+
+// BreakdownEntry is one row in the sorted risk breakdown table.
+type BreakdownEntry struct {
+	Name  string
+	Value int
+}
+
+// SortedBreakdown returns Breakdown as a slice sorted by value descending
+// (largest contributor first). Stable tie-break by name. Guaranteed order
+// between template renders — map iteration is non-deterministic.
+func (r RiskScore) SortedBreakdown() []BreakdownEntry {
+	entries := make([]BreakdownEntry, 0, len(r.Breakdown))
+	for name, value := range r.Breakdown {
+		entries = append(entries, BreakdownEntry{Name: name, Value: value})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].Value != entries[j].Value {
+			return entries[i].Value > entries[j].Value
+		}
+		return entries[i].Name < entries[j].Name
+	})
+	return entries
 }
 
 // GradeColor returns a CSS color variable for the grade letter.

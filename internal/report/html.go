@@ -809,7 +809,14 @@ func templateFuncs() template.FuncMap {
 			}
 			return many
 		},
-		"barColor": func(score, cap int) template.CSS {
+		// barColor: color reflects % of category's own cap (how saturated this category is).
+		"barColor": func(score int, cat string) template.CSS {
+			caps := map[string]int{
+				"Attack Paths": 30, "Dangerous ACLs": 20, "Kerberoasting": 15,
+				"AS-REP Roasting": 10, "Delegation": 15, "ADCS": 20,
+				"Policy": 15, "Stale Admins": 10, "No LAPS": 5, "Shadow Creds": 10,
+			}
+			cap := caps[cat]
 			if cap == 0 {
 				return template.CSS("var(--text-sev-medium)")
 			}
@@ -834,15 +841,21 @@ func templateFuncs() template.FuncMap {
 			}
 			return 10
 		},
-		"barWidth": func(score, cap int) int {
-			if cap == 0 {
+		// barWidthAbsolute: width as % of the largest cap (30 = Attack Paths).
+		// Makes bars visually comparable in absolute terms: score 30 → 100%, score 5 → 17%.
+		"barWidthAbsolute": func(score int) int {
+			const maxCap = 30
+			if score <= 0 {
 				return 0
 			}
-			pct := score * 100 / cap
-			if pct > 100 {
+			w := score * 100 / maxCap
+			if w < 2 {
+				return 2 // minimum visible sliver for non-zero scores
+			}
+			if w > 100 {
 				return 100
 			}
-			return pct
+			return w
 		},
 		"isPrivilegedGroup": func(name string) bool {
 			privileged := map[string]bool{
@@ -1367,15 +1380,18 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </div>
     </div>
     <div>
-      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Risk contribution by category</div>
+      <div style="font-size:0.85rem;color:var(--text-muted);margin-bottom:4px">Risk contribution by category</div>
+      <div style="font-size:0.72rem;color:var(--text-subtle);margin-bottom:12px">Bar length = absolute points contributed. Color = % of category cap.</div>
       <div style="display:flex;flex-direction:column;gap:6px">
-        {{range $cat, $score := .RiskScore.Breakdown}}{{if gt $score 0}}
+        {{range $e := .RiskScore.SortedBreakdown}}{{if gt $e.Value 0}}
         <div style="display:flex;align-items:center;gap:12px;font-size:0.82rem">
-          <div style="width:140px;color:var(--text-secondary)">{{$cat}}</div>
+          <div style="width:140px;color:var(--text-secondary)">{{$e.Name}}</div>
           <div style="flex:1;background:var(--bg-hover);border-radius:3px;height:6px;overflow:hidden">
-            <div style="width:{{barWidth $score (capFor $cat)}}%;height:100%;background:{{barColor $score (capFor $cat)}}"></div>
+            <div style="width:{{barWidthAbsolute $e.Value}}%;height:100%;background:{{barColor $e.Value $e.Name}};transition:width 0.3s"></div>
           </div>
-          <div style="width:30px;text-align:right;color:var(--text-main);font-weight:600">{{$score}}</div>
+          <div style="width:64px;text-align:right;color:var(--text-main);font-weight:600;font-variant-numeric:tabular-nums">
+            {{$e.Value}}<span style="color:var(--text-muted);font-weight:400">/{{capFor $e.Name}}</span>
+          </div>
         </div>
         {{end}}{{end}}
       </div>
