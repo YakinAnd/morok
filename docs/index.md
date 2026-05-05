@@ -11,7 +11,7 @@ adpath is a lightweight, single-binary CLI tool for enumerating Active Directory
  / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |
 /_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|
 
-  v0.9.8  //  AD Attack Path Enumerator
+  v0.9.9  //  AD Attack Path Enumerator
 ```
 
 ---

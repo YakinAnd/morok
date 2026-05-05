@@ -1,22 +1,74 @@
 # adpath
 
-Active Directory attack path enumerator and security auditing tool.
+**Active Directory Attack Path Enumerator**
+
+adpath is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
 
 ```
-adpath enum -d corp.local -u administrator -p 'P@ssw0rd' --dc 10.0.0.1 --report report.html
+    _      ____    ____      _      _____   _   _
+   / \    |  _ \  |  _ \    / \    |_   _| | | | |
+  / _ \   | | | | | |_) |  / _ \     | |   | |_| |
+ / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |
+/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|
+
+  v0.9.9  //  AD Attack Path Enumerator
 ```
+
+---
+
+## What adpath does
+
+adpath connects to a Domain Controller over LDAP and runs a comprehensive security analysis across multiple domains:
+
+| Category | What it checks |
+|---|---|
+| **Attack paths** | BFS graph traversal to Domain Admins, Enterprise Admins, Backup Operators, DNSAdmins, and 4 other privileged groups |
+| **Kerberos** | Kerberoastable accounts (SPNs), AS-REP roastable accounts (no preauth) |
+| **ACL** | GenericAll, WriteDACL, WriteOwner, ForceChangePassword, AddMember, DCSync (replication rights) |
+| **Delegation** | Unconstrained, constrained, RBCD misconfigurations |
+| **ADCS** | Certificate template vulnerabilities ESC1–ESC9, ESC11, ESC13 |
+| **SMB Signing** | SMB signing status on DC (port 445) — NTLM relay risk, no credentials needed |
+| **Shadow Credentials** | Write access to `msDS-KeyCredentialLink` on privileged objects |
+| **Trusts** | SID filtering, trust direction/type, Foreign Security Principals in privileged groups |
+| **GPO** | Password policy, GPO write ACL, GPP/MS14-025 cpassword |
+| **Exposure** | Stale accounts, krbtgt age, LAPS coverage, passwords in descriptions |
+| **Protected Users** | Privileged accounts not in Protected Users group |
+| **AdminSDHolder** | Orphaned adminCount=1 objects, backdoor ACEs |
+| **LDAP Security** | Signing/channel binding enforcement, SASL mechanisms, anonymous read |
+| **Audit Policy** | Legacy audit categories, AD Recycle Bin, machine account quota |
+
+Every finding includes **next steps** (exploit commands) and **remediation guidance**.
+
+---
+
+## Key features
+
+- **Single binary** — no Neo4j, no Python, no BloodHound required
+- **Any privilege level** — works with any valid domain account; low-privilege is enough for most checks
+- **Multiple auth methods** — password, Pass-the-Hash (NTLM), Pass-the-Ticket (Kerberos ccache)
+- **SOCKS5 proxy** — route all LDAP traffic through a proxy (`--proxy socks5://127.0.0.1:1080`)
+- **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
+- **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
+- **Self-contained HTML report** — single file, dark/light theme, global search, D3.js attack path graph
+- **CI mode** — `--quiet` prints a single-line verdict with no ANSI codes, safe for Jenkins/GitHub Actions/GitLab
+
+---
 
 ## Install
 
 ```bash
+# Build from source (requires Go 1.21+)
 git clone https://github.com/YakinAnd/adpath
 cd adpath
 go build -o adpath ./cmd/adpath/
+./adpath version
 ```
 
-Or download a pre-built binary from [Releases](https://github.com/YakinAnd/adpath/releases).
+Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/adpath/releases) page.
 
-## Quickstart
+---
+
+## Quick start
 
 ```bash
 # Full enumeration + HTML report
@@ -35,33 +87,47 @@ adpath enum -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8
 # Pass-the-Ticket (Kerberos ccache)
 adpath enum -d corp.local --ccache /tmp/administrator.ccache --dc 10.0.0.1
 
-# SOCKS5 proxy
-adpath enum -d corp.local -u administrator -p '...' --proxy socks5://127.0.0.1:1080
+# SOCKS5 proxy (pivoting through a compromised host)
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
 
 # Restrict scope to specific OU
 adpath enum -d corp.local -u administrator -p '...' --scope 'OU=Finance,DC=corp,DC=local'
 
-# Stealth mode — minimal LDAP queries
+# JSON export (compatible with BloodHound CE v5)
+adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
+
+# Stealth mode — minimal LDAP footprint (SIEM-heavy environments)
 adpath enum --stealth -d corp.local -u administrator -p '...' --dc 10.0.0.1
+
+# Username enumeration without credentials (Kerberos AS-REQ)
+adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
+
+# SMB signing check (no credentials required)
+adpath smb -d corp.local --dc 10.0.0.1
 ```
+
+---
 
 ## Commands
 
 | Command | Description |
-|---------|-------------|
-| `enum` | Full enumeration: attack paths, ACLs, Kerberos, delegation, ADCS, shadow creds, GPO, trusts |
-| `acl` | Dangerous ACL permissions (GenericAll, WriteDACL, WriteOwner, ForceChangePassword) |
-| `adcs` | ADCS misconfigurations (ESC1–ESC8) |
-| `audit` | Audit policy, AD Recycle Bin, blue-team visibility |
-| `computers` | Enumerate computers with summary table |
-| `delegation` | Unconstrained, constrained, resource-based constrained delegation |
-| `gpo` | Group Policy Object security analysis |
-| `kerb-enum` | Username enumeration via Kerberos AS-REQ (no credentials) |
-| `kerberos` | Kerberoastable and AS-REP roastable accounts |
-| `shadow` | Principals that can write msDS-KeyCredentialLink |
-| `smb` | SMB signing status on domain controller |
-| `trust` | Domain/forest trusts and foreign security principals |
-| `users` | Enumerate users with summary table |
+|---|---|
+| `enum` | Full enumeration — runs all modules, generates HTML report |
+| `kerberos` | Kerberoastable + AS-REP roastable accounts |
+| `acl` | Dangerous ACL permissions (GenericAll, WriteDACL, DCSync…) |
+| `delegation` | Unconstrained, constrained, RBCD delegation |
+| `gpo` | GPO security analysis + password policy |
+| `adcs` | ADCS certificate template vulnerabilities (ESC1–ESC9, ESC11, ESC13) |
+| `trust` | Domain/forest trust analysis, Foreign Security Principals |
+| `shadow` | Shadow Credentials — write access to msDS-KeyCredentialLink |
+| `audit` | Audit policy, AD Recycle Bin, machine account quota |
+| `users` | Enumerate AD users — summary table with AS-REP, adminCount, last logon |
+| `computers` | Enumerate AD computers — forest-wide, OS, LAPS, delegation summary |
+| `kerb-enum` | Username enumeration via Kerberos AS-REQ — no credentials required |
+| `smb` | SMB signing check on DC port 445 — no credentials required |
+| `version` | Print version |
+
+---
 
 ## enum flags
 
@@ -82,6 +148,8 @@ adpath enum --stealth -d corp.local -u administrator -p '...' --dc 10.0.0.1
       --max-depth   BFS depth for attack path search (default 10)
 ```
 
+---
+
 ## HTML Report
 
 The `--report` flag generates a full interactive HTML report with:
@@ -93,6 +161,8 @@ The `--report` flag generates a full interactive HTML report with:
 - **Users**, **Groups**, **Computers** — searchable/sortable tables
 - Light/dark theme toggle
 - CVSS scores with click-to-copy vectors
+
+---
 
 ## CI Integration
 
@@ -108,6 +178,8 @@ fi
 
 The `--quiet` output is plain ASCII with no ANSI color codes — safe for Jenkins, GitHub Actions, GitLab CI log parsers.
 
+---
+
 ## Authentication
 
 | Method | Flags |
@@ -116,6 +188,8 @@ The `--quiet` output is plain ASCII with no ANSI color codes — safe for Jenkin
 | Pass-the-Hash | `-u user -H NT_HASH` |
 | Pass-the-Ticket | `--ccache /path/to/file.ccache` |
 | Anonymous | (no credentials — limited data) |
+
+---
 
 ## License
 
