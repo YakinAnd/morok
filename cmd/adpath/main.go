@@ -222,6 +222,7 @@ func connectAndBind() (*adldap.Client, error) {
 	client.NTHash = ntHash
 	client.CcachePath = ccachePath
 	client.ProxyURL = proxyURL
+	client.Quiet = quietMode
 	if scopeDN != "" {
 		client.BaseDN = scopeDN
 		if !quietMode {
