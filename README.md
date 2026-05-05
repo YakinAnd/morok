@@ -195,9 +195,6 @@ The `--quiet` output is plain ASCII with no ANSI color codes — safe for Jenkin
 
 adpath is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
-**Commercial use** (SaaS, managed services, enterprise redistribution) requires a separate commercial license.
-Contact: yakinanrey@gmail.com
-
 ---
 
 > adpath is a security research and auditing tool. Use only against systems you own or have explicit written permission to test.
