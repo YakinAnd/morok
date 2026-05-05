@@ -3024,28 +3024,11 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
   var chart = document.getElementById('findings-chart');
   if (!chart) return;
 
-  var cs = getComputedStyle(document.documentElement);
   var findings = [
-    {
-      label: 'Critical',
-      color: cs.getPropertyValue('--text-sev-critical').trim(),
-      count: {{.TotalCritical}}
-    },
-    {
-      label: 'High',
-      color: cs.getPropertyValue('--text-sev-high').trim(),
-      count: {{.TotalHigh}}
-    },
-    {
-      label: 'Medium',
-      color: cs.getPropertyValue('--text-sev-medium').trim(),
-      count: {{.TotalMedium}}
-    },
-    {
-      label: 'Info',
-      color: 'var(--accent)',
-      count: {{.Summary.TotalUsers}} + {{.Summary.TotalGroups}} + {{.Summary.TotalComputers}}
-    }
+    { label: 'Critical', color: 'var(--text-sev-critical)', count: {{.TotalCritical}} },
+    { label: 'High',     color: 'var(--text-sev-high)',     count: {{.TotalHigh}} },
+    { label: 'Medium',   color: 'var(--text-sev-medium)',   count: {{.TotalMedium}} },
+    { label: 'Info',     color: 'var(--accent)',             count: {{.Summary.TotalUsers}} + {{.Summary.TotalGroups}} + {{.Summary.TotalComputers}} }
   ];
 
   var max = Math.max.apply(null, findings.map(function(f){ return f.count; }));
