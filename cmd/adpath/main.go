@@ -60,7 +60,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		color.Cyan("adpath v0.9.9")
+		color.Cyan("adpath v1.0")
 		color.White("AD Attack Path Enumerator")
 		color.White("https://github.com/YakinAnd/adpath")
 	},
@@ -1363,7 +1363,7 @@ func printBanner() {
 	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
 	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
 	color.White(``)
-	color.White(`  v0.9.9  //  AD Attack Path Enumerator`)
+	color.White(`  v1.0  //  AD Attack Path Enumerator`)
 	color.White(`  ` + strings.Repeat("─", 40))
 }
 

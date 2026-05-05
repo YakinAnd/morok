@@ -1,8 +1,8 @@
 # Roadmap
 
-## Current: v0.9.9
+## Current: v1.0
 
-### v0.9.9
+### v1.0
 - **HTML report redesign** — ACL grouped by right type by default (Group button removed); MITRE badges on group headers only (not per-row)
 - **Exposure tab** — 8 collapsible sections with count + severity badges (krbtgt, Descriptions, Stale Users, Stale Computers, No LAPS, PSO, Protected Users, AdminSDHolder)
 - **Expand All / Collapse All** — added to ACL and Exposure section headers
