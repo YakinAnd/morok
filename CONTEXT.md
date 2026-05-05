@@ -39,12 +39,15 @@ adpath/
 │   │   ├── pso.go                  # Fine-Grained Password Policy (PSO)
 │   │   ├── smb_signing.go          # SMB signing check via raw SMB2 Negotiate (port 445)
 │   │   ├── sysvol.go               # SYSVOL audit via SMB2 — non-standard file detection
-│   │   └── laps_acl.go             # LAPS ACL — who can read ms-Mcs-AdmPwd
+│   │   ├── laps_acl.go             # LAPS ACL — who can read ms-Mcs-AdmPwd
+│   │   └── severity_counts.go      # SeverityCounts struct — shared by CLI + HTML for aligned counts
 │   ├── spinner/
 │   │   └── spinner.go              # CLI spinner — adpath logo rotating during analysis
 │   ├── bloodhound/                 # BloodHound CE v5 JSON export
 │   └── report/
-│       └── html.go                 # Single-file HTML звіт з D3.js графом
+│       ├── html.go                 # Single-file HTML звіт з D3.js графом; CountRiskTotals (exported)
+│       ├── score.go                # RiskScore, CalculateRiskScore, SortedBreakdown, BreakdownEntry
+│       └── executive.go           # TopIssue, BuildTopIssues, plural() helper
 ├── docs/                           # MkDocs Material documentation (private, workflow_dispatch)
 │   └── assets/logo.svg             # SVG graph icon (7 spokes + center node)
 └── mkdocs.yml                      # MkDocs config
@@ -67,14 +70,25 @@ github.com/hirochachacha/go-smb2        # SYSVOL audit (SMB2 file listing)
 ## CLI команди
 
 ```bash
-# Повний enumeration + attack paths + HTML звіт
+# Повний enumeration + attack paths (термінальний вивід)
 ./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1
+
+# З HTML звітом (opt-in через --report)
+./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --report report.html
+
+# Verbose: показати всі findings без truncation
+./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --verbose
+
+# Quiet: один рядок для CI/scripting
+./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 --quiet
+# → RISK CRITICAL (F · 83/100) — 38 critical, 40 high, 1 medium
 
 # З фільтрацією scope, proxy, JSON export
 ./adpath enum -d corp.local -u admin -p Pass --dc 10.0.0.1 \
   --scope "OU=Finance,DC=corp,DC=local" \
   --proxy socks5://127.0.0.1:1080 \
-  --json ./bh_out/
+  --json ./bh_out/ \
+  --report report.html
 
 # Kerberoastable і AS-REP акаунти
 ./adpath kerberos -d corp.local -u admin -p Pass --dc 10.0.0.1
@@ -168,12 +182,15 @@ github.com/hirochachacha/go-smb2        # SYSVOL audit (SMB2 file listing)
 - Global search через всі tabs
 - MITRE ATT&CK badges (purple T-code, linked до attack.mitre.org) на section headers і per-finding rows
 - Per-finding Exploit/Fix accordion з контекстними командами
-- CVSS scores клікабельні: hover показує вектор, click копіює `CVSS:3.1/AV:N/...`
+- CVSS scores клікабельні: hover показує вектор, click копіює `CVSS:3.1/AV:N/...`; `data-copied` attr для zero-layout-shift flash
 - Help icons (?) на всіх section titles з tooltips
 - Collapsible sections (.chevron CSS rotate, не character swap)
 - DCSync findings інтегровані в ACL grouped list (не окрема секція)
 - LAPS Password Read Access секція в Computers tab
 - Severity colors уніфіковані через CSS vars: `--text-sev-critical: #e53e3e`, `--text-sev-high: #dd6b20`, `--text-sev-medium: #d69e2e`
+- Nav tabs: `overflow-x: auto` + `::after` spacer pseudo-element (fixes right-padding clip in scroll containers)
+- Risk Score breakdown: `barWidthAbsolute` (absolute contribution, не % of cap) + `barColor` (% of own cap) + `SortedBreakdown()` (descending, deterministic); score column shows `30/30` format
+- `CountRiskTotals` exported — CLI footer та HTML header використовують ідентичне counting
 
 ### CLI Spinner
 - `internal/spinner` — 8-frame анімація, · обертається навколо ⊙ по годинниковій (N→NE→E→SE→S→SW→W→NW)
@@ -404,7 +421,7 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **ZgotmplZ fix** — `GradeColor()` повертає `template.CSS` → grade letter "F" тепер яскраво-червоний
 - ✅ **Exploit commands** — `pathExploitData` struct з `Description` (prose, без copy) + `Commands []string` (реальні shell-команди з copy button) + `Fix` + `AuditCmd`; copy button тільки на виконуваних командах
 - ✅ **ADCS duplicate ESC** — demo template names виправлені: `UserTemplate`, `WebServer`
-- ✅ **Version sync** — header logo `v0.9.8` → `v{{.Version}}`
+- ✅ **Version sync** — header logo `v{{.Version}}`
 - ✅ **plural() helper** — прибрані всі `(s)` суфікси в executive.go і html.go
 - ✅ **Executive quick stats** — замінені дублюючі findings-counters на environment size (Users/Computers/Groups/KrbtgtAge)
 - ✅ **Policy anchor scroll** — `TopIssue.Anchor` field; "Weak password policy" View button scrolls до `#policy-section`
@@ -412,7 +429,40 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 - ✅ **Risk Score breakdown bars** — `barColor/barWidth/capFor` helpers: колір залежить від % заповнення (critical≥75%, high≥40%, medium<40%)
 - ✅ **Print CSS** — `:not(:first-of-type)` page-break (Executive+Summary разом, Paths з нової сторінки)
 - ✅ **GPCO is-admin node** — `isPrivilegedGroup()` FuncMap; Group Policy Creator Owners отримує червоний бордер у path chain
-- ✅ **UI polish (сесія)** — Attack Path severity badges уніфіковані (`badge-*`); DangerousACLCount включає DCSync; CVSS copy без layout shift (`data-copied` attr + `template.CSS` flash); "Unconstrained Delegation" повна назва колонки; жирний лічильник прибрано з ACL group headers
+- ✅ **UI polish** — Attack Path severity badges уніфіковані (`badge-*`); DangerousACLCount включає DCSync; CVSS copy без layout shift; "Unconstrained Delegation" повна назва колонки; жирний лічильник прибрано з ACL group headers
+- ✅ **Nav tab overflow** — `padding: 0 0 0 28px` + `.nav::after { min-width: 28px }` spacer pseudo-element (padding-right ігнорується в overflow scroll containers на Chrome/Safari)
+
+### P4 CLI improvements (на гілці feat/adp-72-73)
+
+- ✅ **Single source of truth для severity counts** — `report.CountRiskTotals()` (exported) використовується і CLI footer, і HTML header; рахує однаковий набір модулів (ACL, Kerberos, ADCS, Delegation, Trust, Shadow, LDAP, SMB, GPO, AdminSDHolder); attack paths більше не рахуються як "critical" в severity totals (узгоджено з HTML)
+- ✅ **Risk score в CLI footer** — `RISK CRITICAL (F · 83/100)` замість просто `CRITICAL`; `riskVerdict(RiskScore)` маппить grade → verbal label
+- ✅ **ACL grouped по principal** — `addGroup()` будує `map[principal]→{rights: map[right]→[]targets}`; principal виводиться один раз, права з відступом:
+  ```
+  [!!]  lord.varys
+          WriteDACL    → Administrators, Print Operators
+          GenericAll   → Administrators, Print Operators
+  ```
+- ✅ **Shadow Creds grouped по principal** — аналогічно ACL; `(detection only — exploit: pywhisker / certipy shadow)` підказка в заголовку
+- ✅ **Domain summary one-liner** — перед USERS/COMPUTERS секціями: `sevenkingdoms.local · 16 users · 3 computers · 55 groups · 4 admins`; рядок 2: `5 attack paths · 72 ACL findings · 1 ADCS · krbtgt: 51d`
+- ✅ **Timing footer** — `enumeration completed in 12.3s` після всіх секцій
+- ✅ **`--quiet` flag** — одна лінія `RISK CRITICAL (F · 83/100) — 38 critical, 40 high, 1 medium`; banner, connection messages, REPORT section приховані; для CI/grep
+- ✅ **`--verbose` flag** — вимикає per-section truncation (5-item limit); показує всі findings; без `-v` shorthand (щоб не конфліктувало з cobra root `-v`)
+- ✅ **Stale threshold footnotes** — "CIS: 90d threshold" / "CIS: 45d threshold" поруч із stale рядками
+- ✅ **`adpath version` command** — `rootCmd.Version` прибрано щоб cobra не дублював `-v/--version` у Flags; `version` тільки як subcommand
+
+### P5 Risk bars (на гілці feat/adp-72-73)
+
+- ✅ **Proportional bars** — `barWidthAbsolute(score int) int`: ширина відносно найбільшого cap (30 = Attack Paths); score 30 → 100%, score 5 → ~17%; shadow creds (9pts) більше не виглядає так само як attack paths (30pts)
+- ✅ **barColor оновлений** — приймає `(score int, cat string)` замість `(score, cap int)`; колір кодує % від власного cap категорії (≥75% → red, ≥40% → orange, <40% → yellow)
+- ✅ **SortedBreakdown()** — `RiskScore.SortedBreakdown() []BreakdownEntry` повертає відсортований slice (desc by value, stable тай-брейк за name); map iteration більше не дає рандомний порядок між запусками
+- ✅ **Score format** — `30/30`, `9/10`, `5/15` (value/cap) в правій колонці; `tabular-nums` для вирівнювання
+- ✅ **Subtitle** — "Bar length = absolute points contributed. Color = % of category cap." під заголовком секції
+
+### P6 CLI fixes (на гілці feat/adp-72-73)
+
+- ✅ **Quiet mode повний** — `printBanner()` пропускається; REPORT секція мовчить; залишається тільки один RISK рядок
+- ✅ **Word-aware truncation** — `truncateTargets(targets []string, maxLen int) string` → `+N more` замість `Replic...`; ніколи не ріже посередині слова; verbose показує всі targets без обрізання
+- ✅ **Empty target filter** — ACL findings з порожнім TargetName (unresolved SID) відфільтровуються на двох рівнях: при grouping (`addGroup`) і при render; principals де всі targets порожні — пропускаються цілком
 
 ### v1.0 ПУБЛІЧНИЙ РЕЛІЗ
 - README з GIF демо
@@ -425,4 +475,4 @@ OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES ansible-playbook -i ~/Downloads/projects
 На початку кожної нової сесії з Claude — скинь вміст цього файлу в чат.
 Після кожної версії — оновлюй файл і пушь в репо.
 
-*Останнє оновлення: v0.9.9 — SYSVOL audit, LAPS ACL detection, HTML report UI overhaul, CVSS click-to-copy, help icons.*
+*Останнє оновлення: P6 (feat/adp-72-73) — CLI quiet/verbose/truncation fixes, P5 risk bars, P4 CLI improvements, P3 HTML UI polish.*
