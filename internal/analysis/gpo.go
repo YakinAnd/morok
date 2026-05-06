@@ -43,11 +43,12 @@ type GPOACLFinding struct {
 
 // PasswordPolicy — налаштування парольної політики
 type PasswordPolicy struct {
-	MinLength       int
-	MaxAge          int    // днів
-	MinAge          int    // днів
-	Complexity      bool
-	LockoutThreshold int
+	MinLength            int
+	MaxAge               int  // днів
+	MinAge               int  // днів
+	Complexity           bool
+	LockoutThreshold     int
+	LockoutDuration      int  // хвилин (0 = до ручного розблокування)
 	ReversibleEncryption bool
 }
 
@@ -112,6 +113,8 @@ var domainAttributes = []string{
 	"minPwdAge",
 	"pwdProperties",
 	"lockoutThreshold",
+	"lockoutDuration",
+	"lockoutObservationWindow",
 }
 
 // ============================================================
@@ -448,19 +451,41 @@ func collectPasswordPolicy(client *adldap.Client) (*PasswordPolicy, error) {
 		fmt.Sscanf(v, "%d", &pp.LockoutThreshold)
 	}
 
-	// maxPwdAge — Windows зберігає в 100-наносекундних інтервалах (від'ємне)
+	// maxPwdAge — Windows stores as negative 100-nanosecond intervals
 	if v := entry.GetAttributeValue("maxPwdAge"); v != "" {
-    age, err := strconv.ParseInt(v, 10, 64)
-    if err == nil {
-        if age < 0 {
-            age = -age
-        }
-        if age == 0 {
-            pp.MaxAge = 0
-        } else {
-            pp.MaxAge = int(age / 864000000000)
-        }
-    }
+		age, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			if age < 0 {
+				age = -age
+			}
+			pp.MaxAge = int(age / 864000000000)
+		}
+	}
+
+	// minPwdAge — same encoding; 0 = no minimum age
+	if v := entry.GetAttributeValue("minPwdAge"); v != "" {
+		age, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			if age < 0 {
+				age = -age
+			}
+			pp.MinAge = int(age / 864000000000)
+		}
+	}
+
+	// lockoutDuration — negative 100-ns intervals; 0xFFFFFFFFFFFFFFFF = indefinite (admin unlock)
+	if v := entry.GetAttributeValue("lockoutDuration"); v != "" {
+		dur, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			if dur < 0 {
+				dur = -dur
+			}
+			if dur == 0 {
+				pp.LockoutDuration = 0 // requires admin unlock
+			} else {
+				pp.LockoutDuration = int(dur / 600000000) // convert to minutes
+			}
+		}
 	}
 
 	return pp, nil

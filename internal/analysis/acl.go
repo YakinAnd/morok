@@ -488,6 +488,15 @@ func parseACL(data []byte, offset int) ([]ACE, error) {
 			continue
 		}
 
+		// INHERIT_ONLY_ACE (0x08): applies only to child objects, not to this object itself.
+		// Skipping these prevents inherited container ACEs from being reported as findings
+		// on the object they propagate through.
+		aceFlags := data[aceOffset+1]
+		if aceFlags&0x08 != 0 {
+			aceOffset += size
+			continue
+		}
+
 		aces = append(aces, ace)
 		aceOffset += size
 	}
