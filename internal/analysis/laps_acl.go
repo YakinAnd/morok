@@ -41,6 +41,18 @@ type LAPSACLResult struct {
 	WinLAPSEncGUID  string // resolved schemaIDGUID of msLAPS-EncryptedPassword (Windows LAPS encrypted)
 	LAPSFound       bool   // at least one computer has LAPS deployed
 	Findings        []LAPSACLFinding
+	GMSAFindings    []GMSAACLFinding // principals that can read gMSA passwords
+}
+
+// GMSAACLFinding — principal that can retrieve a gMSA managed password.
+type GMSAACLFinding struct {
+	GMSAName      string
+	GMSADN        string
+	PrincipalName string
+	PrincipalType string
+	Severity      string
+	CVSS          float64
+	CVSSVector    string
 }
 
 // AnalyzeLAPSACL checks which non-privileged principals have ReadProperty rights
@@ -124,6 +136,50 @@ func AnalyzeLAPSACL(client *adldap.Client, result *adldap.EnumerationResult) (*L
 				CVSSVector:    lapsVec,
 				Severity:      CVSSSeverity(lapsScore),
 			})
+		}
+	}
+
+	// ── 4. gMSA password readers ──────────────────────────────
+	// msDS-GroupMSAMembership is a security descriptor that controls who can
+	// retrieve the gMSA's managed password. Principals in the DACL can authenticate as the gMSA.
+	gmsaEntries, err := client.Search(
+		"(objectClass=msDS-GroupManagedServiceAccount)",
+		[]string{"sAMAccountName", "distinguishedName", "msDS-GroupMSAMembership"},
+	)
+	if err == nil {
+		const gmsaVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+		gmsaScore := CVSSScore(gmsaVec)
+		for _, ge := range gmsaEntries {
+			sdBytes := ge.GetRawAttributeValue("msDS-GroupMSAMembership")
+			if len(sdBytes) == 0 {
+				continue
+			}
+			aces, parseErr := parseSecurityDescriptor(sdBytes)
+			if parseErr != nil {
+				continue
+			}
+			gmsaName := ge.GetAttributeValue("sAMAccountName")
+			for _, ace := range aces {
+				if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+					continue
+				}
+				info, ok := nameMap[ace.SID]
+				if !ok {
+					continue
+				}
+				if isPrivilegedPrincipal(info.Name) {
+					continue
+				}
+				r.GMSAFindings = append(r.GMSAFindings, GMSAACLFinding{
+					GMSAName:      gmsaName,
+					GMSADN:        ge.DN,
+					PrincipalName: info.Name,
+					PrincipalType: info.Type,
+					Severity:      CVSSSeverity(gmsaScore),
+					CVSS:          gmsaScore,
+					CVSSVector:    gmsaVec,
+				})
+			}
 		}
 	}
 

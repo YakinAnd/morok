@@ -21,7 +21,8 @@ type HygieneResult struct {
 	PasswordInDesc       []PasswordInDescFinding
 	PasswordNotRequired  []adldap.LDAPUser // enabled accounts with UAC PASSWD_NOTREQD (0x20)
 	SmartcardRequired    []adldap.LDAPUser // enabled accounts requiring smartcard — hash never rotates
-	DnsAdminsMembers     []string          // non-privileged members of DnsAdmins (DC SYSTEM path)
+	DnsAdminsMembers          []string          // non-privileged members of DnsAdmins (DC SYSTEM path)
+	PreWin2000AccessEnabled   bool              // Pre-Windows 2000 Compatible Access has Everyone/Authenticated Users
 	KrbtgtPwdAgeDays     int
 	KrbtgtLastSet        string
 	KrbtgtAtRisk         bool // true if > 180 days
@@ -150,6 +151,19 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 				ObjectType:     "group",
 				Description:    g.Description,
 			})
+		}
+
+		// PRE-Windows-2000 Compatible Access: if Everyone (S-1-1-0) or Authenticated Users
+		// (S-1-5-11) are members, anonymous LDAP read access is granted — a pre-AD legacy setting.
+		if strings.EqualFold(g.SAMAccountName, "Pre-Windows 2000 Compatible Access") {
+			for _, memberDN := range g.Members {
+				lower := strings.ToLower(memberDN)
+				if strings.Contains(lower, "s-1-1-0") || strings.Contains(lower, "s-1-5-11") ||
+					strings.Contains(lower, "everyone") || strings.Contains(lower, "authenticated users") {
+					hr.PreWin2000AccessEnabled = true
+					break
+				}
+			}
 		}
 
 		// DnsAdmins members can load an arbitrary DLL on DCs → SYSTEM RCE (ServerLevelPluginDll)

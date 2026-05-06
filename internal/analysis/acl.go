@@ -59,10 +59,23 @@ type ACLFinding struct {
 }
 
 // ACLResult — результат ACL аналізу
+// OwnerFinding — non-default owner on a privileged AD object.
+// The owner always has implicit WriteDACL regardless of the DACL.
+type OwnerFinding struct {
+	OwnerSID      string
+	OwnerName     string
+	TargetDN      string
+	TargetName    string
+	Severity      string
+	CVSS          float64
+	CVSSVector    string
+}
+
 type ACLResult struct {
-	Domain        string
-	Findings      []ACLFinding
+	Domain         string
+	Findings       []ACLFinding
 	DCSyncFindings []DCSyncFinding
+	OwnerFindings  []OwnerFinding // privileged objects with non-default owners
 }
 
 // ============================================================
@@ -138,6 +151,9 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLRe
 			color.Red("    %s  (%s)", f.PrincipalName, f.PrincipalType)
 		}
 	}
+
+	// Owner check: non-default owner on privileged objects has implicit WriteDACL.
+	aclResult.OwnerFindings = checkPrivilegedOwners(entries, nameMap, result)
 
 	return aclResult, nil
 }
@@ -256,6 +272,69 @@ func isBuiltinDCSyncSID(sid string) bool {
 	return false
 }
 
+// checkPrivilegedOwners scans the SD of privileged objects (DA/EA/DC members)
+// for non-default owners. The owner of any AD object has implicit WriteDACL rights
+// regardless of the DACL, making non-default ownership a backdoor primitive.
+func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo, result *adldap.EnumerationResult) []OwnerFinding {
+	// Build set of privileged user DNs (members of DA/EA/SA/Administrators)
+	privDNs := make(map[string]string) // lower(DN) → SAMAccountName
+	for _, g := range result.Groups {
+		switch strings.ToLower(g.SAMAccountName) {
+		case "domain admins", "enterprise admins", "schema admins", "administrators":
+			for _, m := range g.Members {
+				privDNs[strings.ToLower(m)] = m
+			}
+		}
+	}
+	for _, u := range result.Users {
+		if u.AdminCount {
+			privDNs[strings.ToLower(u.DN)] = u.SAMAccountName
+		}
+	}
+
+	const ownerVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+	ownerScore := CVSSScore(ownerVec)
+
+	var findings []OwnerFinding
+	for _, entry := range entries {
+		ldn := strings.ToLower(entry.DN)
+		targetName, ok := privDNs[ldn]
+		if !ok {
+			continue
+		}
+		sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
+		if len(sdBytes) == 0 {
+			continue
+		}
+		ownerSID := parseSDOwner(sdBytes)
+		if ownerSID == "" {
+			continue
+		}
+		if isBuiltinDCSyncSID(ownerSID) {
+			continue // expected privileged owner
+		}
+		// check if it's another privileged-group member by SID
+		info, inMap := nameMap[ownerSID]
+		if inMap && isPrivilegedPrincipal(info.Name) {
+			continue
+		}
+		ownerName := ownerSID
+		if inMap {
+			ownerName = info.Name
+		}
+		findings = append(findings, OwnerFinding{
+			OwnerSID:   ownerSID,
+			OwnerName:  ownerName,
+			TargetDN:   entry.DN,
+			TargetName: targetName,
+			Severity:   CVSSSeverity(ownerScore),
+			CVSS:       ownerScore,
+			CVSSVector: ownerVec,
+		})
+	}
+	return findings
+}
+
 // ============================================================
 // Парсинг ACL записів
 // ============================================================
@@ -365,6 +444,19 @@ func parseSecurityDescriptor(data []byte) ([]ACE, error) {
 	}
 
 	return parseACL(data, int(daclOffset))
+}
+
+// parseSDOwner extracts the Owner SID from a self-relative Security Descriptor.
+// Returns empty string if the SD is too short or OffsetOwner is invalid.
+func parseSDOwner(data []byte) string {
+	if len(data) < 20 {
+		return ""
+	}
+	ownerOffset := readUint32LE(data, 4)
+	if ownerOffset == 0 || int(ownerOffset) >= len(data) {
+		return ""
+	}
+	return parseSID(data, int(ownerOffset))
 }
 
 // parseACL парсить ACL структуру
