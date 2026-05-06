@@ -27,7 +27,8 @@ type LDAPUser struct {
 	AdminCount       bool
 	Enabled          bool
 	PasswordNeverExpires bool
-	DontReqPreauth   bool   // AS-REP roastable
+	PasswordNotRequired  bool   // UAC 0x20 — can authenticate with empty password
+	DontReqPreauth       bool   // AS-REP roastable
 	LastLogon        string
 	PasswordLastSet  string
 	ObjectSid        string
@@ -275,6 +276,7 @@ func parseUser(entry *goldap.Entry) LDAPUser {
 		AdminCount:           entry.GetAttributeValue("adminCount") == "1",
 		Enabled:              !isBitSet(uac, 0x0002),  // ADS_UF_ACCOUNTDISABLE
 		PasswordNeverExpires: isBitSet(uac, 0x10000),  // ADS_UF_DONT_EXPIRE_PASSWD
+		PasswordNotRequired:  isBitSet(uac, 0x0020),   // ADS_UF_PASSWD_NOTREQD
 		DontReqPreauth:       isBitSet(uac, 0x400000), // ADS_UF_DONT_REQUIRE_PREAUTH
 		LastLogon:            parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		PasswordLastSet:      parseFileTime(entry.GetAttributeValue("pwdLastSet")),

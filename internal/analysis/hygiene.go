@@ -16,15 +16,16 @@ import (
 
 // HygieneResult contains AD hygiene / blue team findings
 type HygieneResult struct {
-	StaleUsers        []adldap.LDAPUser
-	StaleComputers    []adldap.LDAPComputer
-	PasswordInDesc    []PasswordInDescFinding
-	KrbtgtPwdAgeDays  int
-	KrbtgtLastSet     string
-	KrbtgtAtRisk      bool // true if > 180 days
-	NoLAPSCount       int                  // enabled computers without LAPS
-	TotalComputers    int                  // total enabled computers
-	NoLAPSComputers   []adldap.LDAPComputer // enabled computers without LAPS
+	StaleUsers           []adldap.LDAPUser
+	StaleComputers       []adldap.LDAPComputer
+	PasswordInDesc       []PasswordInDescFinding
+	PasswordNotRequired  []adldap.LDAPUser // enabled accounts with UAC PASSWD_NOTREQD (0x20)
+	KrbtgtPwdAgeDays     int
+	KrbtgtLastSet        string
+	KrbtgtAtRisk         bool // true if > 180 days
+	NoLAPSCount          int                   // enabled computers without LAPS
+	TotalComputers       int                   // total enabled computers
+	NoLAPSComputers      []adldap.LDAPComputer // enabled computers without LAPS
 }
 
 // DescriptionFinding is any AD object that has a non-empty description field.
@@ -76,6 +77,11 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		// stale: enabled account, no logon in 90+ days
 		if isStale(u.LastLogon, now, staleUserDays) {
 			hr.StaleUsers = append(hr.StaleUsers, u)
+		}
+
+		// UAC PASSWD_NOTREQD — can authenticate with empty password
+		if u.PasswordNotRequired {
+			hr.PasswordNotRequired = append(hr.PasswordNotRequired, u)
 		}
 
 		if u.Description != "" {

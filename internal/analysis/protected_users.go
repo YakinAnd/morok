@@ -75,6 +75,15 @@ func AnalyzeProtectedUsers(result *adldap.EnumerationResult) *ProtectedUsersResu
 		}
 	}
 
+	// build group membership map for transitive expansion: groupDN → member DNs
+	groupMembers := make(map[string][]string)
+	for _, g := range result.Groups {
+		lower := strings.ToLower(g.DN)
+		for _, m := range g.Members {
+			groupMembers[lower] = append(groupMembers[lower], strings.ToLower(m))
+		}
+	}
+
 	// find privileged groups DNs
 	privGroupDNs := make(map[string]string) // lower(DN) → display name
 	for _, g := range result.Groups {
@@ -86,7 +95,33 @@ func AnalyzeProtectedUsers(result *adldap.EnumerationResult) *ProtectedUsersResu
 		}
 	}
 
-	// check each user: if member of a privileged group and NOT in Protected Users → finding
+	// transitiveMembers returns all transitive member DNs (users + groups) of a group.
+	var transitiveMembers func(dn string, visited map[string]bool) []string
+	transitiveMembers = func(dn string, visited map[string]bool) []string {
+		if visited[dn] {
+			return nil
+		}
+		visited[dn] = true
+		var all []string
+		for _, m := range groupMembers[dn] {
+			all = append(all, m)
+			all = append(all, transitiveMembers(m, visited)...)
+		}
+		return all
+	}
+
+	// build set of all transitive members per privileged group
+	privMembers := make(map[string]map[string]bool) // groupDN → set of member DNs
+	for gdn, gname := range privGroupDNs {
+		members := transitiveMembers(gdn, make(map[string]bool))
+		s := make(map[string]bool, len(members))
+		for _, m := range members {
+			s[m] = true
+		}
+		privMembers[gname] = s
+	}
+
+	// check each user: if transitive member of a privileged group and NOT in Protected Users → finding
 	for _, u := range result.Users {
 		if !u.Enabled {
 			continue
@@ -95,10 +130,11 @@ func AnalyzeProtectedUsers(result *adldap.EnumerationResult) *ProtectedUsersResu
 			continue
 		}
 
+		userDN := strings.ToLower(u.DN)
 		var memberOfPriv []string
-		for _, memberDN := range u.MemberOf {
-			if name, ok := privGroupDNs[strings.ToLower(memberDN)]; ok {
-				memberOfPriv = append(memberOfPriv, name)
+		for gname, members := range privMembers {
+			if members[userDN] {
+				memberOfPriv = append(memberOfPriv, gname)
 			}
 		}
 		if len(memberOfPriv) == 0 {
