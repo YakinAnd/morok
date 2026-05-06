@@ -880,9 +880,9 @@ const htmlTemplate = `<!DOCTYPE html>
 <style>
 /* ── Theme variables ─────────────────────────────────────────── */
 :root {
-  --brand-primary: #7c3aed;
-  --brand-light:   #a78bfa;
-  --brand-dark:    #5b21b6;
+  --brand-primary: #c9a961;
+  --brand-light:   #f3c97a;
+  --brand-dark:    #8b1e3f;
 }
 html[data-theme="dark"] {
   --bg-page:       #0f1117;
@@ -965,7 +965,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-main); line-height: 1; }
-.header-logo-name em { color: var(--brand-primary); font-style: normal; }
+.header-logo-name { color: var(--brand-primary); }
 .header-logo-tag { font-size: 0.68rem; letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase; }
 .header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
@@ -1250,27 +1250,35 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <div class="header">
   <div class="header-logo">
-    <svg width="38" height="38" viewBox="0 0 58 58" fill="none">
-      <line x1="29" y1="29" x2="29" y2="6"  stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
-      <line x1="29" y1="29" x2="48" y2="14" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
-      <line x1="29" y1="29" x2="52" y2="35" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
-      <line x1="29" y1="29" x2="40" y2="52" stroke="#7c3aed" stroke-width="1.5" opacity="0.4"/>
-      <line x1="29" y1="29" x2="18" y2="52" stroke="#7c3aed" stroke-width="1.5" opacity="0.4"/>
-      <line x1="29" y1="29" x2="6"  y2="35" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
-      <line x1="29" y1="29" x2="10" y2="14" stroke="#7c3aed" stroke-width="1.5" opacity="0.5"/>
-      <circle cx="29" cy="6"  r="3"   fill="#5b21b6" opacity="0.8"/>
-      <circle cx="48" cy="14" r="2.5" fill="#5b21b6" opacity="0.7"/>
-      <circle cx="52" cy="35" r="3"   fill="#7c3aed" opacity="0.8"/>
-      <circle cx="40" cy="52" r="2.5" fill="#5b21b6" opacity="0.6"/>
-      <circle cx="18" cy="52" r="2.5" fill="#5b21b6" opacity="0.6"/>
-      <circle cx="6"  cy="35" r="3"   fill="#5b21b6" opacity="0.7"/>
-      <circle cx="10" cy="14" r="2.5" fill="#5b21b6" opacity="0.7"/>
-      <circle cx="29" cy="29" r="10" fill="#7c3aed" opacity="0.08"/>
-      <circle cx="29" cy="29" r="6"  fill="#4c1d95" opacity="0.8"/>
-      <circle cx="29" cy="29" r="3.5" fill="#a855f7"/>
+    <svg width="38" height="38" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="hiris" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#f3c97a" stop-opacity="0.35"/>
+          <stop offset="60%" stop-color="#c9a961" stop-opacity="0.15"/>
+          <stop offset="100%" stop-color="#c9a961" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <g transform="translate(100,100)">
+        <circle cx="0" cy="0" r="65" fill="url(#hiris)"/>
+        <circle cx="0" cy="0" r="65" fill="none" stroke="#c9a961" stroke-width="0.7" opacity="0.4"/>
+        <line x1="0" y1="0" x2="-31" y2="-31" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+        <line x1="0" y1="0" x2="31" y2="-31" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+        <line x1="0" y1="0" x2="-36" y2="22" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+        <line x1="0" y1="0" x2="36" y2="22" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+        <line x1="0" y1="0" x2="0" y2="-38" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+        <line x1="0" y1="0" x2="0" y2="40" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+        <circle cx="-31" cy="-31" r="3.5" fill="#c9a961"/>
+        <circle cx="31" cy="-31" r="3.5" fill="#c9a961"/>
+        <circle cx="-36" cy="22" r="3.5" fill="#c9a961"/>
+        <circle cx="36" cy="22" r="3.5" fill="#c9a961"/>
+        <circle cx="0" cy="-38" r="3.5" fill="#c9a961"/>
+        <circle cx="0" cy="40" r="3.5" fill="#c9a961"/>
+        <path d="M 0 -12 L 12 0 L 0 12 L -12 0 Z" fill="#0a0d14" stroke="#8b1e3f" stroke-width="2"/>
+        <circle cx="0" cy="0" r="3" fill="#c9a961"/>
+      </g>
     </svg>
     <div class="header-logo-text">
-      <div class="header-logo-name"><em>ad</em>path</div>
+      <div class="header-logo-name">morok</div>
       <div class="header-logo-tag">v{{.Version}} · AD Attack Path Analysis</div>
     </div>
   </div>
