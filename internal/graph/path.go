@@ -195,17 +195,6 @@ func (g *Graph) buildAttackPath(edges []Edge) AttackPath {
 // Допоміжні функції
 // ============================================================
 
-// findDomainAdmins шукає DN групи Domain Admins у графі
-func (g *Graph) findDomainAdmins() string {
-	for dn, node := range g.Nodes {
-		if node.Type == NodeGroup &&
-			strings.EqualFold(node.SAMAccountName, "Domain Admins") {
-			return dn
-		}
-	}
-	return ""
-}
-
 // findBySAM шукає DN об'єкта за SAMAccountName
 func (g *Graph) findBySAM(sam string) string {
 	for dn, node := range g.Nodes {
