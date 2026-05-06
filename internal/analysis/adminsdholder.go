@@ -172,17 +172,26 @@ func searchWithSDControl(client *adldap.Client, dn string) ([]*goldap.Entry, err
 // any ACE where the principal is not a well-known built-in privileged SID.
 func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []AdminSDHolderACEFinding {
 	// built-in SIDs that legitimately appear in AdminSDHolder ACL
+	// Well-known SIDs and BUILTIN groups that legitimately appear on AdminSDHolder ACL.
 	builtinSIDs := map[string]bool{
-		"S-1-5-18":   true, // SYSTEM
-		"S-1-5-32-544": true, // Administrators (local)
+		"S-1-5-18":     true, // SYSTEM
+		"S-1-5-32-544": true, // BUILTIN\Administrators
+		"S-1-5-32-548": true, // BUILTIN\Account Operators
+		"S-1-5-32-549": true, // BUILTIN\Server Operators
+		"S-1-5-32-550": true, // BUILTIN\Print Operators
+		"S-1-5-32-551": true, // BUILTIN\Backup Operators
 	}
-	// well-known RID suffixes that are expected
+	// Domain-relative well-known RID suffixes expected in AdminSDHolder ACL
 	builtinRIDSuffixes := []string{
 		"-512", // Domain Admins
+		"-516", // Domain Controllers
 		"-519", // Enterprise Admins
 		"-520", // Group Policy Creator Owners
-		"-516", // Domain Controllers
 		"-521", // Read-only Domain Controllers
+		"-548", // Account Operators
+		"-549", // Server Operators
+		"-550", // Print Operators
+		"-551", // Backup Operators
 	}
 
 	var findings []AdminSDHolderACEFinding

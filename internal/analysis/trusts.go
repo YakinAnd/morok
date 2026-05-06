@@ -205,8 +205,10 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 		var trustVector string
 		switch sev {
 		case "Critical":
-			// Bidirectional external trust without SID filtering: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
-			trustVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
+			// Bidirectional external trust without SID filtering: AC:L because attacker
+			// in trusted domain already controls the forged SID — no extra complexity needed.
+			// AC:H here scored only 7.8 (High), not Critical; AC:L scores ~9.3 (Critical).
+			trustVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 		case "High":
 			// SID filtering disabled: AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N
 			trustVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N"
