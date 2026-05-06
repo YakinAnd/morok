@@ -632,7 +632,12 @@ func printEnumSummary(
 		}
 		adcsCount := 0
 		if adcs != nil {
-			adcsCount = len(adcs.TemplateFindings) + len(adcs.CAFindings)
+			adcsCount = len(adcs.TemplateFindings)
+			for _, cf := range adcs.CAFindings {
+				if !cf.Unverified {
+					adcsCount++
+				}
+			}
 		}
 		krbtgtAge := 0
 		if hr != nil {

@@ -665,12 +665,6 @@ func filterSystemACL(findings []ACLFinding) []ACLFinding {
 		if builtinGroups[f.PrincipalName] {
 			continue
 		}
-		if strings.HasSuffix(f.PrincipalName, "$") {
-			continue
-		}
-		if f.PrincipalName == "vagrant" {
-			continue
-		}
 		filtered = append(filtered, f)
 	}
 	return filtered

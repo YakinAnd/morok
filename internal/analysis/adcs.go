@@ -74,12 +74,13 @@ type CertTemplateFinding struct {
 }
 
 type CAFinding struct {
-	CAName    string
-	CADN      string
-	VulnTypes []ADCSVulnType
-	WebEnroll bool
-	Details   string
-	Severity  string
+	CAName     string
+	CADN       string
+	VulnTypes  []ADCSVulnType
+	WebEnroll  bool
+	Unverified bool // true = cannot be confirmed via LDAP; manual check required
+	Details    string
+	Severity   string
 	CVSS       float64
 	CVSSVector string
 }
@@ -203,29 +204,29 @@ func AnalyzeADCS(client *adldap.Client) (*ADCSResult, error) {
 			})
 		}
 
-		const esc8Vec = "AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H"
-		esc8Score := CVSSScore(esc8Vec)
+		// ESC8 and ESC11 require out-of-band HTTP/RPC probing — not detectable via LDAP.
+		// Report as informational hints only; manual verification required.
 		result.CAFindings = append(result.CAFindings, CAFinding{
-			CAName:     ca.Name,
-			CADN:       ca.DN,
-			VulnTypes:  []ADCSVulnType{ESC8},
-			WebEnroll:  true,
-			Details:    "Verify if Web Enrollment is active: http://" + ca.Server + "/certsrv/ — if accessible and NTLM auth is allowed, PetitPotam/Coercer → certipy relay attack is possible.",
-			Severity:   CVSSSeverity(esc8Score),
-			CVSS:       esc8Score,
-			CVSSVector: esc8Vec,
+			CAName:      ca.Name,
+			CADN:        ca.DN,
+			VulnTypes:   []ADCSVulnType{ESC8},
+			WebEnroll:   true,
+			Unverified:  true,
+			Details:     "[Manual check required] ESC8 — Web Enrollment cannot be confirmed via LDAP. Verify: http://" + ca.Server + "/certsrv/ — if accessible with NTLM auth, PetitPotam/Coercer → certipy relay is possible.",
+			Severity:    "Info",
+			CVSS:        0,
+			CVSSVector:  "",
 		})
 
-		const esc11Vec = "AV:N/AC:H/PR:N/UI:R/S:C/C:H/I:H/A:H"
-		esc11Score := CVSSScore(esc11Vec)
 		result.CAFindings = append(result.CAFindings, CAFinding{
 			CAName:     ca.Name,
 			CADN:       ca.DN,
 			VulnTypes:  []ADCSVulnType{ESC11},
-			Details:    "Verify if the ICPR (MS-ICPR/DCOM) enrollment interface is accessible: certipy relay -target 'rpc://" + ca.Server + "' — if NTLM relay is possible via DCOM, an attacker can request certificates as a coerced machine account.",
-			Severity:   CVSSSeverity(esc11Score),
-			CVSS:       esc11Score,
-			CVSSVector: esc11Vec,
+			Unverified: true,
+			Details:    "[Manual check required] ESC11 — ICPR/DCOM relay cannot be confirmed via LDAP. Verify: certipy relay -target 'rpc://" + ca.Server + "' — if NTLM relay is possible, an attacker can request certs as a coerced machine account.",
+			Severity:   "Info",
+			CVSS:       0,
+			CVSSVector: "",
 		})
 	}
 
