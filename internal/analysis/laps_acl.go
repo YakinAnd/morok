@@ -15,16 +15,9 @@ const (
 	ADS_RIGHT_GENERIC_READ = 0x80000000
 )
 
-// LAPS attribute display names and their schemaIDGUID constants.
-// Legacy LAPS GUID is fixed per MS schema extension; Windows LAPS uses a different one.
-// We resolve the GUID dynamically from the schema; these are fallback well-known values.
 const (
-	// ms-Mcs-AdmPwd — legacy Microsoft LAPS password attribute
-	guidLegacyLAPSPwd = "f0c8c3d5-3b6e-4f97-9b6d-0e8a4d8b4c2c"
-	// ms-Mcs-AdmPwdExpirationTime — legacy LAPS expiration (used to detect LAPS presence)
+	// ms-Mcs-AdmPwdExpirationTime — used to detect legacy LAPS presence on computers
 	lapsExpirationAttr = "ms-Mcs-AdmPwdExpirationTime"
-	// msLAPS-Password — Windows LAPS (Server 2022+) cleartext password
-	guidWindowsLAPSPwd = "3e0abfd0-126a-4a33-a845-7a23a5c8e9d1"
 )
 
 // LAPSACLFinding — a principal that can read LAPS passwords on a computer.
@@ -42,10 +35,12 @@ type LAPSACLFinding struct {
 
 // LAPSACLResult contains all findings for LAPS password read access.
 type LAPSACLResult struct {
-	Domain        string
-	LAPSAttrGUID  string // resolved schemaIDGUID of ms-Mcs-AdmPwd (empty if schema not readable)
-	LAPSFound     bool   // at least one computer has LAPS deployed
-	Findings      []LAPSACLFinding
+	Domain          string
+	LAPSAttrGUID    string // resolved schemaIDGUID of ms-Mcs-AdmPwd (legacy LAPS)
+	WinLAPSGUID     string // resolved schemaIDGUID of msLAPS-Password (Windows LAPS cleartext)
+	WinLAPSEncGUID  string // resolved schemaIDGUID of msLAPS-EncryptedPassword (Windows LAPS encrypted)
+	LAPSFound       bool   // at least one computer has LAPS deployed
+	Findings        []LAPSACLFinding
 }
 
 // AnalyzeLAPSACL checks which non-privileged principals have ReadProperty rights
@@ -54,8 +49,8 @@ func AnalyzeLAPSACL(client *adldap.Client, result *adldap.EnumerationResult) (*L
 	r := &LAPSACLResult{Domain: result.Domain}
 	nameMap := buildNameMap(result)
 
-	// ── 1. Resolve ms-Mcs-AdmPwd schemaIDGUID from schema ────
-	r.LAPSAttrGUID = resolveLAPSGUID(client)
+	// ── 1. Resolve LAPS attribute GUIDs from schema ──────────
+	r.LAPSAttrGUID, r.WinLAPSGUID, r.WinLAPSEncGUID = resolveLAPSGUIDs(client)
 
 	// ── 2. Collect LAPS-enabled computers ─────────────────────
 	var lapsComputers []adldap.LDAPComputer
@@ -90,7 +85,7 @@ func AnalyzeLAPSACL(client *adldap.Client, result *adldap.EnumerationResult) (*L
 			if ace.ACEType == 0x01 || ace.ACEType == 0x06 { // Deny
 				continue
 			}
-			right := lapsReadRight(ace, r.LAPSAttrGUID)
+			right := lapsReadRight(ace, r.LAPSAttrGUID, r.WinLAPSGUID, r.WinLAPSEncGUID)
 			if right == "" {
 				continue
 			}
@@ -135,29 +130,34 @@ func AnalyzeLAPSACL(client *adldap.Client, result *adldap.EnumerationResult) (*L
 	return r, nil
 }
 
-// resolveLAPSGUID queries the AD schema for the schemaIDGUID of ms-Mcs-AdmPwd.
-// Returns an empty string if LAPS is not installed or the schema is not readable.
-func resolveLAPSGUID(client *adldap.Client) string {
+// resolveLAPSGUIDs queries the AD schema for LAPS password attribute GUIDs.
+// Returns (legacyGUID, winLAPSClearGUID, winLAPSEncGUID) — empty string if not installed.
+func resolveLAPSGUIDs(client *adldap.Client) (string, string, string) {
 	configDN, err := client.ConfigurationDN()
 	if err != nil {
-		return ""
+		return "", "", ""
 	}
 	schemaDN := "CN=Schema," + configDN
 
-	entries, err := client.SearchBase(schemaDN, "(lDAPDisplayName=ms-Mcs-AdmPwd)", []string{"schemaIDGUID"})
-	if err != nil || len(entries) == 0 {
-		return ""
+	resolve := func(attrName string) string {
+		entries, err := client.SearchBase(schemaDN, "(lDAPDisplayName="+attrName+")", []string{"schemaIDGUID"})
+		if err != nil || len(entries) == 0 {
+			return ""
+		}
+		raw := entries[0].GetRawAttributeValue("schemaIDGUID")
+		if len(raw) < 16 {
+			return ""
+		}
+		return formatGUID(raw)
 	}
 
-	raw := entries[0].GetRawAttributeValue("schemaIDGUID")
-	if len(raw) < 16 {
-		return ""
-	}
-	return formatGUID(raw)
+	return resolve("ms-Mcs-AdmPwd"), resolve("msLAPS-Password"), resolve("msLAPS-EncryptedPassword")
 }
 
-// lapsReadRight returns a description if the ACE grants read access to the LAPS password attribute.
-func lapsReadRight(ace ACE, lapsGUID string) string {
+// lapsReadRight returns a description if the ACE grants read access to a LAPS password attribute.
+// legacyGUID = ms-Mcs-AdmPwd, winClearGUID = msLAPS-Password, winEncGUID = msLAPS-EncryptedPassword.
+// All GUIDs are resolved at runtime from schema; empty string means that attribute is not installed.
+func lapsReadRight(ace ACE, legacyGUID, winClearGUID, winEncGUID string) string {
 	mask := ace.AccessMask
 
 	// GenericAll → full control
@@ -182,12 +182,15 @@ func lapsReadRight(ace ACE, lapsGUID string) string {
 	if mask&ADS_RIGHT_DS_READ_PROP != 0 {
 		// ACE type 0x05 (Object ACE): restricted to specific attribute
 		if ace.ACEType == 0x05 {
-			if lapsGUID != "" && strings.EqualFold(ace.ObjectType, lapsGUID) {
+			ot := ace.ObjectType
+			if legacyGUID != "" && strings.EqualFold(ot, legacyGUID) {
 				return "ReadProperty(ms-Mcs-AdmPwd)"
 			}
-			// Also check the well-known fallback GUID
-			if strings.EqualFold(ace.ObjectType, guidLegacyLAPSPwd) {
-				return "ReadProperty(ms-Mcs-AdmPwd)"
+			if winClearGUID != "" && strings.EqualFold(ot, winClearGUID) {
+				return "ReadProperty(msLAPS-Password)"
+			}
+			if winEncGUID != "" && strings.EqualFold(ot, winEncGUID) {
+				return "ReadProperty(msLAPS-EncryptedPassword)"
 			}
 			return "" // restricted to a different attribute
 		}

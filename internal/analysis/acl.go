@@ -175,6 +175,18 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 		if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
 			continue // deny ACE
 		}
+
+		// GenericAll (0x10000000) or full-control mask on the domain object implicitly
+		// includes DS_CONTROL_ACCESS and therefore both replication rights (DCSync).
+		if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 || ace.AccessMask&0x000F01FF == 0x000F01FF {
+			if sidRights[ace.SID] == nil {
+				sidRights[ace.SID] = &replRights{}
+			}
+			sidRights[ace.SID].getChanges = true
+			sidRights[ace.SID].getChangesAll = true
+			continue
+		}
+
 		if ace.AccessMask&ADS_RIGHT_DS_CONTROL_ACCESS == 0 {
 			continue
 		}
