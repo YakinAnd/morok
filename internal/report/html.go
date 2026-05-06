@@ -962,15 +962,16 @@ html[data-theme="light"] {
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page); color: var(--text-main); }
 
 /* Header */
-.header { background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-page) 100%);
-  border-bottom: 1px solid var(--border); padding: 20px 40px; position: relative;
-  display: flex; align-items: center; gap: 18px; }
-.header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.header { border-bottom: 1px solid var(--border); position: relative;
+  display: flex; align-items: stretch; gap: 0; }
+.header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+  background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%);
+  padding: 20px 30px; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: #e8e4d8; line-height: 1; }
 .header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: #8a8475; text-transform: uppercase; line-height: 1.4; }
 .header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: #8a8475; text-transform: uppercase; opacity: 0.6; }
-.header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
+.header .meta { color: var(--text-muted); font-size: 0.82rem; padding: 20px 30px; border-left: 1px solid var(--border); flex: 1; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
 
 /* Theme toggle button */
