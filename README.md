@@ -5,18 +5,16 @@
 morok is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
 
 ```
-    _      ____    ____      _      _____   _   _
-   / \    |  _ \  |  _ \    / \    |_   _| | | | |
-  / _ \   | | | | | |_) |  / _ \     | |   | |_| |
- / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |
-/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|
-
-  v1.0  //  AD Attack Path Enumerator
+       ·
+    ·     ·
+       ◇        morok  v1.0
+    ·     ·      AD attack path enumerator
+       ·          see through the fog
 ```
 
 ---
 
-## What adpath does
+## What morok does
 
 adpath connects to a Domain Controller over LDAP and runs a comprehensive security analysis across multiple domains:
 
