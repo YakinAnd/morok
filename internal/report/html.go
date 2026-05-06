@@ -962,8 +962,8 @@ html[data-theme="light"] {
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page); color: var(--text-main); }
 
 /* Header */
-.header { background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-page) 100%);
-  border-bottom: 1px solid var(--border); padding: 20px 40px; position: relative;
+.header { background: linear-gradient(to right, #0f1117 0%, #0f1117 30%, #1a1f2e 65%, #242c3d 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.07); padding: 20px 40px; position: relative;
   display: flex; align-items: center; gap: 18px; }
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
