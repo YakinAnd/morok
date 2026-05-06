@@ -376,7 +376,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	if !stealth {
 		aclResult, _ = analysis.AnalyzeACL(client, result)
-		dr, _ = analysis.AnalyzeDelegation(client)
+		dr, _ = analysis.AnalyzeDelegation(client, result)
 		gr, _ = analysis.AnalyzeGPO(client)
 		hr = analysis.AnalyzeHygiene(result)
 		puResult = analysis.AnalyzeProtectedUsers(result)
@@ -1039,7 +1039,7 @@ func runDelegation(cmd *cobra.Command, args []string) error {
     }
     defer client.Close()
 
-    dr, err := analysis.AnalyzeDelegation(client)
+    dr, err := analysis.AnalyzeDelegation(client, nil)
     if err != nil {
         return fmt.Errorf("delegation analysis error: %w", err)
     }

@@ -29,6 +29,7 @@ type DelegationFinding struct {
 	DelegationType  DelegationType
 	AllowedServices []string
 	AllowedTo       []string
+	TrusteeNames    []string // RBCD: principals that can act on behalf of this object
 	IsHighRisk      bool
 	RiskReason      string
 	Severity        string
@@ -74,11 +75,12 @@ var delegationAttributes = []string{
 // Основна функція
 // ============================================================
 
-func AnalyzeDelegation(client *adldap.Client) (*DelegationResult, error) {
+// AnalyzeDelegation runs all delegation checks. Pass enumResult to resolve RBCD trustee names;
+// pass nil when the enumeration result is not available (standalone delegation command).
+func AnalyzeDelegation(client *adldap.Client, enumResult *adldap.EnumerationResult) (*DelegationResult, error) {
 	result := &DelegationResult{
 		Domain: client.GetDomain(),
 	}
-
 
 	if err := findUnconstrainedUsers(client, result); err != nil {
 		return nil, err
@@ -89,7 +91,7 @@ func AnalyzeDelegation(client *adldap.Client) (*DelegationResult, error) {
 	if err := findConstrainedDelegation(client, result); err != nil {
 		return nil, err
 	}
-	if err := findRBCD(client, result); err != nil {
+	if err := findRBCD(client, result, enumResult); err != nil {
 		return nil, err
 	}
 
@@ -208,21 +210,61 @@ func assessConstrainedRisk(allowedServices []string) (bool, string) {
 // Пошук RBCD
 // ============================================================
 
-func findRBCD(client *adldap.Client, result *DelegationResult) error {
+func findRBCD(client *adldap.Client, result *DelegationResult, enumResult *adldap.EnumerationResult) error {
 	entries, err := client.Search(FilterRBCD, delegationAttributes)
 	if err != nil {
 		return fmt.Errorf("RBCD search failed: %w", err)
 	}
+
+	var nameMap map[string]nameInfo
+	if enumResult != nil {
+		nameMap = buildNameMap(enumResult)
+	}
+
 	for _, entry := range entries {
 		const rbcdVec = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:N"
 		rbcdScore := CVSSScore(rbcdVec)
+
+		// Parse msDS-AllowedToActOnBehalfOfOtherIdentity to list who has RBCD rights.
+		var trustees []string
+		if nameMap != nil {
+			sdBytes := entry.GetRawAttributeValue("msDS-AllowedToActOnBehalfOfOtherIdentity")
+			if len(sdBytes) > 0 {
+				if aces, parseErr := parseSecurityDescriptor(sdBytes); parseErr == nil {
+					seen := make(map[string]bool)
+					for _, ace := range aces {
+						if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+							continue // skip deny ACEs
+						}
+						if seen[ace.SID] {
+							continue
+						}
+						seen[ace.SID] = true
+						if info, ok := nameMap[ace.SID]; ok {
+							trustees = append(trustees, info.Name)
+						} else {
+							trustees = append(trustees, ace.SID)
+						}
+					}
+				}
+			}
+		}
+
+		riskReason := "RBCD configured"
+		if len(trustees) > 0 {
+			riskReason = "RBCD — principals that can act on behalf: " + strings.Join(trustees, ", ")
+		} else {
+			riskReason = "RBCD configured — run: Get-ADObject -Identity '<DN>' -Properties msDS-AllowedToActOnBehalfOfOtherIdentity"
+		}
+
 		result.Findings = append(result.Findings, DelegationFinding{
 			SAMAccountName: entry.GetAttributeValue("sAMAccountName"),
 			DN:             entry.DN,
 			ObjectType:     getObjectTypeFromEntry(entry),
 			DelegationType: DelegationRBCD,
+			TrusteeNames:   trustees,
 			IsHighRisk:     true,
-			RiskReason:     "RBCD configured — check who can delegate to this object (potential privilege escalation)",
+			RiskReason:     riskReason,
 			CVSS:           rbcdScore,
 			CVSSVector:     rbcdVec,
 			Severity:       CVSSSeverity(rbcdScore),

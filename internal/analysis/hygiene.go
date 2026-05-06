@@ -20,6 +20,7 @@ type HygieneResult struct {
 	StaleComputers       []adldap.LDAPComputer
 	PasswordInDesc       []PasswordInDescFinding
 	PasswordNotRequired  []adldap.LDAPUser // enabled accounts with UAC PASSWD_NOTREQD (0x20)
+	DnsAdminsMembers     []string          // non-privileged members of DnsAdmins (DC SYSTEM path)
 	KrbtgtPwdAgeDays     int
 	KrbtgtLastSet        string
 	KrbtgtAtRisk         bool // true if > 180 days
@@ -115,7 +116,26 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		}
 	}
 
-	// ── groups with description ───────────────────────────────
+	// ── groups with description + DnsAdmins membership ──────────
+	// Build user SAMAccountName lookup by DN for DnsAdmins member resolution
+	userByDN := make(map[string]string)
+	for _, u := range result.Users {
+		userByDN[strings.ToLower(u.DN)] = u.SAMAccountName
+	}
+
+	// Privileged SID suffixes that legitimately belong to DnsAdmins
+	privilegedDNSAdminSuffixes := []string{"-512", "-519", "-544"}
+	isDNSAdminPrivileged := func(name string) bool {
+		priv := []string{"domain admins", "enterprise admins", "administrators", "administrator"}
+		lower := strings.ToLower(name)
+		for _, p := range priv {
+			if lower == p {
+				return true
+			}
+		}
+		return false
+	}
+
 	for _, g := range result.Groups {
 		if g.Description != "" {
 			hr.PasswordInDesc = append(hr.PasswordInDesc, DescriptionFinding{
@@ -123,6 +143,21 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 				ObjectType:     "group",
 				Description:    g.Description,
 			})
+		}
+
+		// DnsAdmins members can load an arbitrary DLL on DCs → SYSTEM RCE (ServerLevelPluginDll)
+		if strings.EqualFold(g.SAMAccountName, "DnsAdmins") {
+			for _, memberDN := range g.Members {
+				name := userByDN[strings.ToLower(memberDN)]
+				if name == "" {
+					name = memberDN // fallback to DN
+				}
+				if isDNSAdminPrivileged(name) {
+					continue
+				}
+				_ = privilegedDNSAdminSuffixes // used for SID-based filtering if needed
+				hr.DnsAdminsMembers = append(hr.DnsAdminsMembers, name)
+			}
 		}
 	}
 
