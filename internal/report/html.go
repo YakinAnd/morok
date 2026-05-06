@@ -876,6 +876,9 @@ const htmlTemplate = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>morok — {{.Domain}} — {{.GeneratedAt}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 /* ── Theme variables ─────────────────────────────────────────── */
@@ -964,9 +967,9 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   display: flex; align-items: center; gap: 18px; }
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
-.header-logo-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.03em; color: var(--brand-primary); line-height: 1; }
-.header-logo-tagline { font-size: 0.82rem; font-style: italic; color: var(--text-muted); letter-spacing: 0.04em; line-height: 1.2; }
-.header-logo-tag { font-size: 0.65rem; letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase; opacity: 0.6; }
+.header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: var(--brand-primary); line-height: 1; }
+.header-logo-tagline { font-family: 'Cormorant Garamond', serif; font-size: 0.9rem; font-style: italic; font-weight: 300; color: var(--text-muted); letter-spacing: 0.03em; line-height: 1.2; }
+.header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.62rem; letter-spacing: 0.18em; color: var(--text-muted); text-transform: uppercase; opacity: 0.55; }
 .header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
 
