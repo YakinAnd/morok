@@ -968,8 +968,8 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: #e8e4d8; line-height: 1; }
-.header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: var(--text-muted); text-transform: uppercase; line-height: 1.4; }
-.header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase; opacity: 0.45; }
+.header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: #8a8475; text-transform: uppercase; line-height: 1.4; }
+.header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: #8a8475; text-transform: uppercase; opacity: 0.6; }
 .header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
 
