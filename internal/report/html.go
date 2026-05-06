@@ -875,7 +875,7 @@ const htmlTemplate = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>adpath — {{.Domain}} — {{.GeneratedAt}}</title>
+<title>morok — {{.Domain}} — {{.GeneratedAt}}</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
 /* ── Theme variables ─────────────────────────────────────────── */
@@ -2727,7 +2727,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </div>
   </div>
 
-  {{else}}<p style="color:var(--text-muted)">ADCS data not available — run with full enum or use adpath adcs command.</p>{{end}}
+  {{else}}<p style="color:var(--text-muted)">ADCS data not available — run with full enum or use morok adcs command.</p>{{end}}
 </div>
 
 <!-- SHADOW CREDENTIALS TAB -->
@@ -3762,7 +3762,7 @@ function toggleTheme() {
   const html = document.documentElement;
   const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
   html.setAttribute('data-theme', next);
-  localStorage.setItem('adpath-theme', next);
+  localStorage.setItem('morok-theme', next);
   document.getElementById('theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
   // Re-apply node colors now that CSS variables have changed
   if (typeof graphInitialized !== 'undefined' && graphInitialized) {
@@ -3770,7 +3770,7 @@ function toggleTheme() {
   }
 }
 function initTheme() {
-  const saved = localStorage.getItem('adpath-theme') || 'dark';
+  const saved = localStorage.getItem('morok-theme') || 'dark';
   document.documentElement.setAttribute('data-theme', saved);
   const btn = document.getElementById('theme-toggle');
   if (btn) btn.textContent = saved === 'dark' ? '🌙' : '☀️';
