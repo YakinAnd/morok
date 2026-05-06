@@ -1250,7 +1250,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <div class="header">
   <div class="header-logo">
-    <svg width="38" height="38" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <svg width="52" height="52" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <radialGradient id="hiris" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stop-color="#f3c97a" stop-opacity="0.35"/>
