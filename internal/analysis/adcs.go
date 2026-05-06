@@ -313,20 +313,25 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	}
 
 	// ── ESC2: Any Purpose EKU or no EKUs at all ──────────────
-	if len(ekus) == 0 {
-		vulns = appendUniq(vulns, ESC2)
-		authEnabled = true
-	}
-	for _, eku := range ekus {
-		if eku == "2.5.29.37.0" {
+	// If msPKI-RA-Signature > 0, a Certificate Request Agent must countersign
+	// the request before the CA issues the certificate — ESC2 is not directly
+	// exploitable without a valid RA credential.
+	raSigVal, _ := strconv.Atoi(raSig)
+	if raSigVal == 0 {
+		if len(ekus) == 0 {
 			vulns = appendUniq(vulns, ESC2)
 			authEnabled = true
+		}
+		for _, eku := range ekus {
+			if eku == "2.5.29.37.0" {
+				vulns = appendUniq(vulns, ESC2)
+				authEnabled = true
+			}
 		}
 	}
 
 	// ── ESC3: Certificate Request Agent EKU ──────────────────
 	// + no authorized signatures required (msPKI-RA-Signature == 0)
-	raSigVal, _ := strconv.Atoi(raSig)
 	for _, eku := range ekus {
 		if eku == "1.3.6.1.4.1.311.20.2.1" && raSigVal == 0 {
 			vulns = appendUniq(vulns, ESC3)
@@ -363,18 +368,18 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	enrollableBy := checkEnrollmentRights(e)
 
 	// CVSS 3.1 vector selection:
-	// ESC1 + auth EKU + low-priv enrollable → direct domain escalation: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
-	// ESC1 + auth EKU + priv-only enrollment → still exploitable but harder: AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H
+	// ESC1/ESC2 + auth EKU + low-priv enrollable → direct domain escalation: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+	// ESC1/ESC2 + auth EKU + priv-only enrollment → exploitable but needs priv cred: AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H
 	// ESC9 alone (requires GenericWrite over account): AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
 	// Default (other ESC variants): AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
 	var cvssVector string
-	if containsVuln(vulns, ESC1) && authEnabled {
+	if (containsVuln(vulns, ESC1) || containsVuln(vulns, ESC2)) && authEnabled {
 		if len(enrollableBy) > 0 {
 			cvssVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 		} else {
 			cvssVector = "AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H"
 		}
-	} else if containsVuln(vulns, ESC9) && !containsVuln(vulns, ESC1) {
+	} else if containsVuln(vulns, ESC9) && !containsVuln(vulns, ESC1) && !containsVuln(vulns, ESC2) {
 		cvssVector = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
 	} else {
 		cvssVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"

@@ -194,7 +194,23 @@ func findConstrainedDelegation(client *adldap.Client, result *DelegationResult) 
 }
 
 func assessConstrainedRisk(allowedServices []string) (bool, string) {
-	criticalServices := []string{"ldap/", "cifs/", "host/", "http/", "krbtgt", "dc", "domain controller"}
+	// Services where constrained delegation enables significant lateral movement or privilege escalation:
+	// ldap/  → DCSync, LDAP writes (shadow creds, ACL changes)
+	// cifs/  → file system access on target
+	// host/  → includes many services (WMI, RPC, etc.) on target
+	// http/  → web endpoints, Exchange EWS
+	// krbtgt → Kerberos TGT service (full domain compromise)
+	// rpcss/ → RPC endpoint mapper
+	// wsman/ → WinRM / PowerShell remoting
+	// gss-http → SPNEGO over HTTP
+	// mssql/ → SQL Server impersonation
+	// termsrv/ → RDP sessions
+	// dns/   → DNS modification on DCs
+	criticalServices := []string{
+		"ldap/", "cifs/", "host/", "http/", "krbtgt",
+		"rpcss/", "wsman/", "gss-http/", "mssql/", "termsrv/", "dns/",
+		"dc", "domain controller",
+	}
 	for _, svc := range allowedServices {
 		svcLower := strings.ToLower(svc)
 		for _, critical := range criticalServices {
