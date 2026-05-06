@@ -66,9 +66,11 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 		r.SigningEnforced = true
 	}
 
-	// Channel binding check via supportedCapabilities:
-	// OID 1.2.840.113556.1.4.1791 indicates the DC *supports* signing/sealing.
-	// Its absence on a non-LDAPS connection indicates an older or misconfigured DC.
+	// LDAP integrity capability check (OID 1.2.840.113556.1.4.1791):
+	// This OID indicates the DC *supports* LDAP signing/sealing (integrity protection),
+	// NOT channel binding. Channel binding (EPA) is a server-side registry setting
+	// (LdapEnforceChannelBinding) and cannot be detected via RootDSE alone.
+	// Absence of this OID over plain LDAP indicates an older or misconfigured DC.
 	hasIntegrity := false
 	for _, cap := range rds.SupportedCapabilities {
 		if cap == oidLDAPIntegrity {
@@ -78,12 +80,11 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 	}
 
 	if !hasIntegrity && rds.PlainLDAP {
-		// Channel binding bypass → NTLM relay to LDAP: AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N
 		const cbVec = "AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N"
 		cbScore := CVSSScore(cbVec)
 		r.Findings = append(r.Findings, LDAPSecurityFinding{
-			Title:      "LDAP channel binding not advertised",
-			Detail:     fmt.Sprintf("DC does not advertise LDAP integrity OID (%s) in supportedCapabilities. Channel binding may not be enforced, increasing exposure to NTLM relay attacks against LDAP. Check KB4520412/MS Advisory ADV190023.", oidLDAPIntegrity),
+			Title:      "LDAP integrity (signing) not advertised",
+			Detail:     fmt.Sprintf("DC does not advertise LDAP integrity OID (%s) in supportedCapabilities — signing/sealing may not be enforced. Note: channel binding (EPA) is a separate setting not detectable via LDAP; verify LdapEnforceChannelBinding registry value manually. Check KB4520412 / MS Advisory ADV190023.", oidLDAPIntegrity),
 			CVSS:       cbScore,
 			CVSSVector: cbVec,
 			Severity:   CVSSSeverity(cbScore),

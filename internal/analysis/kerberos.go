@@ -26,6 +26,7 @@ type KerberoastableAccount struct {
 	CVSS            float64
 	CVSSVector      string
 	Severity        string
+	IsMSA           bool   // gMSA/MSA — 240-char random password, cracking is infeasible
 }
 
 // ASREPAccount — акаунт з DONT_REQUIRE_PREAUTH
@@ -74,7 +75,19 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			continue
 		}
 
-		ac := CVSSForKerberoastable(u.AdminCount)
+		// gMSA/MSA accounts end in '$' and use 240-char random passwords — cracking is
+		// infeasible in practice. Still report them but downgrade to Info severity.
+		isMSA := strings.HasSuffix(u.SAMAccountName, "$")
+		var score float64
+		var vec, sev string
+		if isMSA {
+			vec = "AV:N/AC:H/PR:L/UI:N/S:U/C:L/I:N/A:N"
+			score = CVSSScore(vec)
+			sev = "Info"
+		} else {
+			ac := CVSSForKerberoastable(u.AdminCount)
+			score, vec, sev = ac.Score, ac.Vector, ac.Severity
+		}
 		kr.KerberoastableAccounts = append(kr.KerberoastableAccounts, KerberoastableAccount{
 			SAMAccountName:  u.SAMAccountName,
 			DN:              u.DN,
@@ -83,9 +96,10 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			PasswordLastSet: u.PasswordLastSet,
 			LastLogon:       u.LastLogon,
 			Description:     u.Description,
-			CVSS:            ac.Score,
-			CVSSVector:      ac.Vector,
-			Severity:        ac.Severity,
+			CVSS:            score,
+			CVSSVector:      vec,
+			Severity:        sev,
+			IsMSA:           isMSA,
 		})
 	}
 
