@@ -92,9 +92,10 @@ const (
 	ADS_RIGHT_WRITE_OWNER   = 0x00080000
 
 	// специфічні маски AD
-	ADS_RIGHT_DS_WRITE_PROP    = 0x00000020 // GenericWrite еквівалент
-	ADS_RIGHT_DS_CONTROL_ACCESS = 0x00000100 // Extended rights
-	ADS_RIGHT_ACTRL_DS_LIST    = 0x00000004
+	ADS_RIGHT_DS_WRITE_PROP     = 0x00000020 // GenericWrite еквівалент
+	ADS_RIGHT_DS_CONTROL_ACCESS = 0x00000100 // Extended rights (ForceChangePassword, DCSync)
+	ADS_RIGHT_DS_SELF           = 0x00000008 // Validated write (AddMember / Self-Membership)
+	ADS_RIGHT_ACTRL_DS_LIST     = 0x00000004
 	// повний доступ до об'єкту
 	ADS_RIGHT_DS_FULL = 0x000F01FF
 )
@@ -532,13 +533,19 @@ func detectDangerousRights(ace ACE) []ACLRight {
     // extended right визначається через ObjectType GUID
 	}
 
-	// Extended rights через GUID
+	// Extended rights via GUID — must also verify the correct access-mask bit.
+	// ForceChangePassword is a Control Access right (DS_CONTROL_ACCESS = 0x100).
+	// AddMember (Self-Membership) is a Validated Write right (DS_SELF = 0x8).
 	if ace.ObjectType != "" {
 		switch strings.ToLower(ace.ObjectType) {
 		case guidForceChangePassword:
-			rights = append(rights, RightForceChangePassword)
+			if ace.AccessMask&ADS_RIGHT_DS_CONTROL_ACCESS != 0 {
+				rights = append(rights, RightForceChangePassword)
+			}
 		case guidAddMember:
-			rights = append(rights, RightAddMember)
+			if ace.AccessMask&ADS_RIGHT_DS_SELF != 0 {
+				rights = append(rights, RightAddMember)
+			}
 		}
 	}
 

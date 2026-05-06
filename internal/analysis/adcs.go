@@ -513,12 +513,15 @@ func checkESC4(e ldapEntry) []CertTemplateFinding {
 			continue
 		}
 
+		const esc4Vec = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
 		findings = append(findings, CertTemplateFinding{
 			TemplateName: name,
 			TemplateOID:  e.GetAttributeValue("msPKI-Cert-Template-OID"),
 			VulnTypes:    []ADCSVulnType{ESC4},
 			EnrollableBy: []string{principalName},
-			Severity:     "High",
+			Severity:     CVSSSeverity(CVSSScore(esc4Vec)),
+			CVSS:         CVSSScore(esc4Vec),
+			CVSSVector:   esc4Vec,
 		})
 		break // одна знахідка на шаблон достатньо
 	}
@@ -582,20 +585,26 @@ func checkESC7(e ldapEntry) []CAFinding {
 		}
 
 		if ace.AccessMask&caAccessManageCA != 0 && !seenManageCA {
+			const esc7ManageCAVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 			findings = append(findings, CAFinding{
-				CAName:    caName,
-				VulnTypes: []ADCSVulnType{ESC7},
-				Details:   principalName + " has ManageCA right — can change CA flags (e.g. enable EDITF_ATTRIBUTESUBJECTALTNAME2 → ESC6 for all templates).",
-				Severity:  "Critical",
+				CAName:     caName,
+				VulnTypes:  []ADCSVulnType{ESC7},
+				Details:    principalName + " has ManageCA right — can change CA flags (e.g. enable EDITF_ATTRIBUTESUBJECTALTNAME2 → ESC6 for all templates).",
+				Severity:   CVSSSeverity(CVSSScore(esc7ManageCAVec)),
+				CVSS:       CVSSScore(esc7ManageCAVec),
+				CVSSVector: esc7ManageCAVec,
 			})
 			seenManageCA = true
 		}
 		if ace.AccessMask&caAccessManageCertificates != 0 && !seenManageCerts {
+			const esc7ManageCertsVec = "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
 			findings = append(findings, CAFinding{
-				CAName:    caName,
-				VulnTypes: []ADCSVulnType{ESC7},
-				Details:   principalName + " has ManageCertificates right — can approve any pending certificate request, bypassing manager approval.",
-				Severity:  "High",
+				CAName:     caName,
+				VulnTypes:  []ADCSVulnType{ESC7},
+				Details:    principalName + " has ManageCertificates right — can approve any pending certificate request, bypassing manager approval.",
+				Severity:   CVSSSeverity(CVSSScore(esc7ManageCertsVec)),
+				CVSS:       CVSSScore(esc7ManageCertsVec),
+				CVSSVector: esc7ManageCertsVec,
 			})
 			seenManageCerts = true
 		}
@@ -660,6 +669,10 @@ func checkESC13(client *adldap.Client, configDN string, tmplEntries []ldapEntry)
 				sev = "Critical"
 			}
 
+			esc13Vec := "AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H"
+			if sev == "Critical" {
+				esc13Vec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
+			}
 			findings = append(findings, CertTemplateFinding{
 				TemplateName:      name,
 				TemplateOID:       e.GetAttributeValue("msPKI-Cert-Template-OID"),
@@ -667,7 +680,9 @@ func checkESC13(client *adldap.Client, configDN string, tmplEntries []ldapEntry)
 				EnrollableBy:      enrollableBy,
 				IssuancePolicyOID: pol,
 				LinkedGroupDN:     groupDN,
-				Severity:          sev,
+				Severity:          CVSSSeverity(CVSSScore(esc13Vec)),
+				CVSS:              CVSSScore(esc13Vec),
+				CVSSVector:        esc13Vec,
 			})
 			break // one finding per template
 		}
