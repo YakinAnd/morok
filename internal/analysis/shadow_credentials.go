@@ -208,6 +208,16 @@ func collectPrivilegedTargets(result *adldap.EnumerationResult) map[string]targe
 		}
 	}
 
+	// Include adminCount=1 users — AdminSDHolder-protected accounts are high-value
+	// targets even when not currently in a privileged group (orphaned adminCount).
+	for _, u := range result.Users {
+		if u.AdminCount && u.Enabled {
+			if _, exists := targets[u.DN]; !exists {
+				targets[u.DN] = targetEntry{name: u.SAMAccountName, typ: "user", sid: u.ObjectSid}
+			}
+		}
+	}
+
 	return targets
 }
 

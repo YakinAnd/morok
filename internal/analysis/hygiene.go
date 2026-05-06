@@ -20,6 +20,7 @@ type HygieneResult struct {
 	StaleComputers       []adldap.LDAPComputer
 	PasswordInDesc       []PasswordInDescFinding
 	PasswordNotRequired  []adldap.LDAPUser // enabled accounts with UAC PASSWD_NOTREQD (0x20)
+	SmartcardRequired    []adldap.LDAPUser // enabled accounts requiring smartcard — hash never rotates
 	DnsAdminsMembers     []string          // non-privileged members of DnsAdmins (DC SYSTEM path)
 	KrbtgtPwdAgeDays     int
 	KrbtgtLastSet        string
@@ -83,6 +84,12 @@ func AnalyzeHygiene(result *adldap.EnumerationResult) *HygieneResult {
 		// UAC PASSWD_NOTREQD — can authenticate with empty password
 		if u.PasswordNotRequired {
 			hr.PasswordNotRequired = append(hr.PasswordNotRequired, u)
+		}
+
+		// UAC SMARTCARD_REQUIRED — password hash set to random value and never rotates;
+		// the hash remains valid indefinitely for Pass-the-Hash attacks.
+		if u.SmartcardRequired && u.AdminCount {
+			hr.SmartcardRequired = append(hr.SmartcardRequired, u)
 		}
 
 		if u.Description != "" {
