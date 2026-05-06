@@ -238,12 +238,39 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 		// build set of privileged group DNs (lower-cased)
 		privGroupDNs := buildPrivGroupDNSet(result)
 
+		// Build group-ancestry map for transitive membership resolution.
+		// groupParents[lowerDN] = set of parent group lowerDNs this group is a member of.
+		groupParents := make(map[string][]string)
+		for _, g := range result.Groups {
+			ldn := strings.ToLower(g.DN)
+			for _, parent := range g.MemberOf {
+				groupParents[ldn] = append(groupParents[ldn], strings.ToLower(parent))
+			}
+		}
+
 		for _, e := range fspEntries {
 			memberOf := e.GetAttributeValues("memberOf")
 			var privGroups []string
+			seen := make(map[string]bool)
+			// Walk FSP's direct and transitive group membership up to 8 hops.
+			queue := make([]string, 0, len(memberOf))
 			for _, dn := range memberOf {
-				if name, ok := privGroupDNs[strings.ToLower(dn)]; ok {
+				queue = append(queue, strings.ToLower(dn))
+			}
+			for len(queue) > 0 && len(seen) < 200 {
+				dn := queue[0]
+				queue = queue[1:]
+				if seen[dn] {
+					continue
+				}
+				seen[dn] = true
+				if name, ok := privGroupDNs[dn]; ok {
 					privGroups = append(privGroups, name)
+				}
+				for _, parent := range groupParents[dn] {
+					if !seen[parent] {
+						queue = append(queue, parent)
+					}
 				}
 			}
 			if len(privGroups) == 0 {
