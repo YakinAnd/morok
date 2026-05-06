@@ -214,10 +214,10 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 		if !ok {
 			continue
 		}
-		// skip built-in DC/DA accounts that legitimately have DCSync
-		name := strings.ToLower(info.Name)
-		if name == "domain controllers" || name == "enterprise domain controllers" ||
-			name == "administrators" || name == "enterprise admins" {
+		// Skip well-known built-in accounts that legitimately hold DCSync rights.
+		// Use SID suffix matching — name-based filtering is bypassable with a
+		// custom group named "Administrators" or "Enterprise Admins".
+		if isBuiltinDCSyncSID(sid) {
 			continue
 		}
 		const dcSyncVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:N"
@@ -234,6 +234,27 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 	return findings
 }
 
+// isBuiltinDCSyncSID returns true for well-known SIDs that legitimately hold
+// DCSync rights (Domain Controllers, Administrators, Domain/Enterprise Admins).
+// SID suffix matching is used instead of name matching so that custom groups
+// named "Administrators" or "Enterprise Admins" are not silently skipped.
+func isBuiltinDCSyncSID(sid string) bool {
+	// S-1-5-9 — Enterprise Domain Controllers (forest-wide)
+	if sid == "S-1-5-9" {
+		return true
+	}
+	// S-1-5-32-544 — BUILTIN\Administrators
+	if sid == "S-1-5-32-544" {
+		return true
+	}
+	// Domain-relative well-known RIDs: -512 DA, -516 DCs, -519 EA, -521 RODC
+	for _, suffix := range []string{"-512", "-516", "-519", "-521"} {
+		if strings.HasSuffix(sid, suffix) {
+			return true
+		}
+	}
+	return false
+}
 
 // ============================================================
 // Парсинг ACL записів

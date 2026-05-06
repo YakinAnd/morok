@@ -198,9 +198,11 @@ func collectGPOs(client *adldap.Client) ([]GPOFinding, error) {
 		gpo.HasCPassword = checkForCPassword(machineCSE + userCSE)
 
 		if gpo.HasCPassword {
-			gpo.IsHighRisk = true
+			// CSE GUID presence only means the GPO uses Preferences — not that any
+			// XML actually contains a cpassword. Flag as unverified; the SYSVOL scan
+			// performs the definitive file-level check.
 			gpo.RiskReasons = append(gpo.RiskReasons,
-				"GPO Preferences may contain cpassword (encrypted credentials decryptable with public AES key)")
+				"[Unverified] GPO uses Preferences CSE — check SYSVOL for cpassword: findstr /S /I cpassword \\\\<DC>\\SYSVOL\\*.xml")
 		}
 
 		gpos = append(gpos, gpo)
