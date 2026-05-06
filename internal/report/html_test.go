@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YakinAnd/adpath/internal/analysis"
-	"github.com/YakinAnd/adpath/internal/graph"
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
+	"github.com/YakinAnd/morok/internal/analysis"
+	"github.com/YakinAnd/morok/internal/graph"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
 // fakeResult builds a minimal EnumerationResult with representative data.

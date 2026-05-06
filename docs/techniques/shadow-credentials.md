@@ -50,13 +50,13 @@ Any of these ACEs on the target object are sufficient:
 | Enterprise Admins group | Forest-wide compromise |
 | Any privileged user | Compromise that account |
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath shadow -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok shadow -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-adpath parses `nTSecurityDescriptor` (DACL) on all privileged targets and reports non-privileged principals with write-enabling ACEs.
+morok parses `nTSecurityDescriptor` (DACL) on all privileged targets and reports non-privileged principals with write-enabling ACEs.
 
 ## Exploit
 
@@ -94,7 +94,7 @@ secretsdump.py -k -no-pass DC01\$@dc01.corp.local
 ## Remediation
 
 1. Remove unnecessary write permissions on Domain Admins, Enterprise Admins, and DC objects
-2. Run `adpath shadow` regularly and review all write ACEs
+2. Run `morok shadow` regularly and review all write ACEs
 3. Add privileged accounts to **Protected Users** group
 4. Monitor `msDS-KeyCredentialLink` via SIEM (Event ID 5136)
 5. Consider using **Tiered Administration Model** — separate admin accounts for Tier 0 (DC/domain-level) operations

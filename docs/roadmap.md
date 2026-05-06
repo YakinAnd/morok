@@ -16,21 +16,21 @@
 - **ADCS ESC13** — issuance policy OID linked to privileged group via msDS-OIDToGroupLink; Critical if low-priv enrollment possible; queries CN=OID container
 
 ### v0.9.7
-- **`adpath smb`** — SMB signing check via raw SMB2 Negotiate (no credentials); SecurityMode field parsing; High finding if signing not required; integrated into `adpath enum` output and HTML report (LDAP Security tab)
+- **`morok smb`** — SMB signing check via raw SMB2 Negotiate (no credentials); SecurityMode field parsing; High finding if signing not required; integrated into `morok enum` output and HTML report (LDAP Security tab)
 
 ### v0.9.6
-- **`adpath kerb-enum`** — username enumeration without credentials via Kerberos AS-REQ; classifies responses: EXISTS / AS-REP roastable / DISABLED / EXPIRED; wordlist with `#` comment support; not-found suppressed by default
-- **`--stealth` flag** on `adpath enum` — minimal LDAP footprint: only users+groups (no GC, no computers); skips ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAP Security, Audit; always runs: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY printed at end
+- **`morok kerb-enum`** — username enumeration without credentials via Kerberos AS-REQ; classifies responses: EXISTS / AS-REP roastable / DISABLED / EXPIRED; wordlist with `#` comment support; not-found suppressed by default
+- **`--stealth` flag** on `morok enum` — minimal LDAP footprint: only users+groups (no GC, no computers); skips ACL, Delegation, GPO, ADCS, PSO, ProtectedUsers, AdminSDHolder, ShadowCredentials, Hygiene, LDAP Security, Audit; always runs: RootDSE, Kerberos, Trusts, Graph/AttackPaths; STEALTH SUMMARY printed at end
 
 ### v0.9.5
-- **`adpath users`** — targeted user enumeration with colored table (AS-REP red, adminCount yellow, disabled dim); columns: username, display name, enabled, adminCount, AS-REP, pwd-never-expires, last logon, SPN count
-- **`adpath computers`** — targeted computer enumeration via forest-wide GC; table: hostname, full OS + version, enabled; summary shows LAPS count and unconstrained delegation count
+- **`morok users`** — targeted user enumeration with colored table (AS-REP red, adminCount yellow, disabled dim); columns: username, display name, enabled, adminCount, AS-REP, pwd-never-expires, last logon, SPN count
+- **`morok computers`** — targeted computer enumeration via forest-wide GC; table: hostname, full OS + version, enabled; summary shows LAPS count and unconstrained delegation count
 - **CLI table improvements** — ADCS vulnerable templates and Protected Users findings now use aligned column tables with separator lines
 - **Bug fix** — `OBJECTS COLLECTED` and `QUICK FINDINGS` sections now only appear in `enum`, not in targeted commands (acl, shadow, trust, etc.)
 
 ### v0.9.4
 - **MITRE ATT&CK mapping** — 17 technique keys, purple T-code badges in HTML report on section headers and per-row findings; all badges link to attack.mitre.org
-- **Audit Policy / Blue Team** — `adpath audit` command; AD Recycle Bin check, legacy `auditingPolicy` attribute parse (9 categories), `ms-DS-MachineAccountQuota`; HTML Audit tab; High if no audit, Medium if Recycle Bin disabled or MAQ > 0
+- **Audit Policy / Blue Team** — `morok audit` command; AD Recycle Bin check, legacy `auditingPolicy` attribute parse (9 categories), `ms-DS-MachineAccountQuota`; HTML Audit tab; High if no audit, Medium if Recycle Bin disabled or MAQ > 0
 - **Unit tests** — `go test ./...` coverage: audit parsing, LDAP security, full HTML report render with fake data
 
 ### v0.9.3
@@ -41,7 +41,7 @@
 - **`--scope` filtering** — override base DN for scoped OU/container audits on all commands
 
 ### v0.9.1 / v0.9.0
-- **Shadow Credentials** — `adpath shadow`; DACL parse for `msDS-KeyCredentialLink` write on DA/EA/DC objects; HTML Shadow Creds tab
+- **Shadow Credentials** — `morok shadow`; DACL parse for `msDS-KeyCredentialLink` write on DA/EA/DC objects; HTML Shadow Creds tab
 - **JSON export** — `--json` flag; users/groups/computers/domains.json; compatible with BloodHound CE v5
 - **ADCS enrollment rights** — ESC1 Critical only if low-priv principal can actually enroll; Medium otherwise
 - **HTML fixes** — severity badge fix, EnrollableBy badge
@@ -55,7 +55,7 @@
 ## Released
 
 ### v0.8.2
-- Trust analysis — `trustedDomain` enumeration, SID filtering, FSPs in privileged groups, `adpath trust`, HTML Trusts tab
+- Trust analysis — `trustedDomain` enumeration, SID filtering, FSPs in privileged groups, `morok trust`, HTML Trusts tab
 
 ### v0.8.1
 - Protected Users group check
@@ -90,8 +90,8 @@
 - GPO enumeration + password policy audit
 
 ### v0.2
-- `adpath kerberos` — Kerberoasting / AS-REP detection
-- `adpath acl` — dangerous ACL analysis with bloodyAD hints
+- `morok kerberos` — Kerberoasting / AS-REP detection
+- `morok acl` — dangerous ACL analysis with bloodyAD hints
 
 ### v0.1
 - LDAP connection + authentication

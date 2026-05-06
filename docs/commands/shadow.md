@@ -1,11 +1,11 @@
-# adpath shadow
+# morok shadow
 
 Detect principals that have write access to `msDS-KeyCredentialLink` on high-value AD objects. This access enables the **Shadow Credentials** attack — obtaining a Kerberos TGT without knowing or changing the target's password.
 
 ## Usage
 
 ```bash
-adpath shadow -d <domain> -u <user> -p <pass> --dc <dc>
+morok shadow -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## Flags
@@ -14,7 +14,7 @@ Standard auth flags apply. See [Authentication](../getting-started/auth.md).
 
 ## What it checks
 
-adpath analyzes the `nTSecurityDescriptor` (DACL) of the following high-value targets:
+morok analyzes the `nTSecurityDescriptor` (DACL) of the following high-value targets:
 
 - **Domain Admins** group
 - **Enterprise Admins** group

@@ -8,7 +8,7 @@ import (
 	"github.com/fatih/color"
 	goldap "github.com/go-ldap/ldap/v3"
 
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
 // ============================================================

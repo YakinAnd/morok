@@ -14,13 +14,13 @@ KDC → Attacker: AS-REP with enc-part encrypted with victim's hash
 Attacker → hashcat: crack offline
 ```
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-adpath finds all enabled accounts with `userAccountControl` flag `DONT_REQ_PREAUTH` (0x400000) set.
+morok finds all enabled accounts with `userAccountControl` flag `DONT_REQ_PREAUTH` (0x400000) set.
 
 ## Exploit
 

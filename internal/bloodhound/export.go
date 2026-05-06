@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
 // ── BloodHound CE v5 JSON structures ────────────────────────────

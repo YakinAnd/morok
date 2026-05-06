@@ -5,13 +5,13 @@
 Route all LDAP/LDAPS traffic through a SOCKS5 proxy. This is useful when the target DC is only reachable through a pivot host (Chisel, SSH tunnel, Ligolo-ng, etc.).
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --proxy socks5://127.0.0.1:1080
 ```
 
 ### How it works
 
-adpath replaces the standard TCP dialer with a SOCKS5 dialer. The proxy establishes the TCP connection to the DC on adpath's behalf. DNS resolution happens **on the proxy side** (remote DNS), so you can use DC hostnames even if they're not resolvable locally.
+morok replaces the standard TCP dialer with a SOCKS5 dialer. The proxy establishes the TCP connection to the DC on morok's behalf. DNS resolution happens **on the proxy side** (remote DNS), so you can use DC hostnames even if they're not resolvable locally.
 
 LDAPS (TLS) over SOCKS5 is handled by manually negotiating TLS on top of the SOCKS5 tunnel.
 
@@ -55,7 +55,7 @@ socks5://user:password@127.0.0.1:1080
 Restrict all LDAP queries to a specific OU or container instead of the full domain base DN.
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --scope "OU=Finance,DC=corp,DC=local"
 ```
 
@@ -89,7 +89,7 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
 Both flags can be used together:
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --proxy socks5://127.0.0.1:1080 \
   --scope "OU=Finance,DC=corp,DC=local"
 ```

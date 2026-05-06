@@ -12,13 +12,13 @@ KDC → Attacker: TGS encrypted with svc_webapp's NTLM hash
 Attacker → hashcat: crack offline
 ```
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-adpath finds all enabled accounts with SPNs set, excluding `krbtgt`. Severity is raised to Critical if the account has `adminCount=1` or is in a privileged group.
+morok finds all enabled accounts with SPNs set, excluding `krbtgt`. Severity is raised to Critical if the account has `adminCount=1` or is in a privileged group.
 
 ## Exploit
 

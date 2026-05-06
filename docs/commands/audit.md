@@ -1,11 +1,11 @@
-# adpath audit
+# morok audit
 
 Check blue-team visibility settings: legacy audit policy configuration, AD Recycle Bin status, and machine account quota.
 
 ## Usage
 
 ```bash
-adpath audit -d <domain> -u <user> -p <pass> --dc <dc>
+morok audit -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## Flags

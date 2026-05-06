@@ -1,8 +1,8 @@
-# adpath
+# morok
 
 **Active Directory Attack Path Enumerator**
 
-adpath is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
+morok is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
 
 ```
     _      ____    ____      _      _____   _   _
@@ -16,9 +16,9 @@ adpath is a lightweight, single-binary CLI tool for enumerating Active Directory
 
 ---
 
-## What adpath does
+## What morok does
 
-adpath connects to a Domain Controller over LDAP and runs a comprehensive security analysis across multiple domains:
+morok connects to a Domain Controller over LDAP and runs a comprehensive security analysis across multiple domains:
 
 | Category | What it checks |
 |---|---|
@@ -57,37 +57,37 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 
 ```bash
 # Full enumeration + HTML report
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Pass-the-Hash
-adpath enum -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
+morok enum -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
 
 # Pass-the-Ticket
-adpath enum -d corp.local --ccache admin.ccache --dc dc01.corp.local
+morok enum -d corp.local --ccache admin.ccache --dc dc01.corp.local
 
 # With SOCKS5 proxy (pivoting)
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
 
 # JSON export (compatible with BloodHound CE)
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
 
 # Scoped audit (Finance OU only)
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Finance,DC=corp,DC=local"
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Finance,DC=corp,DC=local"
 
 # ADCS vulnerabilities only
-adpath adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Audit policy + AD Recycle Bin check
-adpath audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Stealth mode — minimal LDAP footprint (SIEM-heavy environments)
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --stealth
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --stealth
 
 # Username enumeration without credentials (Kerberos AS-REQ)
-adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
+morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 
 # SMB signing check without credentials
-adpath smb -d corp.local --dc 10.0.0.1
+morok smb -d corp.local --dc 10.0.0.1
 ```
 
 ---
@@ -96,13 +96,13 @@ adpath smb -d corp.local --dc 10.0.0.1
 
 ```bash
 # Build from source (requires Go 1.21+)
-git clone https://github.com/YakinAnd/adpath
-cd adpath
-go build -o adpath ./cmd/adpath/...
-./adpath version
+git clone https://github.com/YakinAnd/morok
+cd morok
+go build -o morok ./cmd/morok/...
+./morok version
 ```
 
-Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/adpath/releases) page.
+Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/morok/releases) page.
 
 ---
 

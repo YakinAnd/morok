@@ -11,7 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/hirochachacha/go-smb2"
 
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
 // SYSVOLFileType classifies why a file is considered suspicious.

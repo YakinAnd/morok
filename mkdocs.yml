@@ -1,8 +1,8 @@
-site_name: adpath
+site_name: morok
 site_description: Active Directory Attack Path Enumerator — lightweight CLI for AD security analysis
-site_url: https://yakinand.github.io/adpath
-repo_url: https://github.com/YakinAnd/adpath
-repo_name: YakinAnd/adpath
+site_url: https://yakinand.github.io/morok
+repo_url: https://github.com/YakinAnd/morok
+repo_name: YakinAnd/morok
 edit_uri: edit/main/docs/
 
 theme:

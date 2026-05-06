@@ -1,11 +1,11 @@
-# adpath kerberos
+# morok kerberos
 
 Finds Kerberoastable and AS-REP roastable accounts with severity assessment and hashcat cracking hints.
 
 ## Usage
 
 ```bash
-adpath kerberos -d <domain> -u <user> -p <pass> --dc <dc>
+morok kerberos -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## What it detects
@@ -34,5 +34,5 @@ adpath kerberos -d <domain> -u <user> -p <pass> --dc <dc>
 ## Example
 
 ```bash
-adpath kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok kerberos -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```

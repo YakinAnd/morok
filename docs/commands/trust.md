@@ -1,11 +1,11 @@
-# adpath trust
+# morok trust
 
 Enumerates domain and forest trusts, checks SID filtering configuration, and finds Foreign Security Principals in privileged groups.
 
 ## Usage
 
 ```bash
-adpath trust -d <domain> -u <user> -p <pass> --dc <dc>
+morok trust -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## What it checks
@@ -44,7 +44,7 @@ adpath trust -d <domain> -u <user> -p <pass> --dc <dc>
 ## Example
 
 ```bash
-adpath trust -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok trust -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
 ```bash

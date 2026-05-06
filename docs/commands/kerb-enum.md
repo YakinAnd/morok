@@ -1,16 +1,16 @@
-# adpath kerb-enum
+# morok kerb-enum
 
 Enumerate valid AD usernames via Kerberos AS-REQ **without credentials** — only network access to port 88 (Kerberos) on the DC is required.
 
 ## Usage
 
 ```bash
-adpath kerb-enum -d <domain> --dc <dc> --wordlist users.txt
+morok kerb-enum -d <domain> --dc <dc> --wordlist users.txt
 ```
 
 ## How it works
 
-For each username in the wordlist, adpath sends a raw AS-REQ (TGT request) to the KDC and classifies the response:
+For each username in the wordlist, morok sends a raw AS-REQ (TGT request) to the KDC and classifies the response:
 
 | Response | Meaning | Output |
 |---|---|---|
@@ -43,10 +43,10 @@ Not-found results are suppressed by default — only valid accounts are printed.
 
 ```bash
 # Basic username enumeration
-adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
+morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 
 # With a large wordlist (e.g. statistically common AD usernames)
-adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /usr/share/wordlists/usernames.txt
+morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /usr/share/wordlists/usernames.txt
 ```
 
 ## Flags
@@ -72,5 +72,5 @@ brandon.stark
 ## Notes
 
 - No credentials required — only TCP access to port 88 on the DC.
-- Discovered AS-REP roastable accounts can be cracked offline — use `adpath kerberos` with valid credentials to extract the full AS-REP hash.
+- Discovered AS-REP roastable accounts can be cracked offline — use `morok kerberos` with valid credentials to extract the full AS-REP hash.
 - This technique is detectable if the DC logs failed AS-REQ attempts (event ID 4768 with `Failure Code: 0x6`). Use with awareness.

@@ -1,11 +1,11 @@
-# adpath users
+# morok users
 
 Enumerate all AD users and display a summary table.
 
 ## Usage
 
 ```bash
-adpath users -d <domain> -u <username> -p <password> [--dc <dc>]
+morok users -d <domain> -u <username> -p <password> [--dc <dc>]
 ```
 
 ## Output
@@ -41,13 +41,13 @@ adpath users -d <domain> -u <username> -p <password> [--dc <dc>]
 
 ```bash
 # Basic enumeration
-adpath users -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok users -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Pass-the-Hash
-adpath users -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
+morok users -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
 
 # Scoped to specific OU
-adpath users -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Finance,DC=corp,DC=local"
+morok users -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Finance,DC=corp,DC=local"
 ```
 
 ## Flags
@@ -57,4 +57,4 @@ All standard connection flags apply — see [Authentication](../getting-started/
 ## Notes
 
 - Uses domain-only LDAP search (not forest-wide GC). For multi-domain forests, run per domain.
-- For full analysis including Kerberoasting and AS-REP detection, use [`adpath kerberos`](kerberos.md).
+- For full analysis including Kerberoasting and AS-REP detection, use [`morok kerberos`](kerberos.md).

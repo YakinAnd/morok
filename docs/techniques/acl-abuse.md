@@ -53,10 +53,10 @@ Replicate directory contents including all password hashes.
 secretsdump.py 'corp.local/attacker:Pass'@10.0.0.1
 ```
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath acl -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok acl -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
 ## Remediation

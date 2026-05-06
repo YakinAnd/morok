@@ -3,7 +3,7 @@ package graph
 import (
 	"strings"
 
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
 // Build будує граф з результатів enumeration

@@ -6,7 +6,7 @@ import (
 
 	"github.com/fatih/color"
 
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
 // ============================================================

@@ -48,8 +48,8 @@ getST.py -spn cifs/target.corp.local -impersonate administrator \
   'corp.local/EVIL$:Pass123'
 ```
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath delegation -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok delegation -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```

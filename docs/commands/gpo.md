@@ -1,11 +1,11 @@
-# adpath gpo
+# morok gpo
 
 Analyzes Group Policy Objects — password policy audit and GPO write ACL detection.
 
 ## Usage
 
 ```bash
-adpath gpo -d <domain> -u <user> -p <pass> --dc <dc>
+morok gpo -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## What it checks
@@ -39,5 +39,5 @@ GPO write access = code execution on all machines in the linked scope via schedu
 ## Example
 
 ```bash
-adpath gpo -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok gpo -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```

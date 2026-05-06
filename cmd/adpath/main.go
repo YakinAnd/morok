@@ -10,12 +10,12 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/YakinAnd/adpath/internal/analysis"
-	"github.com/YakinAnd/adpath/internal/bloodhound"
-	"github.com/YakinAnd/adpath/internal/graph"
-	adkerberos "github.com/YakinAnd/adpath/internal/kerberos"
-	adldap "github.com/YakinAnd/adpath/internal/ldap"
-	"github.com/YakinAnd/adpath/internal/report"
+	"github.com/YakinAnd/morok/internal/analysis"
+	"github.com/YakinAnd/morok/internal/bloodhound"
+	"github.com/YakinAnd/morok/internal/graph"
+	adkerberos "github.com/YakinAnd/morok/internal/kerberos"
+	adldap "github.com/YakinAnd/morok/internal/ldap"
+	"github.com/YakinAnd/morok/internal/report"
 )
 
 // ============================================================
@@ -45,20 +45,20 @@ var (
 // ============================================================
 
 var rootCmd = &cobra.Command{
-	Use:   "adpath",
+	Use:   "morok",
 	Short: "AD attack path enumeration tool",
-	Long:  `adpath — lightweight Active Directory enumeration and attack path analysis`,
+	Long:  `morok — Active Directory enumeration and attack path analysis`,
 }
 
 var enumCmd = &cobra.Command{
 	Use:   "enum",
 	Short: "Enumerate AD objects and find attack paths",
-	Example: `  adpath enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
-  adpath enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --report report.html
-  adpath enum -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
-  adpath enum -d corp.local --ccache /tmp/admin.ccache --dc 10.0.0.1
-  adpath enum -d corp.local -u svc_audit -p 'Password1' --dc 10.0.0.1 --quiet
-  adpath enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --stealth`,
+	Example: `  morok enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
+  morok enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --report report.html
+  morok enum -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
+  morok enum -d corp.local --ccache /tmp/admin.ccache --dc 10.0.0.1
+  morok enum -d corp.local -u svc_audit -p 'Password1' --dc 10.0.0.1 --quiet
+  morok enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --stealth`,
 	RunE: runEnum,
 }
 
@@ -66,100 +66,100 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		color.Cyan("adpath v1.0")
-		color.White("AD Attack Path Enumerator")
-		color.White("https://github.com/YakinAnd/adpath")
+		color.New(color.FgYellow).Println("morok v1.0")
+		color.New(color.FgHiBlack).Println("AD attack path enumerator  ·  see through the fog")
+		color.White("https://github.com/YakinAnd/morok")
 	},
 }
 
 var kerberosCmd = &cobra.Command{
 	Use:   "kerberos",
 	Short: "Analyze Kerberoastable and AS-REP roastable accounts",
-	Example: `  adpath kerberos -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
-  adpath kerberos -d corp.local --ccache /tmp/admin.ccache --dc 10.0.0.1`,
+	Example: `  morok kerberos -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
+  morok kerberos -d corp.local --ccache /tmp/admin.ccache --dc 10.0.0.1`,
 	RunE: runKerberos,
 }
 
 var aclCmd = &cobra.Command{
 	Use:   "acl",
 	Short: "Analyze dangerous ACL permissions in AD",
-	Example: `  adpath acl -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
-  adpath acl -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --verbose`,
+	Example: `  morok acl -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
+  morok acl -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --verbose`,
 	RunE: runACL,
 }
 
 var delegationCmd = &cobra.Command{
 	Use:   "delegation",
 	Short: "Analyze dangerous delegation configurations in AD",
-	Example: `  adpath delegation -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
-  adpath delegation -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1`,
+	Example: `  morok delegation -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
+  morok delegation -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1`,
 	RunE: runDelegation,
 }
 
 var gpoCmd = &cobra.Command{
 	Use:   "gpo",
 	Short: "Analyze Group Policy Objects for security issues",
-	Example: `  adpath gpo -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
+	Example: `  morok gpo -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
 	RunE:  runGPO,
 }
 
 var adcsCmd = &cobra.Command{
 	Use:   "adcs",
 	Short: "Analyze Active Directory Certificate Services (ESC1-ESC8)",
-	Example: `  adpath adcs -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
-  adpath adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --verbose`,
+	Example: `  morok adcs -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
+  morok adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --verbose`,
 	RunE: runADCS,
 }
 
 var trustCmd = &cobra.Command{
 	Use:   "trust",
 	Short: "Analyze domain/forest trusts and foreign security principals",
-	Example: `  adpath trust -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
+	Example: `  morok trust -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
 	RunE:  runTrust,
 }
 
 var shadowCmd = &cobra.Command{
 	Use:   "shadow",
 	Short: "Detect principals that can write msDS-KeyCredentialLink on privileged objects",
-	Example: `  adpath shadow -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
+	Example: `  morok shadow -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
 	RunE:  runShadow,
 }
 
 var auditCmd = &cobra.Command{
 	Use:   "audit",
 	Short: "Check audit policy, AD Recycle Bin, and blue-team visibility settings",
-	Example: `  adpath audit -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
+	Example: `  morok audit -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
 	RunE:  runAudit,
 }
 
 var enumUsersCmd = &cobra.Command{
 	Use:   "kerb-enum",
 	Short: "Enumerate valid AD usernames via Kerberos AS-REQ (no credentials required)",
-	Example: `  adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /path/to/users.txt
-  adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /usr/share/seclists/Usernames/Names/names.txt`,
+	Example: `  morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /path/to/users.txt
+  morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist /usr/share/seclists/Usernames/Names/names.txt`,
 	RunE: runEnumUsers,
 }
 
 var usersCmd = &cobra.Command{
 	Use:   "users",
 	Short: "Enumerate AD users and display a summary table",
-	Example: `  adpath users -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
-  adpath users -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --verbose`,
+	Example: `  morok users -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1
+  morok users -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --verbose`,
 	RunE: runUsers,
 }
 
 var computersCmd = &cobra.Command{
 	Use:   "computers",
 	Short: "Enumerate AD computers and display a summary table",
-	Example: `  adpath computers -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
+	Example: `  morok computers -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1`,
 	RunE:  runComputers,
 }
 
 var smbCmd = &cobra.Command{
 	Use:   "smb",
 	Short: "Check SMB signing status on the domain controller (port 445)",
-	Example: `  adpath smb -d corp.local --dc 10.0.0.1
-  adpath smb -d corp.local --dc 10.0.0.1 -u administrator -p 'Password1'`,
+	Example: `  morok smb -d corp.local --dc 10.0.0.1
+  morok smb -d corp.local --dc 10.0.0.1 -u administrator -p 'Password1'`,
 	RunE: runSMB,
 }
 
@@ -839,7 +839,7 @@ func printEnumSummary(
 			shown++
 		}
 		if limit > 0 && len(groups) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath acl -d %s ...)", len(groups)-limit, domain)))
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok acl -d %s ...)", len(groups)-limit, domain)))
 		}
 	}
 
@@ -872,7 +872,7 @@ func printEnumSummary(
 			shown++
 		}
 		if limit > 0 && len(adcs.TemplateFindings) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath adcs -d %s ...)", len(adcs.TemplateFindings)-limit, domain)))
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok adcs -d %s ...)", len(adcs.TemplateFindings)-limit, domain)))
 		}
 	}
 
@@ -908,7 +908,7 @@ func printEnumSummary(
 			shown++
 		}
 		if limit > 0 && len(shadowOrder) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: adpath shadow -d %s ...)", len(shadowOrder)-limit, domain)))
+			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok shadow -d %s ...)", len(shadowOrder)-limit, domain)))
 		}
 	}
 
@@ -1382,13 +1382,24 @@ func trunc(s string, maxLen int) string {
 // ============================================================
 
 func printBanner() {
-	color.Cyan(`    _      ____    ____      _      _____   _   _`)
-	color.Cyan(`   / \    |  _ \  |  _ \    / \    |_   _| | | | |`)
-	color.Cyan(`  / _ \   | | | | | |_) |  / _ \     | |   | |_| |`)
-	color.Cyan(` / ___ \  | |_| | |  __/  / ___ \    | |   |  _  |`)
-	color.Cyan(`/_/   \_\ |____/  |_|    /_/   \_\   |_|   |_| |_|`)
+	color.New(color.FgHiBlack).Print(`       `)
+	color.New(color.FgYellow).Println(`·`)
+	color.New(color.FgHiBlack).Print(`    `)
+	color.New(color.FgYellow).Print(`·`)
+	color.New(color.FgHiBlack).Print(`     `)
+	color.New(color.FgYellow).Println(`·`)
+	color.New(color.FgHiBlack).Print(`       `)
+	color.New(color.FgRed).Println(`◇`)
+	color.New(color.FgHiBlack).Print(`    `)
+	color.New(color.FgYellow).Print(`·`)
+	color.New(color.FgHiBlack).Print(`     `)
+	color.New(color.FgYellow).Println(`·`)
+	color.New(color.FgHiBlack).Print(`       `)
+	color.New(color.FgYellow).Println(`·`)
 	color.White(``)
-	color.White(`  v1.0  //  AD Attack Path Enumerator`)
+	color.New(color.FgYellow).Print(`  morok `)
+	color.New(color.FgHiBlack).Println(`v1.0  ·  AD attack path enumerator`)
+	color.New(color.FgHiBlack).Println(`  see through the fog`)
 	color.White(`  ` + strings.Repeat("─", 40))
 }
 

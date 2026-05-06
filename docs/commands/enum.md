@@ -1,11 +1,11 @@
-# adpath enum
+# morok enum
 
 Full AD enumeration — runs all analysis modules and generates a self-contained HTML report.
 
 ## Usage
 
 ```bash
-adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
+morok enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 ```
 
 ## Flags
@@ -28,7 +28,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 
 ## What it runs
 
-`enum` executes every module in sequence and prints a summary for each. Use standalone commands (e.g. `adpath acl`) to see full output with exploit next steps.
+`enum` executes every module in sequence and prints a summary for each. Use standalone commands (e.g. `morok acl`) to see full output with exploit next steps.
 
 | Module | What it checks |
 |--------|----------------|
@@ -56,7 +56,7 @@ adpath enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 The report is saved to `<domain>_<timestamp>.html` by default (next to the binary). Specify a custom path with `--report`.
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --report /tmp/corp.html
 ```
 
@@ -65,7 +65,7 @@ The report is a **self-contained single HTML file** — no server needed, works 
 ## JSON export
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --json ./json_out/
 ```
 
@@ -75,24 +75,24 @@ Generates `users.json`, `groups.json`, `computers.json`, `domains.json`. The for
 
 ```bash
 # Standard run
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Pass-the-Hash
-adpath enum -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c \
+morok enum -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c \
   --dc 10.0.0.1 --report /tmp/corp.html
 
 # Pass-the-Ticket
-adpath enum -d corp.local --ccache admin.ccache --dc dc01.corp.local
+morok enum -d corp.local --ccache admin.ccache --dc dc01.corp.local
 
 # Through SOCKS5 proxy
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --proxy socks5://127.0.0.1:1080
 
 # Scoped to Finance OU
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --scope "OU=Finance,DC=corp,DC=local"
 
 # Full run + JSON export
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --report /tmp/corp.html --json ./json_out/
 ```

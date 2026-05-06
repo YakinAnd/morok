@@ -1,16 +1,16 @@
-# adpath smb
+# morok smb
 
 Check SMB signing status on the domain controller — no credentials required, only TCP access to port 445.
 
 ## Usage
 
 ```bash
-adpath smb -d <domain> --dc <dc>
+morok smb -d <domain> --dc <dc>
 ```
 
 ## How it works
 
-adpath sends a raw SMB2 Negotiate request to the DC and reads the `SecurityMode` field from the response:
+morok sends a raw SMB2 Negotiate request to the DC and reads the `SecurityMode` field from the response:
 
 | SecurityMode | Meaning |
 |---|---|
@@ -41,6 +41,6 @@ adpath sends a raw SMB2 Negotiate request to the DC and reads the `SecurityMode`
 ## Notes
 
 - No credentials required — check runs before authentication.
-- This check is also included in `adpath enum` output (summary line + HTML report).
+- This check is also included in `morok enum` output (summary line + HTML report).
 - Remediate: GPO → Computer Configuration → Windows Settings → Security Settings → Local Policies → Security Options → **"Microsoft network server: Digitally sign communications (always)"** = Enabled.
 - Domain Controllers in Windows Server 2022+ require SMB signing by default.

@@ -28,13 +28,13 @@ Accounts from trusted external domains can be added to local AD groups. If an FS
 | Bidirectional forest | ON | Medium — forest boundary is a weaker isolation than external |
 | Within-forest (parent-child) | N/A (Internal) | Normal — by design, SID filtering not applied within a forest |
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath trust -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok trust -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
-adpath detects:
+morok detects:
 
 - All `trustedDomain` objects with direction, type, and SID filtering status
 - Bidirectional and SID-filtering-off trusts with risk assessment

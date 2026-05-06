@@ -21,7 +21,7 @@ corp.local_2026-04-22_10-30-45.html
 Override with `--report`:
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --report /tmp/engagement_corp.html
 ```
 

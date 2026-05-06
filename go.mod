@@ -1,4 +1,4 @@
-module github.com/YakinAnd/adpath
+module github.com/YakinAnd/morok
 
 go 1.26.1
 

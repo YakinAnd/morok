@@ -27,12 +27,12 @@ Attacker: add shadow credential on DC02 → DCSync
 | LDAP channel binding not required | ✓ Default in most environments |
 | NTLM coercion possible (PetitPotam, etc.) | ✓ Often enabled |
 
-## Detection with adpath
+## Detection with morok
 
-adpath checks LDAP security in `enum` and via the LDAP Security tab in the HTML report:
+morok checks LDAP security in `enum` and via the LDAP Security tab in the HTML report:
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
 Findings reported:

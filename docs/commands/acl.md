@@ -1,11 +1,11 @@
-# adpath acl
+# morok acl
 
 Analyzes dangerous ACL permissions on AD objects.
 
 ## Usage
 
 ```bash
-adpath acl -d <domain> -u <user> -p <pass> --dc <dc>
+morok acl -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## Detected rights
@@ -35,5 +35,5 @@ adpath acl -d <domain> -u <user> -p <pass> --dc <dc>
 ## Example
 
 ```bash
-adpath acl -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok acl -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```

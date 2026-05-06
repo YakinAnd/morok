@@ -1,25 +1,25 @@
 # Shell Autocompletion
 
-adpath supports tab completion for **bash**, **zsh**, **fish**, and **PowerShell**.
+morok supports tab completion for **bash**, **zsh**, **fish**, and **PowerShell**.
 
 ## Bash
 
 ```bash
 # Load for current session
-source <(adpath completion bash)
+source <(morok completion bash)
 
 # Install permanently
-adpath completion bash > /etc/bash_completion.d/adpath
+morok completion bash > /etc/bash_completion.d/morok
 ```
 
 ## Zsh
 
 ```zsh
 # Load for current session
-source <(adpath completion zsh)
+source <(morok completion zsh)
 
 # Install permanently
-adpath completion zsh > "${fpath[1]}/_adpath"
+morok completion zsh > "${fpath[1]}/_morok"
 ```
 
 If you get `command not found: compdef`, add this to your `~/.zshrc` first:
@@ -30,20 +30,20 @@ autoload -Uz compinit && compinit
 ## Fish
 
 ```fish
-adpath completion fish | source
+morok completion fish | source
 
 # Install permanently
-adpath completion fish > ~/.config/fish/completions/adpath.fish
+morok completion fish > ~/.config/fish/completions/morok.fish
 ```
 
 ## PowerShell
 
 ```powershell
 # Load for current session
-adpath completion powershell | Out-String | Invoke-Expression
+morok completion powershell | Out-String | Invoke-Expression
 
 # Install permanently — add this line to your PowerShell profile ($PROFILE)
-adpath completion powershell | Out-String | Invoke-Expression
+morok completion powershell | Out-String | Invoke-Expression
 ```
 
 ## What gets completed

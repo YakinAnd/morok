@@ -1,13 +1,13 @@
 # Authentication
 
-adpath supports four authentication methods. The same flags work on every command.
+morok supports four authentication methods. The same flags work on every command.
 
 ## Password
 
 Standard username + password bind. Works with both `DOMAIN\user` and `user@domain` formats.
 
 ```bash
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
 ## Pass-the-Hash (NTLM)
@@ -15,7 +15,7 @@ adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 Use an NT hash instead of a plaintext password. Useful after extracting hashes with secretsdump, mimikatz, or a previous compromise.
 
 ```bash
-adpath enum -d corp.local -u administrator \
+morok enum -d corp.local -u administrator \
   -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c \
   --dc 10.0.0.1
 ```
@@ -39,21 +39,21 @@ Use an existing Kerberos TGT from a `.ccache` file. Common after `getTGT.py` (im
 getTGT.py corp.local/administrator:'Password1' -dc-ip 10.0.0.1
 
 # Use the ticket
-adpath enum -d corp.local --ccache administrator.ccache --dc dc01.corp.local
+morok enum -d corp.local --ccache administrator.ccache --dc dc01.corp.local
 ```
 
 !!! warning
-    `--ccache` requires `--dc` to be a **hostname**, not an IP address. Kerberos uses DNS for service name resolution. If you provide an IP, adpath performs a reverse DNS lookup automatically.
+    `--ccache` requires `--dc` to be a **hostname**, not an IP address. Kerberos uses DNS for service name resolution. If you provide an IP, morok performs a reverse DNS lookup automatically.
 
 !!! warning
     `--ccache` and `--proxy` cannot be used together. Kerberos authentication requires a direct TCP connection to the KDC and cannot be routed through a SOCKS5 proxy.
 
 ## Anonymous bind
 
-If no credentials are provided, adpath attempts an anonymous LDAP bind. Modern AD environments restrict anonymous reads to RootDSE only. adpath detects and reports if anonymous reads expose more than that.
+If no credentials are provided, morok attempts an anonymous LDAP bind. Modern AD environments restrict anonymous reads to RootDSE only. morok detects and reports if anonymous reads expose more than that.
 
 ```bash
-adpath enum -d corp.local --dc 10.0.0.1
+morok enum -d corp.local --dc 10.0.0.1
 ```
 
 Output shows what is and isn't accessible:
@@ -64,7 +64,7 @@ Output shows what is and isn't accessible:
   hint                         obtain any domain account for full enumeration
 ```
 
-If the domain allows anonymous LDAP reads beyond RootDSE, adpath adds a **Medium** finding: "Anonymous LDAP read enabled."
+If the domain allows anonymous LDAP reads beyond RootDSE, morok adds a **Medium** finding: "Anonymous LDAP read enabled."
 
 ## Auth flags reference
 

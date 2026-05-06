@@ -1,11 +1,11 @@
-# adpath adcs
+# morok adcs
 
 Analyzes Active Directory Certificate Services for ESC1–ESC9, ESC11, and ESC13 vulnerabilities.
 
 ## Usage
 
 ```bash
-adpath adcs -d <domain> -u <user> -p <pass> --dc <dc>
+morok adcs -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## Detected vulnerabilities
@@ -35,7 +35,7 @@ adpath adcs -d <domain> -u <user> -p <pass> --dc <dc>
 ## Example
 
 ```bash
-adpath adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
 
 ```bash

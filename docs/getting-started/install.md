@@ -8,17 +8,17 @@
 
 ## Pre-built binary
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/YakinAnd/adpath/releases).
+Download the latest release for your platform from [GitHub Releases](https://github.com/YakinAnd/morok/releases).
 
 === "Linux / macOS"
     ```bash
-    chmod +x adpath
-    ./adpath version
+    chmod +x morok
+    ./morok version
     ```
 
 === "Windows"
     ```powershell
-    .\adpath.exe version
+    .\morok.exe version
     ```
 
 ## Build from source
@@ -26,28 +26,28 @@ Download the latest release for your platform from [GitHub Releases](https://git
 Requires **Go 1.21+**.
 
 ```bash
-git clone https://github.com/YakinAnd/adpath
-cd adpath
-go build -o adpath ./cmd/adpath/...
+git clone https://github.com/YakinAnd/morok
+cd morok
+go build -o morok ./cmd/morok/...
 ```
 
 On Windows:
 ```powershell
-go build -o adpath.exe .\cmd\adpath\...
+go build -o morok.exe .\cmd\morok\...
 ```
 
 ## Verify
 
 ```
-$ adpath version
-adpath v1.0
+$ morok version
+morok v1.0
 AD Attack Path Enumerator
-https://github.com/YakinAnd/adpath
+https://github.com/YakinAnd/morok
 ```
 
 ## No additional dependencies
 
-adpath is a single statically-linked binary. It does not require:
+morok is a single statically-linked binary. It does not require:
 
 - BloodHound or Neo4j
 - Python / impacket

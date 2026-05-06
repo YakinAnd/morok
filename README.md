@@ -1,8 +1,8 @@
-# adpath
+# morok
 
 **Active Directory Attack Path Enumerator**
 
-adpath is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
+morok is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
 
 ```
     _      ____    ____      _      _____   _   _
@@ -58,13 +58,13 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 
 ```bash
 # Build from source (requires Go 1.21+)
-git clone https://github.com/YakinAnd/adpath
-cd adpath
+git clone https://github.com/YakinAnd/morok
+cd morok
 go build -o adpath ./cmd/adpath/
-./adpath version
+./morok version
 ```
 
-Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/adpath/releases) page.
+Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/morok/releases) page.
 
 ---
 
@@ -72,38 +72,38 @@ Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/a
 
 ```bash
 # Full enumeration + HTML report
-adpath enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --report report.html
+morok enum -d corp.local -u administrator -p 'Password1' --dc 10.0.0.1 --report report.html
 
 # CI/automation — single line verdict (no interactive output)
-adpath enum --quiet -d corp.local -u svc_audit -p '...' --dc 10.0.0.1
+morok enum --quiet -d corp.local -u svc_audit -p '...' --dc 10.0.0.1
 # Output: RISK CRITICAL (F · 83/100) — 38 critical, 40 high, 1 medium
 
 # Verbose — show all findings without truncation
-adpath enum --verbose -d corp.local -u administrator -p '...' --dc 10.0.0.1
+morok enum --verbose -d corp.local -u administrator -p '...' --dc 10.0.0.1
 
 # Pass-the-Hash
-adpath enum -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
+morok enum -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
 
 # Pass-the-Ticket (Kerberos ccache)
-adpath enum -d corp.local --ccache /tmp/administrator.ccache --dc 10.0.0.1
+morok enum -d corp.local --ccache /tmp/administrator.ccache --dc 10.0.0.1
 
 # SOCKS5 proxy (pivoting through a compromised host)
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
 
 # Restrict scope to specific OU
-adpath enum -d corp.local -u administrator -p '...' --scope 'OU=Finance,DC=corp,DC=local'
+morok enum -d corp.local -u administrator -p '...' --scope 'OU=Finance,DC=corp,DC=local'
 
 # JSON export (compatible with BloodHound CE v5)
-adpath enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
 
 # Stealth mode — minimal LDAP footprint (SIEM-heavy environments)
-adpath enum --stealth -d corp.local -u administrator -p '...' --dc 10.0.0.1
+morok enum --stealth -d corp.local -u administrator -p '...' --dc 10.0.0.1
 
 # Username enumeration without credentials (Kerberos AS-REQ)
-adpath kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
+morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 
 # SMB signing check (no credentials required)
-adpath smb -d corp.local --dc 10.0.0.1
+morok smb -d corp.local --dc 10.0.0.1
 ```
 
 ---
@@ -168,7 +168,7 @@ The `--report` flag generates a full interactive HTML report with:
 
 ```bash
 # Exit non-zero on CRITICAL or HIGH risk
-result=$(adpath enum --quiet -d corp.local -u svc -p '...' --dc 10.0.0.1)
+result=$(morok enum --quiet -d corp.local -u svc -p '...' --dc 10.0.0.1)
 echo "$result"
 if echo "$result" | grep -qE "RISK (CRITICAL|HIGH)"; then
   echo "AD compliance check failed"
@@ -215,4 +215,4 @@ adpath is released under the [GNU Affero General Public License v3.0](LICENSE) (
 
 ---
 
-> adpath is a security research and auditing tool. Use only against systems you own or have explicit written permission to test.
+> morok is a security research and auditing tool. Use only against systems you own or have explicit written permission to test.

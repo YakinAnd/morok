@@ -1,11 +1,11 @@
-# adpath delegation
+# morok delegation
 
 Detects dangerous Kerberos delegation configurations.
 
 ## Usage
 
 ```bash
-adpath delegation -d <domain> -u <user> -p <pass> --dc <dc>
+morok delegation -d <domain> -u <user> -p <pass> --dc <dc>
 ```
 
 ## Delegation types
@@ -35,5 +35,5 @@ adpath delegation -d <domain> -u <user> -p <pass> --dc <dc>
 ## Example
 
 ```bash
-adpath delegation -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok delegation -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```

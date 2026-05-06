@@ -118,8 +118,8 @@ certipy req -u jdoe@corp.local -p 'Pass' -ca 'CORP-CA' -template 'PolicyTemplate
 certipy auth -pfx jdoe.pfx -domain corp.local -dc-ip 10.0.0.1
 ```
 
-## Detection with adpath
+## Detection with morok
 
 ```bash
-adpath adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 ```
