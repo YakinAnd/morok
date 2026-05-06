@@ -18,9 +18,9 @@ import (
 type TrustDirection int
 
 const (
-	TrustDirectionDisabled     TrustDirection = 0
-	TrustDirectionInbound      TrustDirection = 1 // we trust them
-	TrustDirectionOutbound     TrustDirection = 2 // they trust us
+	TrustDirectionDisabled      TrustDirection = 0
+	TrustDirectionInbound       TrustDirection = 1 // other domain trusts us (our users can access them)
+	TrustDirectionOutbound      TrustDirection = 2 // we trust other domain (their users can access us)
 	TrustDirectionBidirectional TrustDirection = 3
 )
 

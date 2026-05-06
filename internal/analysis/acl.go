@@ -323,18 +323,24 @@ func parseSecurityDescriptor(data []byte) ([]ACE, error) {
 		return nil, fmt.Errorf("security descriptor too short")
 	}
 
-	// Security Descriptor структура:
+	// Self-relative Security Descriptor (MS-DTYP 2.4.6):
 	// Offset 0:  Revision (1 byte)
 	// Offset 1:  Sbz1 (1 byte)
-	// Offset 2:  Control (2 bytes)
-	// Offset 4:  OffsetOwner (4 bytes)
-	// Offset 8:  OffsetGroup (4 bytes)
-	// Offset 12: OffsetSacl (4 bytes)
-	// Offset 16: OffsetDacl (4 bytes)
+	// Offset 2:  Control (2 bytes, LE) — SE_DACL_PRESENT = 0x0004
+	// Offset 4:  OffsetOwner (4 bytes, LE)
+	// Offset 8:  OffsetGroup (4 bytes, LE)
+	// Offset 12: OffsetSacl (4 bytes, LE)
+	// Offset 16: OffsetDacl (4 bytes, LE)
+
+	const seDACLPresent = 0x0004
+	control := uint16(data[2]) | uint16(data[3])<<8
+	if control&seDACLPresent == 0 {
+		return nil, nil // SE_DACL_PRESENT not set — no DACL to parse
+	}
 
 	daclOffset := readUint32LE(data, 16)
 	if daclOffset == 0 || int(daclOffset) >= len(data) {
-		return nil, nil // немає DACL
+		return nil, nil // no DACL
 	}
 
 	return parseACL(data, int(daclOffset))
