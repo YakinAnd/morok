@@ -967,7 +967,7 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   display: flex; align-items: center; gap: 18px; }
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
-.header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: var(--text-main); line-height: 1; }
+.header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: #e8e4d8; line-height: 1; }
 .header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: var(--text-muted); text-transform: uppercase; line-height: 1.4; }
 .header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: var(--text-muted); text-transform: uppercase; opacity: 0.45; }
 .header .meta { color: var(--text-muted); font-size: 0.82rem; margin-left: 8px; border-left: 1px solid var(--border); padding-left: 18px; }
@@ -1281,7 +1281,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </g>
     </svg>
     <div class="header-logo-text">
-      <div class="header-logo-name">morok</div>
+      <div class="header-logo-name">Morok</div>
       <div class="header-logo-tagline">SEE · THROUGH · THE · FOG</div>
       <div class="header-logo-tag">v{{.Version}} · AD Attack Path Analysis</div>
     </div>
