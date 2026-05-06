@@ -63,6 +63,7 @@ func fakeLDAPSecResult() *analysis.LDAPSecurityResult {
 	return &analysis.LDAPSecurityResult{
 		Domain:          "test.local",
 		PlainLDAP:       true,
+		SigningChecked:  true,
 		SigningEnforced: false,
 		Capabilities:   []string{"1.2.840.113556.1.4.800"},
 		SASLMechanisms: []string{"GSSAPI", "GSS-SPNEGO"},

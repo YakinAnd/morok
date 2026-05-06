@@ -658,12 +658,6 @@ func detectDangerousRights(ace ACE) []ACLRight {
 		}
 	}
 
-	// для Object ACE (0x05) з DS_CONTROL_ACCESS — перевіряємо extended rights через GUID
-	if (ace.ACEType == 0x05 || ace.ACEType == 0x06) &&
-    ace.AccessMask&ADS_RIGHT_DS_CONTROL_ACCESS != 0 {
-    // extended right визначається через ObjectType GUID
-	}
-
 	// Extended rights via GUID — must also verify the correct access-mask bit.
 	// ForceChangePassword is a Control Access right (DS_CONTROL_ACCESS = 0x100).
 	// AddMember (Self-Membership) is a Validated Write right (DS_SELF = 0x8).
@@ -678,9 +672,6 @@ func detectDangerousRights(ace ACE) []ACLRight {
 				rights = append(rights, RightAddMember)
 			}
 		}
-	}
-
-	if ace.ObjectType == "00299570-246d-11d0-a768-00aa006e0529" {
 	}
 
 	return rights
@@ -707,35 +698,24 @@ type nameInfo struct {
 }
 
 // buildNameMap будує map SID → nameInfo з EnumerationResult
-// Увага: для повного маппінгу SID→DN потрібен окремий LDAP запит
-// В MVP використовуємо DN як ключ і будуємо часткову відповідність
 func buildNameMap(result *adldap.EnumerationResult) map[string]nameInfo {
-		m := make(map[string]nameInfo)
-
-		for _, u := range result.Users {
+	m := make(map[string]nameInfo)
+	for _, u := range result.Users {
 		if u.ObjectSid != "" {
 			m[u.ObjectSid] = nameInfo{DN: u.DN, Name: u.SAMAccountName, Type: "user"}
-			}
 		}
-
-    for _, u := range result.Users {
-        if u.ObjectSid != "" {
-            m[u.ObjectSid] = nameInfo{DN: u.DN, Name: u.SAMAccountName, Type: "user"}
-        }
-    }
-    for _, g := range result.Groups {
-        if g.ObjectSid != "" {
-            m[g.ObjectSid] = nameInfo{DN: g.DN, Name: g.SAMAccountName, Type: "group"}
-        }
-    }
-    for _, c := range result.Computers {
-        if c.ObjectSid != "" {
-            m[c.ObjectSid] = nameInfo{DN: c.DN, Name: c.SAMAccountName, Type: "computer"}
-        }
+	}
+	for _, g := range result.Groups {
+		if g.ObjectSid != "" {
+			m[g.ObjectSid] = nameInfo{DN: g.DN, Name: g.SAMAccountName, Type: "group"}
 		}
-
-
-    return m
+	}
+	for _, c := range result.Computers {
+		if c.ObjectSid != "" {
+			m[c.ObjectSid] = nameInfo{DN: c.DN, Name: c.SAMAccountName, Type: "computer"}
+		}
+	}
+	return m
 }
 
 // getObjectType визначає тип об'єкта з objectClass

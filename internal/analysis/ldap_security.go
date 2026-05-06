@@ -26,7 +26,8 @@ type LDAPSecurityFinding struct {
 type LDAPSecurityResult struct {
 	Domain           string
 	PlainLDAP        bool   // connection was on port 389
-	SigningEnforced   bool   // false = signing not required = finding
+	SigningEnforced  bool   // true only when verified that signing is required
+	SigningChecked   bool   // true only when connected via port 389 (can determine signing policy)
 	AnonReadEnabled  bool   // anonymous session can read AD objects
 	Capabilities     []string
 	SASLMechanisms   []string
@@ -50,7 +51,10 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 	// LDAP signing check:
 	// If the authenticated session succeeded over plain port 389 (not LDAPS),
 	// the DC does not require LDAP signing — traffic can be intercepted / replayed.
+	// When connected via LDAPS (636) we cannot determine the signing policy for port 389:
+	// a DC can simultaneously accept unsigned LDAP on 389 and TLS on 636.
 	if rds.PlainLDAP {
+		r.SigningChecked = true
 		r.SigningEnforced = false
 		// LDAP MITM → credential capture/relay: AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N
 		const ldapSignVec = "AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:N"
@@ -62,9 +66,8 @@ func AnalyzeLDAPSecurity(client *adldap.Client, rds *adldap.RootDSEInfo) *LDAPSe
 			CVSSVector: ldapSignVec,
 			Severity:   CVSSSeverity(ldapSignScore),
 		})
-	} else {
-		r.SigningEnforced = true
 	}
+	// else: LDAPS — signing policy on port 389 is unknown; SigningChecked stays false
 
 	// LDAP integrity capability check (OID 1.2.840.113556.1.4.1791):
 	// This OID indicates the DC *supports* LDAP signing/sealing (integrity protection),
@@ -146,8 +149,13 @@ func PrintLDAPSecurityResult(r *LDAPSecurityResult) {
 	}
 	color.White("  %-28s %s", "transport", transport)
 
-	signingStr := "enforced (LDAPS)"
-	if !r.SigningEnforced {
+	var signingStr string
+	switch {
+	case !r.SigningChecked:
+		signingStr = "unknown (LDAPS — port 389 not tested)"
+	case r.SigningEnforced:
+		signingStr = "enforced"
+	default:
 		signingStr = "NOT enforced ⚠"
 	}
 	color.White("  %-28s %s", "signing", signingStr)
@@ -170,7 +178,7 @@ func PrintLDAPSecurityResult(r *LDAPSecurityResult) {
 
 // LDAPSecuritySummaryLine prints a single summary line for the enum command output.
 func LDAPSecuritySummaryLine(r *LDAPSecurityResult) {
-	if r == nil || r.SigningEnforced {
+	if r == nil || !r.SigningChecked || r.SigningEnforced {
 		return
 	}
 	color.Yellow("  %-28s %s", "ldap signing", "NOT enforced — MITM possible (port 389)")

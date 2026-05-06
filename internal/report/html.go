@@ -1321,7 +1321,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button role="tab" aria-selected="false" aria-controls="tab-adcs" id="tab-btn-adcs" onclick="showTab('adcs')">ADCS {{if gt .Summary.ADCSTemplateCount 0}}({{.Summary.ADCSTemplateCount}}){{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-trusts" id="tab-btn-trusts" onclick="showTab('trusts')">Trusts {{if .TrustResult}}{{if .TrustResult.Trusts}}({{len .TrustResult.Trusts}}){{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-shadow" id="tab-btn-shadow" onclick="showTab('shadow')">Shadow Creds {{if gt .Summary.ShadowCredCount 0}}({{.Summary.ShadowCredCount}}){{end}}</button>
-  <button role="tab" aria-selected="false" aria-controls="tab-ldapsec" id="tab-btn-ldapsec" onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if not .LDAPSecurityResult.SigningEnforced}}⚠{{end}}{{end}}</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-ldapsec" id="tab-btn-ldapsec" onclick="showTab('ldapsec')">LDAP Security {{if .LDAPSecurityResult}}{{if and .LDAPSecurityResult.SigningChecked (not .LDAPSecurityResult.SigningEnforced)}}⚠{{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-audit" id="tab-btn-audit" onclick="showTab('audit')">Audit {{if gt .Summary.AuditFindingCount 0}}({{.Summary.AuditFindingCount}}){{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-sysvol" id="tab-btn-sysvol" onclick="showTab('sysvol')">SYSVOL{{if .SYSVOLResult}}{{if .SYSVOLResult.Findings}} ({{len .SYSVOLResult.Findings}}){{end}}{{end}}</button>
   <button role="tab" aria-selected="false" aria-controls="tab-users" id="tab-btn-users" onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
@@ -2819,7 +2819,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </tr>
       <tr>
         <td>LDAP signing</td>
-        <td>{{if .LDAPSecurityResult.SigningEnforced}}<span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ enforced</span>{{else}}<span class="badge badge-medium">⚠ NOT enforced</span>{{end}}</td>
+        <td>{{if not .LDAPSecurityResult.SigningChecked}}<span class="badge" style="background:var(--bg-hover);color:var(--color-muted)">? unknown (LDAPS)</span>{{else if .LDAPSecurityResult.SigningEnforced}}<span class="badge" style="background:var(--bg-hover);color:var(--color-ok)">✓ enforced</span>{{else}}<span class="badge badge-medium">⚠ NOT enforced</span>{{end}}</td>
       </tr>
       <tr>
         <td>SASL mechanisms</td>
