@@ -518,6 +518,22 @@ func buildACL() *analysis.ACLResult {
 				Severity: "Critical", CVSS: 10.0, CVSSVector: "AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H",
 			},
 		},
+		OwnerFindings: []analysis.OwnerFinding{
+			{
+				OwnerSID:   "S-1-5-21-3850359155-1265902998-2437639109-1200",
+				OwnerName:  "Night's Watch",
+				TargetDN:   "CN=Domain Admins,CN=Users," + baseDN,
+				TargetName: "Domain Admins",
+				Severity:   "High", CVSS: 7.7, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+			},
+			{
+				OwnerSID:   "S-1-5-21-3850359155-1265902998-2437639109-1103",
+				OwnerName:  "jsnow",
+				TargetDN:   "CN={A3B2C1D0-0000-0000-0000-000000000001},CN=Policies,CN=System," + baseDN,
+				TargetName: "Disable Windows Defender GPO",
+				Severity:   "High", CVSS: 7.7, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+			},
+		},
 	}
 }
 
@@ -584,7 +600,7 @@ func buildGPO() *analysis.GPOResult {
 		},
 		PasswordPolicy: &analysis.PasswordPolicy{
 			MinLength: 7, Complexity: false, MaxAge: 42,
-			LockoutThreshold: 0,
+			LockoutThreshold: 5, LockoutDuration: 5, MinAge: 0,
 		},
 	}
 }
@@ -608,6 +624,7 @@ func buildHygiene(result *adldap.EnumerationResult) *analysis.HygieneResult {
 		StaleComputers: staleComputers,
 		PasswordInDesc: []analysis.PasswordInDescFinding{
 			{SAMAccountName: "cersei", ObjectType: "user", Description: "Password: Cersei2024!"},
+			{SAMAccountName: "svc_backup", ObjectType: "user", Description: "backup service - do not disable"},
 		},
 		KrbtgtPwdAgeDays: 475,
 		KrbtgtLastSet:    "2023-01-10 10:00:00",
@@ -615,6 +632,16 @@ func buildHygiene(result *adldap.EnumerationResult) *analysis.HygieneResult {
 		NoLAPSCount:      3,
 		TotalComputers:   5,
 		NoLAPSComputers:  []adldap.LDAPComputer{result.Computers[0], result.Computers[2], result.Computers[3]},
+		PasswordNotRequired: []adldap.LDAPUser{
+			{SAMAccountName: "svc_legacy", DN: "CN=svc_legacy,CN=Users," + baseDN, Enabled: true},
+			{SAMAccountName: "tyrion", DN: "CN=tyrion,CN=Users," + baseDN, Enabled: true},
+		},
+		SmartcardRequired: []adldap.LDAPUser{
+			{SAMAccountName: "cersei", DN: "CN=cersei,CN=Users," + baseDN, Enabled: true, AdminCount: true},
+			{SAMAccountName: "stannis", DN: "CN=stannis,CN=Users," + baseDN, Enabled: true, AdminCount: true},
+		},
+		DnsAdminsMembers:        []string{"jsnow", "Night's Watch"},
+		PreWin2000AccessEnabled: true,
 	}
 }
 
@@ -832,6 +859,22 @@ func buildLAPSACL() *analysis.LAPSACLResult {
 		Domain:       "sevenkingdoms.local",
 		LAPSAttrGUID: "f0c8c3d5-3b6e-4f97-9b6d-0e8a4d8b4c2c",
 		LAPSFound:    true,
+		GMSAFindings: []analysis.GMSAACLFinding{
+			{
+				GMSAName:      "gmsa_sql$",
+				GMSADN:        "CN=gmsa_sql,CN=Managed Service Accounts," + baseDN,
+				PrincipalName: "Night's Watch",
+				PrincipalType: "group",
+				Severity:      "Critical", CVSS: 9.1, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+			},
+			{
+				GMSAName:      "gmsa_iis$",
+				GMSADN:        "CN=gmsa_iis,CN=Managed Service Accounts," + baseDN,
+				PrincipalName: "tyrion",
+				PrincipalType: "user",
+				Severity:      "Critical", CVSS: 9.1, CVSSVector: "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H",
+			},
+		},
 		Findings: []analysis.LAPSACLFinding{
 			{
 				PrincipalName: "jorah.mormont",
