@@ -131,6 +131,17 @@ Check if SMB signing is required on the DC — only port 445 access needed:
 morok smb -d corp.local --dc 10.0.0.1
 ```
 
+## 10. Quiet mode (CI/scripting)
+
+Print only the final risk verdict line — no colors, no sections. Useful for pipeline gates or automated scanning:
+
+```bash
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --quiet
+# Output: RISK CRITICAL (F · 83/100) — 38 critical, 40 high, 1 medium
+```
+
+Combine with `--report` to generate the full HTML report while keeping CI output clean.
+
 ## 11. Pivoting through SOCKS5
 
 Route all LDAP traffic through a proxy — useful when the DC is only reachable via a pivot:

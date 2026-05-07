@@ -24,7 +24,8 @@ morok enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | `--json` | | Export AD objects as JSON to directory (e.g. `json_out/`) | |
 | `--max-depth` | | BFS depth for attack path search | `10` |
 | `--stealth` | | Stealth mode — minimal LDAP queries, no GC, no ACL/ADCS/GPO/delegation | |
-| `--verbose` | `-v` | Verbose LDAP output | |
+| `--verbose` | | Show all findings without truncation (disables 5-item limit per section) | |
+| `--quiet` | | Quiet mode — print only risk verdict line (for CI/scripting) | |
 
 ## What it runs
 
@@ -95,4 +96,10 @@ morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
 # Full run + JSON export
 morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 \
   --report /tmp/corp.html --json ./json_out/
+
+# Quiet mode — single line output for CI pipelines
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --quiet
+
+# Verbose — show all findings without 5-item truncation
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --verbose
 ```

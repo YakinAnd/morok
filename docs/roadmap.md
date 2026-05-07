@@ -9,6 +9,12 @@
 - **Global search overhaul** — results shown as clickable tab buttons (`ACL (5)  Kerberos (2)`); Enter navigates to best tab; auto-expands collapsed sections that contain matches; ✕ Clear button visible only when field has text; highlight color changed to blue (was amber — conflicted with badge-medium background)
 - **Scale improvements** — tables truncated at 100 rows with Show All button; D3 graph capped at 80 nodes (privileged nodes always kept)
 - **CLI Risk Summary** — `enum` output ends with a RISK SUMMARY block showing Critical/High/Medium counts across all modules
+- **8 new display fields** — OwnerFindings (non-default owners on privileged objects), GMSAFindings (gMSA password readers), LockoutDuration, MinPwdAge, PasswordNotRequired, SmartcardRequired+AdminCount, DnsAdmins membership, Pre-Windows 2000 Compatible Access — all wired to both console and HTML report
+- **INHERIT_ONLY_ACE fix** — ACEs with flag 0x08 now correctly skipped in DACL parsing; eliminates false-positive WriteProperty(all) findings on container-propagated ACEs
+- **LDAP signing accuracy** — signing status only reported when tested over port 389; LDAPS connections no longer produce false "enforced" result
+- **ESC2 RA-signature guard** — msPKI-RA-Signature > 0 now correctly blocks ESC2 classification (RA countersign required = not exploitable)
+- **FSP transitive membership** — trust analysis now walks group membership transitively via BFS to detect Foreign Security Principals that reach privileged groups through nested groups
+- **`--quiet` mode** — single-line risk verdict output for CI pipelines; `--verbose` replaces removed `-v` shorthand
 
 ### v0.9.8
 - **ADCS ESC9** — CT_FLAG_NO_SECURITY_EXTENSION detection in msPKI-Enrollment-Flag; Medium — requires GenericWrite over victim account to change UPN; next steps: bloodyAD UPN change + certipy req + certipy auth

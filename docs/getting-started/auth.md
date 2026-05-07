@@ -76,4 +76,5 @@ If the domain allows anonymous LDAP reads beyond RootDSE, morok adds a **Medium*
 | `--hashes` | `-H` | NT hash (`LM:NT` or `:NT`) |
 | `--ccache` | | Path to Kerberos `.ccache` file |
 | `--dc` | | DC IP or hostname (autodetects if omitted) |
-| `--verbose` | `-v` | Show all LDAP queries |
+| `--verbose` | | Show all findings without truncation |
+| `--quiet` | | Print only risk verdict line (CI mode) |

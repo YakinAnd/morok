@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.0.1] — 2026-05-07
+
+### Analysis — fixes
+
+- **INHERIT_ONLY_ACE** — ACEs with flag 0x08 now correctly skipped in DACL parsing; eliminates false-positive `WriteProperty(all)` findings on container-propagated ACEs that apply only to child objects
+- **LDAP signing accuracy** — `SigningEnforced` is only set when tested over port 389; LDAPS connections no longer produce a false "enforced" result; added `SigningChecked bool` to `LDAPSecurityResult`
+- **ESC2 RA-signature guard** — `msPKI-RA-Signature > 0` now correctly blocks ESC2 classification; RA countersign required means not directly exploitable
+- **FSP transitive membership** — trust analysis walks group membership transitively via BFS (up to 200 nodes, cycle-safe) to detect Foreign Security Principals reaching privileged groups through nested groups
+- **RBCD trustee resolution** — RBCD analysis now resolves trustee names from the security descriptor instead of using raw SIDs
+- **DnsAdmins detection** — members of DnsAdmins are now detected and reported (ServerLevelPluginDll → DC SYSTEM path)
+- **Shadow credentials** — now covers `adminCount=1` targets in addition to named DA/EA/DC objects; SMARTCARD_REQUIRED+adminCount detection added
+
+### Analysis — new display fields
+
+All 8 fields below were collected but never printed in prior releases:
+
+- **OwnerFindings** — non-default owners on privileged AD objects (console + HTML ACL tab)
+- **GMSAFindings** — principals that can read gMSA managed passwords (console + HTML LAPS tab)
+- **LockoutDuration / MinPwdAge** — now shown in console GPO output and HTML Policy tab
+- **PasswordNotRequired** — accounts with UAC PASSWD_NOTREQD (console + HTML Exposure tab)
+- **SmartcardRequired+AdminCount** — privileged accounts where hash never rotates (console + HTML Exposure tab)
+- **DnsAdmins members** — non-privileged members (console + HTML Exposure tab)
+- **Pre-Windows 2000 Compatible Access** — when Everyone/Authenticated Users is a member (console + HTML Exposure tab)
+
+### HTML Report
+
+- **Non-Default Owners section** — ACL tab now shows OwnerFindings with CVSS scores and fix guidance
+- **gMSA Password Readers section** — LAPS tab; principals that can retrieve managed passwords
+- **Exposure tab** — 5 new sections: gMSA Readers, Passwd Not Required, Smartcard+AdminCount, DnsAdmins Members, Pre-Win2000 Access
+- **Logo L3** — light theme inverts text colors only (`#1a1f2e` wordmark, `#8a6a3e` tagline); SVG uses bronze lines and cream rhombus on cream background; no plate, no gradient, no layout shift on theme toggle
+- **Header layout fixes** — `#theme-toggle` is now a flex item (no longer `position:absolute`, no overlap with badges); `.meta` is `flex:0 0 auto`; `.findings-row` uses `margin-left:auto`; nav `::after` right buffer reduced 28px→8px
+- **`lower` template function** — registered missing function that caused a parse error when reports included severity-class CSS class generation
+
+---
+
 ## [1.0.0] — 2026-05-05
 
 ### CLI (`enum` command)
