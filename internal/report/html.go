@@ -1745,22 +1745,26 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Enabled: all</option>
-      <option value="Yes">Enabled only</option>
-      <option value="No">Disabled only</option>
+      <option value="✓">Enabled only</option>
+      <option value="—">Disabled only</option>
     </select>
     <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
-      <option value="">Kerberoastable: all</option>
-      <option value="Yes">Yes</option>
+      <option value="">Admin: all</option>
+      <option value="✓">Admins only</option>
     </select>
     <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
-      <option value="">AS-REP: all</option>
-      <option value="Yes">Yes</option>
+      <option value="">Kerberoastable: all</option>
+      <option value="✓">Yes</option>
     </select>
     <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
-      <option value="">Pwd Exp: all</option>
-      <option value="Yes">Never expires</option>
+      <option value="">AS-REP: all</option>
+      <option value="✓">Yes</option>
     </select>
-    <select data-col="13" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="8" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Pwd Exp: all</option>
+      <option value="✓">Never expires</option>
+    </select>
+    <select data-col="14" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Group: all</option>
       {{range .Groups}}<option value="{{.SAMAccountName}}">{{.SAMAccountName}}</option>{{end}}
     </select>
@@ -1776,6 +1780,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Display Name</th>
         <th class="sortable" onclick="sortTable(this)">Email</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
+        <th class="sortable" onclick="sortTable(this)">Admin</th>
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
@@ -1797,6 +1802,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td>{{.DisplayName}}</td>
       <td class="mono">{{.Mail}}</td>
       <td>{{if .Enabled}}<span class="txt-yes">✓</span>{{else}}—{{end}}</td>
+      <td>{{if .AdminCount}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .SPNs}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .DontReqPreauth}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .PasswordNeverExpires}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
@@ -1830,7 +1836,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </select>
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Admin: all</option>
-      <option value="Yes">Admins only</option>
+      <option value="✓">Admins only</option>
     </select>
     <span class="filter-count" id="cnt-groups"></span>
     <button onclick="clearFilters('tbl-groups','cnt-groups')">Clear</button>
@@ -1881,13 +1887,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <input type="text" placeholder="Search computers..." oninput="filterTable('tbl-computers','cnt-computers')">
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-computers','cnt-computers')">
       <option value="">Enabled: all</option>
-      <option value="Yes">Enabled only</option>
-      <option value="No">Disabled only</option>
+      <option value="✓">Enabled only</option>
+      <option value="—">Disabled only</option>
     </select>
     <select data-col="5" data-match="exact" onchange="filterTable('tbl-computers','cnt-computers')">
       <option value="">LAPS: all</option>
-      <option value="Yes">LAPS enabled</option>
-      <option value="No">No LAPS</option>
+      <option value="✓">LAPS enabled</option>
+      <option value="—">No LAPS</option>
     </select>
     <span class="filter-count" id="cnt-computers"></span>
     <button onclick="clearFilters('tbl-computers','cnt-computers')">Clear</button>

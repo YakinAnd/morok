@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 
@@ -57,13 +58,15 @@ func main() {
 // ── Enumeration ───────────────────────────────────────────────
 
 func buildEnumResult() *adldap.EnumerationResult {
+	users := append(fakeUsers(), bulkUsers(992)...)
+	computers := append(fakeComputers(), bulkComputers(495)...)
 	return &adldap.EnumerationResult{
 		Domain:      domain,
 		BaseDN:      baseDN,
 		CollectedAt: time.Now(),
-		Users:       fakeUsers(),
+		Users:       users,
 		Groups:      fakeGroups(),
-		Computers:   fakeComputers(),
+		Computers:   computers,
 	}
 }
 
@@ -347,6 +350,95 @@ func fakeComputers() []adldap.LDAPComputer {
 			Description: "File server", Domain: domain,
 		},
 	}
+}
+
+// ── Bulk generators ───────────────────────────────────────────
+
+var (
+	firstNames = []string{"Aegon","Aemon","Alicent","Alliser","Arya","Balon","Barristan","Benjen","Bran","Brienne","Bronn","Catelyn","Cersei","Daario","Daenerys","Davos","Dontos","Drogo","Eddard","Ellaria","Euron","Gendry","Gregor","Hodor","Jaime","Jaqen","Joffrey","Jon","Jorah","Kevan","Lancel","Loras","Luwin","Lyanna","Margaery","Meera","Melisandre","Meryn","Missandei","Myrcella","Nymeria","Oberyn","Petyr","Podrick","Ramsay","Renly","Rickard","Rickon","Roose","Ros","Samwell","Sandor","Sansa","Shae","Stannis","Talisa","Theon","Tommen","Tormund","Tyrion","Tywin","Varys","Viserys","Walder","Xaro","Yara","Ygritte"}
+	lastNames  = []string{"Arryn","Baratheon","Bolton","Clegane","Frey","Glover","Greyjoy","Lannister","Manderly","Martell","Mormont","Nymeros","Reed","Seaworth","Snow","Stark","Targaryen","Tarly","Tarth","Tully","Tyrell","Umber","Velaryon","Worm"}
+	oses       = []string{"Windows 10 Enterprise","Windows 11 Enterprise","Windows Server 2019 Standard","Windows Server 2022 Datacenter","Windows Server 2016 Standard","Windows 7 Professional"}
+	osVers     = []string{"10.0 (19044)","10.0 (22000)","10.0 (17763)","10.0 (20348)","10.0 (14393)","6.1 (7601)"}
+	ous        = []string{"OU=Workstations","OU=Servers","OU=Finance","OU=IT","OU=HR","OU=Marketing","OU=Sales","OU=Ops"}
+	groups     = []string{"Domain Users","Night's Watch","Small Council","Service Accounts","Remote Desktop Users"}
+)
+
+func bulkUsers(n int) []adldap.LDAPUser {
+	rng := rand.New(rand.NewSource(42))
+	users := make([]adldap.LDAPUser, 0, n)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < n; i++ {
+		fn := firstNames[rng.Intn(len(firstNames))]
+		ln := lastNames[rng.Intn(len(lastNames))]
+		sam := fmt.Sprintf("%s.%s%d", fn[:1], ln, i)
+		enabled := rng.Intn(10) > 1
+		adminCount := rng.Intn(20) == 0
+		hasSPN := rng.Intn(8) == 0
+		asrep := !hasSPN && rng.Intn(15) == 0
+		pwdNeverExp := adminCount || rng.Intn(5) == 0
+		daysAgo := rng.Intn(400)
+		lastLogon := base.AddDate(0, 0, -daysAgo).Format("2006-01-02 15:04:05")
+		pwdSet := base.AddDate(0, 0, -rng.Intn(730)).Format("2006-01-02 15:04:05")
+		rid := 2000 + i
+		var spns []string
+		if hasSPN {
+			spns = []string{fmt.Sprintf("HTTP/%s.sevenkingdoms.local", sam)}
+		}
+		grp := groups[rng.Intn(len(groups))]
+		users = append(users, adldap.LDAPUser{
+			DN:                   fmt.Sprintf("CN=%s,CN=Users,%s", sam, baseDN),
+			SAMAccountName:       sam,
+			CN:                   sam,
+			DisplayName:          fn + " " + ln,
+			Mail:                 fmt.Sprintf("%s@sevenkingdoms.local", sam),
+			Enabled:              enabled,
+			AdminCount:           adminCount,
+			PasswordNeverExpires: pwdNeverExp,
+			DontReqPreauth:       asrep,
+			SPNs:                 spns,
+			LastLogon:            lastLogon,
+			PasswordLastSet:      pwdSet,
+			ObjectSid:            fmt.Sprintf("S-1-5-21-3850359155-1265902998-2437639109-%d", rid),
+			CreatedOn:            "2023-01-15 09:00:00",
+			ChangedOn:            pwdSet,
+			PrimaryGroup:         "Domain Users",
+			MemberOf:             []string{fmt.Sprintf("CN=%s,CN=Users,%s", grp, baseDN)},
+		})
+	}
+	return users
+}
+
+func bulkComputers(n int) []adldap.LDAPComputer {
+	rng := rand.New(rand.NewSource(99))
+	comps := make([]adldap.LDAPComputer, 0, n)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < n; i++ {
+		osIdx := rng.Intn(len(oses))
+		ou := ous[rng.Intn(len(ous))]
+		name := fmt.Sprintf("WS%04d", i+1)
+		enabled := rng.Intn(10) > 0
+		laps := rng.Intn(3) > 0
+		daysAgo := rng.Intn(400)
+		lastLogon := base.AddDate(0, 0, -daysAgo).Format("2006-01-02 15:04:05")
+		rid := 3000 + i
+		comps = append(comps, adldap.LDAPComputer{
+			DN:                     fmt.Sprintf("CN=%s,%s,%s", name, ou, baseDN),
+			SAMAccountName:         name + "$",
+			CN:                     name,
+			DNSHostName:            fmt.Sprintf("%s.sevenkingdoms.local", name),
+			OperatingSystem:        oses[osIdx],
+			OperatingSystemVersion: osVers[osIdx],
+			Enabled:                enabled,
+			LAPSEnabled:            laps,
+			UnconstrainedDelegation: false,
+			LastLogon:              lastLogon,
+			WhenCreated:            "2023-06-01",
+			ChangedOn:              lastLogon,
+			ObjectSid:              fmt.Sprintf("S-1-5-21-3850359155-1265902998-2437639109-%d", rid),
+			Domain:                 domain,
+		})
+	}
+	return comps
 }
 
 // ── Graph & Attack Paths ──────────────────────────────────────
