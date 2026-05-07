@@ -1116,12 +1116,13 @@ tr.row-medium   td:first-child { border-left: 3px solid var(--text-sev-medium); 
 tr.row-low      td:first-child { border-left: 3px solid var(--color-ok); }
 
 /* Tables */
-.table-wrap { overflow-x: auto; border-radius: 8px;
-  border: 1px solid var(--border); margin-bottom: 24px; }
+.table-wrap { overflow-x: auto; overflow-y: auto; max-height: 75vh;
+  border-radius: 8px; border: 1px solid var(--border); margin-bottom: 24px; }
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 th { background: var(--bg-card); color: var(--text-muted); padding: 10px 14px;
   text-align: left; font-weight: 500; text-transform: uppercase;
-  font-size: 0.75rem; letter-spacing: 0.05em; position: relative; user-select: none; }
+  font-size: 0.75rem; letter-spacing: 0.05em; position: relative; user-select: none;
+  position: sticky; top: 0; z-index: 10; }
 td { padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text-main); }
 /* Column resize handle */
 .col-rh { position: absolute; right: 0; top: 20%; width: 3px; height: 60%;
