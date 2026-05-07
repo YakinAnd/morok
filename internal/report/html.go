@@ -963,20 +963,26 @@ html[data-theme="light"] {
 body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page); color: var(--text-main); }
 
 /* Header */
-.header { border-bottom: 1px solid var(--border); position: relative;
-  display: flex; align-items: stretch; gap: 0; }
+.header { border-bottom: 1px solid var(--border);
+  display: flex; align-items: stretch; gap: 0;
+  padding: 14px; }
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0;
-  background: linear-gradient(135deg, #1a1f2e 0%, #0f1117 100%);
-  padding: 20px 30px; }
+  padding: 26px 36px;
+  background: radial-gradient(ellipse at center,
+    #1a1f2e 0%,
+    #1a1f2e 60%,
+    rgba(26, 31, 46, 0.75) 90%,
+    rgba(26, 31, 46, 0.4) 100%); }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: #e8e4d8; line-height: 1; }
 .header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: #8a8475; text-transform: uppercase; line-height: 1.4; }
 .header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: #8a8475; text-transform: uppercase; opacity: 0.6; }
-.header .meta { color: var(--text-muted); font-size: 0.82rem; padding: 20px 30px; border-left: 1px solid var(--border); flex: 1; }
+.header .meta { color: var(--text-muted); font-size: 0.82rem; padding: 20px 30px; flex: 0 0 auto; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
+.findings-row { margin-left: auto; padding: 20px; display: flex; gap: 6px; align-items: center; }
 
 /* Theme toggle button */
-#theme-toggle { position: absolute; right: 40px; top: 50%; transform: translateY(-50%);
+#theme-toggle { align-self: center; margin: 0 20px 0 8px;
   background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-muted);
   border-radius: 6px; padding: 5px 11px; cursor: pointer; font-size: 1rem;
   transition: background 0.2s, border-color 0.2s; }
@@ -1293,7 +1299,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     Auth: <span style="color:var(--color-ok)">{{.AuthMethod}}</span> &nbsp;|&nbsp;
     Generated: {{.GeneratedAt}}
   </div>
-  <div style="margin-left:auto;margin-right:60px;display:flex;gap:6px;align-items:center">
+  <div class="findings-row">
     {{if gt .TotalCritical 0}}<span class="badge badge-critical" style="font-size:0.76rem">{{.TotalCritical}} Critical</span>{{end}}
     {{if gt .TotalHigh 0}}<span class="badge badge-high" style="font-size:0.76rem">{{.TotalHigh}} High</span>{{end}}
     {{if gt .TotalMedium 0}}<span class="badge badge-medium" style="font-size:0.76rem">{{.TotalMedium}} Medium</span>{{end}}
