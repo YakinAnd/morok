@@ -964,25 +964,21 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
 
 /* Header */
 .header { border-bottom: 1px solid var(--border);
-  display: flex; align-items: stretch; gap: 0;
-  padding: 14px; }
+  display: flex; align-items: stretch; gap: 0; }
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0;
-  padding: 18px 28px; position: relative; }
-html[data-theme="light"] .header-logo {
-  padding: 32px 60px;
-  background:
-    radial-gradient(ellipse 50% 70% at 45% 50%,
-      rgba(26, 31, 46, 0.4) 0%,
-      transparent 60%),
-    radial-gradient(ellipse 55% 80% at 50% 50%,
-      #1a1f2e 0%,
-      #1a1f2e 45%,
-      rgba(26, 31, 46, 0.6) 75%,
-      transparent 100%); }
+  padding: 20px 30px; }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: #e8e4d8; line-height: 1; }
 .header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: #8a8475; text-transform: uppercase; line-height: 1.4; }
-.header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: #8a8475; text-transform: uppercase; opacity: 0.6; }
+.header-logo-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; color: #8a8475; text-transform: uppercase; opacity: 0.7; }
+/* L3 — light theme text inversion (geometry unchanged) */
+html[data-theme="light"] .header-logo-name    { color: #1a1f2e; }
+html[data-theme="light"] .header-logo-tagline { color: #8a6a3e; }
+html[data-theme="light"] .header-logo-tag     { color: #8a6a3e; opacity: 0.85; }
+html[data-theme="light"] .header-logo svg line { stroke: #b8954a; opacity: 0.85; }
+html[data-theme="light"] .header-logo svg circle[fill="#c9a961"] { fill: #b8954a; }
+html[data-theme="light"] .header-logo svg circle[stroke="#c9a961"] { stroke: #b8954a; }
+html[data-theme="light"] .header-logo svg path[fill="#0a0d14"] { fill: #faf8f3; }
 .header .meta { color: var(--text-muted); font-size: 0.82rem; padding: 20px 30px; flex: 0 0 auto; }
 .header .domain { color: var(--accent-domain); font-weight: 600; }
 .findings-row { margin-left: auto; padding: 20px; display: flex; gap: 6px; align-items: center; }
