@@ -967,12 +967,12 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-page
   display: flex; align-items: stretch; gap: 0;
   padding: 14px; }
 .header-logo { display: flex; align-items: center; gap: 14px; flex-shrink: 0;
-  padding: 26px 36px;
-  background: radial-gradient(ellipse at center,
-    #1a1f2e 0%,
-    #1a1f2e 60%,
-    rgba(26, 31, 46, 0.75) 90%,
-    rgba(26, 31, 46, 0.4) 100%); }
+  padding: 18px 28px; }
+html[data-theme="light"] .header-logo {
+  background: #1a1f2e;
+  padding: 28px 38px;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 70%, transparent 100%);
+          mask-image: radial-gradient(ellipse at center, #000 70%, transparent 100%); }
 .header-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .header-logo-name { font-family: 'Fraunces', serif; font-size: 1.6rem; font-weight: 300; letter-spacing: 0.02em; color: #e8e4d8; line-height: 1; }
 .header-logo-tagline { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 400; letter-spacing: 0.28em; color: #8a8475; text-transform: uppercase; line-height: 1.4; }
