@@ -552,11 +552,23 @@ func printPasswordPolicyResult(gr *GPOResult) {
 		color.White("  %-24s disabled", "reversible enc")
 	}
 	if pp.LockoutThreshold == 0 {
-		color.Red("  %-24s DISABLED  (brute force possible)", "lockout")
+		color.Red("  %-24s DISABLED  (brute force possible)", "lockout threshold")
 	} else if pp.LockoutThreshold > 10 {
-		color.Yellow("  %-24s %d  (rec: ≤5)", "lockout", pp.LockoutThreshold)
+		color.Yellow("  %-24s %d  (rec: ≤5)", "lockout threshold", pp.LockoutThreshold)
 	} else {
-		color.White("  %-24s %d", "lockout", pp.LockoutThreshold)
+		color.White("  %-24s %d", "lockout threshold", pp.LockoutThreshold)
+	}
+	if pp.LockoutDuration == 0 {
+		color.White("  %-24s until admin unlock", "lockout duration")
+	} else if pp.LockoutDuration < 15 {
+		color.Yellow("  %-24s %d min  (rec: ≥15)", "lockout duration", pp.LockoutDuration)
+	} else {
+		color.White("  %-24s %d min", "lockout duration", pp.LockoutDuration)
+	}
+	if pp.MinAge == 0 {
+		color.Yellow("  %-24s 0 days  (passwords can be changed immediately)", "min pwd age")
+	} else {
+		color.White("  %-24s %d days", "min pwd age", pp.MinAge)
 	}
 	if pp.MaxAge == 0 || pp.MaxAge > 3650 {
 		color.Red("  %-24s never expires", "max pwd age")

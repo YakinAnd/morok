@@ -863,6 +863,7 @@ func templateFuncs() template.FuncMap {
 			}
 			return privileged[name]
 		},
+		"lower": strings.ToLower,
 	}
 }
 
@@ -2135,6 +2136,35 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{end}}
   </div>{{/* end acl-findings */}}
   {{else}}<p style="color:var(--color-ok)">✓ No dangerous ACL findings.</p>{{end}}
+
+  {{if .ACLResult}}{{if .ACLResult.OwnerFindings}}
+  <div class="exp-section" style="margin-top:16px">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">Non-Default Owners</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="The owner of an AD object always has implicit WriteDACL — they can grant themselves any right. A non-default owner on a privileged object (DA group, GPO, DC) is an effective privilege escalation path.">?</span>
+      <span class="badge badge-high" style="margin-left:auto">{{len .ACLResult.OwnerFindings}} finding(s)</span>
+    </div>
+    <div class="exp-body">
+      <table class="report-table">
+        <thead><tr><th>Severity</th><th>Target Object</th><th>Owner</th><th>CVSS</th></tr></thead>
+        <tbody>
+        {{range .ACLResult.OwnerFindings}}
+        <tr>
+          <td>{{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>{{else if eq .Severity "High"}}<span class="badge badge-high">High</span>{{else}}<span class="badge badge-medium">{{.Severity}}</span>{{end}}</td>
+          <td class="mono">{{.TargetName}}</td>
+          <td class="mono">{{.OwnerName}}</td>
+          <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      <div class="acc-label" style="margin-top:10px">Fix</div>
+      <div style="color:var(--text-secondary)">Review and restore default owner on each object:<br><code class="acc-cmd" style="display:inline">Set-ADObject -Identity '&lt;DN&gt;' -Replace @{nTSecurityDescriptor=...}</code> or use AD Users &amp; Computers → Object → Security → Advanced → Owner tab.</div>
+    </div>
+  </div>
+  {{end}}{{end}}
+
   {{else}}<p style="color:var(--text-muted)">ACL data not available.</p>{{end}}
 </div>
 
@@ -2384,6 +2414,124 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     {{else}}
     <p style="color:var(--color-ok)">&#10003; No non-privileged principals have read access to LAPS passwords.</p>
     {{end}}
+    </div>
+  </div>
+  {{end}}{{end}}
+
+  <!-- gMSA Password Readers -->
+  {{if .LAPSACLResult}}{{if .LAPSACLResult.GMSAFindings}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">gMSA Password Readers</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Principals listed in msDS-GroupMSAMembership can retrieve the gMSA managed password via GetPassword(). If the gMSA is in a privileged group, this is a direct privilege escalation path.">?</span>
+      <span class="badge badge-high" style="margin-left:auto">{{len .LAPSACLResult.GMSAFindings}} finding(s)</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Principal</th><th>Type</th><th>gMSA Account</th><th>Severity</th><th>CVSS</th></tr></thead>
+      <tbody>
+      {{range .LAPSACLResult.GMSAFindings}}
+      <tr>
+        <td class="mono">{{.PrincipalName}}</td>
+        <td>{{.PrincipalType}}</td>
+        <td class="mono" style="color:var(--text-secondary)">{{.GMSAName}}</td>
+        <td><span class="badge badge-{{lower .Severity}}">{{.Severity}}</span></td>
+        <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
+  </div>
+  {{end}}{{end}}
+
+  <!-- PasswordNotRequired -->
+  {{if .HygieneResult}}{{if .HygieneResult.PasswordNotRequired}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">Accounts with Password Not Required</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="UAC flag PASSWD_NOTREQD (0x20) — enabled accounts that can authenticate with an empty password. This is a critical misconfiguration allowing trivial takeover.">?</span>
+      <span class="badge badge-critical" style="margin-left:auto">{{len .HygieneResult.PasswordNotRequired}} account(s)</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account</th><th>Last Logon</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.PasswordNotRequired}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td class="mono" style="color:var(--text-muted)">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
+  </div>
+  {{end}}{{end}}
+
+  <!-- SmartcardRequired adminCount -->
+  {{if .HygieneResult}}{{if .HygieneResult.SmartcardRequired}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">Smartcard-Required Admin Accounts</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with SMARTCARD_REQUIRED and adminCount=1: their password hash is set to a random value at smartcard-enforcement and never rotates. The hash remains valid indefinitely for Pass-the-Hash attacks if extracted from LSASS or NTDS.dit.">?</span>
+      <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.SmartcardRequired}} account(s)</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Account</th><th>Last Logon</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.SmartcardRequired}}
+      <tr>
+        <td class="mono">{{.SAMAccountName}}</td>
+        <td class="mono" style="color:var(--text-muted)">{{if .LastLogon}}{{.LastLogon}}{{else}}Never{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
+  </div>
+  {{end}}{{end}}
+
+  <!-- DnsAdmins -->
+  {{if .HygieneResult}}{{if .HygieneResult.DnsAdminsMembers}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">DnsAdmins Members</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="DnsAdmins members can set ServerLevelPluginDll via dnscmd, causing the DNS service (running as SYSTEM on DCs) to load an arbitrary DLL on next restart — DC SYSTEM escalation.">?</span>
+      <span class="badge badge-high" style="margin-left:auto">{{len .HygieneResult.DnsAdminsMembers}} member(s)</span>
+    </div>
+    <div class="exp-body">
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Member</th></tr></thead>
+      <tbody>
+      {{range .HygieneResult.DnsAdminsMembers}}
+      <tr><td class="mono">{{.}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    </div>
+  </div>
+  {{end}}{{end}}
+
+  <!-- Pre-Windows 2000 Compatible Access -->
+  {{if .HygieneResult}}{{if .HygieneResult.PreWin2000AccessEnabled}}
+  <div class="exp-section">
+    <div class="exp-header" onclick="toggleExpSection(this)">
+      <span class="chevron">▼</span>
+      <span class="exp-title">Pre-Windows 2000 Compatible Access Enabled</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Everyone or Authenticated Users is a member of the Pre-Windows 2000 Compatible Access group. This grants anonymous/unauthenticated LDAP read access to sensitive attributes — a legacy compatibility setting left from pre-AD environments.">?</span>
+      <span class="badge badge-high" style="margin-left:auto">Enabled</span>
+    </div>
+    <div class="exp-body">
+      <p style="color:var(--text-sev-high);font-size:0.85rem">Everyone or Authenticated Users is a member of Pre-Windows 2000 Compatible Access. Anonymous sessions can enumerate AD objects including user accounts, groups, and computer accounts. Remove Everyone/Authenticated Users from this group.</p>
     </div>
   </div>
   {{end}}{{end}}

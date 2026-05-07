@@ -877,6 +877,16 @@ func PrintACLResult(aclResult *ACLResult) {
 		}
 	}
 	printACLExploitHints(aclResult)
+
+	if len(aclResult.OwnerFindings) > 0 {
+		color.Cyan("\n  NON-DEFAULT OWNERS")
+		color.Red("  %-28s %d — privileged objects with unexpected owners", "owner risks", len(aclResult.OwnerFindings))
+		color.White("  %-30s %-24s %s", "target object", "owner", "owner sid")
+		color.White("  " + strings.Repeat("-", 72))
+		for _, f := range aclResult.OwnerFindings {
+			color.Red("  %-30s %-24s %s", f.TargetName, f.OwnerName, f.OwnerSID)
+		}
+	}
 }
 
 func printACLFinding(f ACLFinding) {

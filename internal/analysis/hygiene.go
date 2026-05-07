@@ -235,4 +235,19 @@ func printHygieneResult(hr *HygieneResult) {
 			color.White("  %-28s %s", "no LAPS", lapsVal)
 		}
 	}
+	if len(hr.PasswordNotRequired) > 0 {
+		color.Red("  %-28s %d  (can authenticate with empty password)", "passwd not required", len(hr.PasswordNotRequired))
+	}
+	if len(hr.SmartcardRequired) > 0 {
+		color.Yellow("  %-28s %d  (hash never rotates — PTH risk)", "smartcard+admincount", len(hr.SmartcardRequired))
+	}
+	if len(hr.DnsAdminsMembers) > 0 {
+		color.Red("  %-28s %d  (ServerLevelPluginDll → DC SYSTEM)", "dnsadmins members", len(hr.DnsAdminsMembers))
+		for _, m := range hr.DnsAdminsMembers {
+			color.Red("    %s", m)
+		}
+	}
+	if hr.PreWin2000AccessEnabled {
+		color.Red("  %-28s enabled  (anonymous LDAP enumeration)", "pre-win2000 access")
+	}
 }

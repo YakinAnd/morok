@@ -295,6 +295,19 @@ func PrintLAPSACLResult(r *LAPSACLResult) {
 	color.White("    crackmapexec smb <target> -u '<principal>' -p '<pass>' --laps")
 	color.White("  Review ACL on computer object:")
 	color.White("    Get-ACL 'AD:<computer DN>' | Select-Object -ExpandProperty Access")
+
+	if len(r.GMSAFindings) > 0 {
+		color.Cyan("\n  GMSA PASSWORD READERS")
+		color.Red("  %-28s %d — principals can retrieve gMSA managed password", "gmsa risks", len(r.GMSAFindings))
+		color.White("  %-24s %-10s %s", "principal", "type", "gmsa account")
+		color.White("  " + strings.Repeat("-", 60))
+		for _, f := range r.GMSAFindings {
+			line := "  " + padRight(f.PrincipalName, 24) + " " + padRight(f.PrincipalType, 10) + " " + f.GMSAName
+			color.Red(line)
+		}
+		color.White("\n  Retrieve gMSA password hash:")
+		color.White("    bloodyAD -u '<principal>' -p '<pass>' -d <domain> --host <DC> get object '<gMSA>' --attr msDS-ManagedPassword")
+	}
 }
 
 // LAPSACLSummaryLine prints a one-liner for the enum summary.
