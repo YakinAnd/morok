@@ -1749,22 +1749,18 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="—">Disabled only</option>
     </select>
     <select data-col="5" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
-      <option value="">Admin: all</option>
-      <option value="✓">Admins only</option>
-    </select>
-    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Kerberoastable: all</option>
       <option value="✓">Yes</option>
     </select>
-    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="6" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">AS-REP: all</option>
       <option value="✓">Yes</option>
     </select>
-    <select data-col="8" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="7" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Pwd Exp: all</option>
       <option value="✓">Never expires</option>
     </select>
-    <select data-col="14" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="13" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Group: all</option>
       {{range .Groups}}<option value="{{.SAMAccountName}}">{{.SAMAccountName}}</option>{{end}}
     </select>
@@ -1780,7 +1776,6 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Display Name</th>
         <th class="sortable" onclick="sortTable(this)">Email</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
-        <th class="sortable" onclick="sortTable(this)">Admin</th>
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
         <th class="sortable" onclick="sortTable(this)">Pwd Never Exp</th>
@@ -1802,7 +1797,6 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td>{{.DisplayName}}</td>
       <td class="mono">{{.Mail}}</td>
       <td>{{if .Enabled}}<span class="txt-yes">✓</span>{{else}}—{{end}}</td>
-      <td>{{if .AdminCount}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .SPNs}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .DontReqPreauth}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .PasswordNeverExpires}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
