@@ -1862,7 +1862,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="">Pwd Exp: all</option>
       <option value="✓">Never expires</option>
     </select>
-    <select data-col="13" onchange="filterTable('tbl-users','cnt-users')">
+    <select data-col="13" data-also-col="12" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Group: all</option>
       {{range $.AllGroupNames}}<option value="{{.}}">{{.}}</option>{{end}}
     </select>
@@ -3692,7 +3692,13 @@ function filterTable(tableId, countId) {
       selects.forEach(sel => {
         if (!sel.value) return;
         const col  = parseInt(sel.dataset.col ?? '0');
-        const cell = row.cells[col]?.textContent?.trim() ?? '';
+        // data-also-col: additional columns to include in the match (comma-separated)
+        const alsoStr = sel.dataset.alsoCol ?? '';
+        const alsoCols = alsoStr ? alsoStr.split(',').map(Number) : [];
+        let cell = row.cells[col]?.textContent?.trim() ?? '';
+        for (const ac of alsoCols) {
+          cell += '\x00' + (row.cells[ac]?.textContent?.trim() ?? '');
+        }
         if (sel.dataset.match === 'exact') {
           if (cell !== sel.value) show = false;
         } else if (sel.dataset.match === 'notempty') {
