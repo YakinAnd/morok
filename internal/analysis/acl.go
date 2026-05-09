@@ -152,6 +152,17 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
+	// debug: показуємо entries без nTSecurityDescriptor (тільки trusted domain)
+	if len(extraResults) > 0 {
+		color.Yellow("    [debug] entries with empty nTSecurityDescriptor:")
+		for _, entry := range entries {
+			sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
+			if len(sdBytes) == 0 {
+				sam := entry.GetAttributeValue("sAMAccountName")
+				color.Yellow("    [no-sd] %s / %s", sam, entry.DN)
+			}
+		}
+	}
 	// debug: скануємо raw ACE без INHERIT_ONLY фільтра — шукаємо SID що пропускаємо
 	if len(extraResults) > 0 {
 		inheritOnlySIDs := make(map[string]int) // SID → кількість ACE з IO flag
