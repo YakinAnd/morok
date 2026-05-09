@@ -1387,25 +1387,10 @@ func trunc(s string, maxLen int) string {
 // ============================================================
 
 func printBanner() {
-	color.New(color.FgHiBlack).Print(`       `)
-	color.New(color.FgYellow).Println(`·`)
-	color.New(color.FgHiBlack).Print(`    `)
-	color.New(color.FgYellow).Print(`·`)
-	color.New(color.FgHiBlack).Print(`     `)
-	color.New(color.FgYellow).Println(`·`)
-	color.New(color.FgHiBlack).Print(`       `)
-	color.New(color.FgRed).Println(`◇`)
-	color.New(color.FgHiBlack).Print(`    `)
-	color.New(color.FgYellow).Print(`·`)
-	color.New(color.FgHiBlack).Print(`     `)
-	color.New(color.FgYellow).Println(`·`)
-	color.New(color.FgHiBlack).Print(`       `)
-	color.New(color.FgYellow).Println(`·`)
-	color.White(``)
-	color.New(color.FgYellow).Print(`  morok `)
-	color.New(color.FgHiBlack).Println(`v1.0  ·  AD attack path enumerator`)
+	color.New(color.FgYellow, color.Bold).Println(`  MOROK`)
+	color.New(color.FgHiBlack).Println(`  AD attack path enumerator  ·  v1.0`)
 	color.New(color.FgHiBlack).Println(`  see through the fog`)
-	color.White(`  ` + strings.Repeat("─", 40))
+	color.New(color.FgHiBlack).Println(`  ` + strings.Repeat("─", 40))
 }
 
 // ============================================================
