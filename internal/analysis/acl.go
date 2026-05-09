@@ -152,6 +152,16 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
+	// debug dump перших 20 raw findings (тільки при trusted domain аналізі)
+	if len(extraResults) > 0 {
+		limit := len(aclResult.Findings)
+		if limit > 20 {
+			limit = 20
+		}
+		for _, f := range aclResult.Findings[:limit] {
+			color.White("    [raw] %-30s %-20s %-20s %s", f.PrincipalName, f.Right, f.TargetName, f.Severity)
+		}
+	}
 	// фільтруємо стандартні системні права
 	aclResult.Findings = filterSystemACL(aclResult.Findings)
 
