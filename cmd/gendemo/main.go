@@ -46,6 +46,7 @@ func main() {
 		buildSMBSigning(),
 		buildSYSVOL(),
 		buildLAPSACL(),
+		nil, // no trusted domain enumeration in demo
 		"Password",
 	)
 	if err != nil {

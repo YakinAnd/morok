@@ -55,6 +55,8 @@ type ReportData struct {
 	// v0.9.9
 	SYSVOLResult  *analysis.SYSVOLResult
 	LAPSACLResult *analysis.LAPSACLResult
+	// v1.1 — automatic trust following
+	TrustedDomains []*TrustedDomainEnumResult
 	// header risk summary
 	TotalCritical int
 	TotalHigh     int
@@ -64,6 +66,18 @@ type ReportData struct {
 	// P2 features
 	RiskScore RiskScore
 	TopIssues []TopIssue
+}
+
+// TrustedDomainEnumResult — findings from an automatically-enumerated trusted domain
+type TrustedDomainEnumResult struct {
+	Domain         string
+	Error          string // non-empty if enumeration failed
+	Users          []adldap.LDAPUser
+	Groups         []adldap.LDAPGroup
+	Computers      []adldap.LDAPComputer
+	KerberosResult *analysis.KerberosResult
+	ACLResult      *analysis.ACLResult
+	AttackPaths    []graph.AttackPath
 }
 
 // Summary — короткий підсумок для executive section
@@ -151,6 +165,7 @@ func Generate(
 	smbResult      *analysis.SMBSigningResult,
 	sysvolResult   *analysis.SYSVOLResult,
 	lapsACLResult  *analysis.LAPSACLResult,
+	trustedDomains []*TrustedDomainEnumResult,
 	authMethod string,
 ) error {
 
@@ -183,6 +198,7 @@ func Generate(
 	SMBSigningResult:        smbResult,
 	SYSVOLResult:            sysvolResult,
 	LAPSACLResult:           lapsACLResult,
+	TrustedDomains:          trustedDomains,
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -1736,6 +1752,87 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{else}}
   <p style="color:var(--text-muted)">Trust data not available.</p>
   {{end}}
+
+  <!-- Trusted Domain Enumeration Results -->
+  {{if .TrustedDomains}}
+  <div style="margin-top:28px">
+    <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+      Trusted Domain Enumeration
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="morok automatically enumerated reachable trusted domains using the same credentials. Findings are listed per domain.">?</span>
+    </div>
+    {{range .TrustedDomains}}
+    <div class="collapsible-section" style="margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <button class="collapsible-header" onclick="toggleSection(this)" style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-card);border:none;cursor:pointer;text-align:left">
+        <span style="font-weight:600;font-size:0.9rem;color:var(--text-main)" class="mono">{{.Domain}}</span>
+        {{if .Error}}
+          <span class="badge badge-medium">unreachable</span>
+        {{else}}
+          <span class="badge badge-ok">{{len .Users}} users</span>
+          <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{len .Computers}} computers</span>
+          {{if .KerberosResult}}
+            {{if .KerberosResult.KerberoastableAccounts}}<span class="badge badge-high">{{len .KerberosResult.KerberoastableAccounts}} kerberoastable</span>{{end}}
+            {{if .KerberosResult.ASREPAccounts}}<span class="badge badge-high">{{len .KerberosResult.ASREPAccounts}} AS-REP</span>{{end}}
+          {{end}}
+          {{if .ACLResult}}{{if .ACLResult.Findings}}<span class="badge badge-critical">{{len .ACLResult.Findings}} ACL findings</span>{{end}}{{end}}
+          {{if .AttackPaths}}<span class="badge badge-critical">{{len .AttackPaths}} attack paths</span>{{end}}
+        {{end}}
+        <span class="collapse-arrow" style="margin-left:auto;font-size:0.7rem;color:var(--text-muted)">▼</span>
+      </button>
+      <div class="collapsible-body" style="padding:16px;background:var(--bg-main)">
+        {{if .Error}}
+        <p style="color:var(--text-muted);font-size:0.85rem">⚠ Enumeration failed: {{.Error}}</p>
+        {{else}}
+        <!-- Kerberos findings -->
+        {{if .KerberosResult}}
+        {{if or .KerberosResult.KerberoastableAccounts .KerberosResult.ASREPAccounts}}
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Kerberos</div>
+          {{range .KerberosResult.KerberoastableAccounts}}
+          <div style="font-size:0.82rem;color:var(--text-sev-high);margin-bottom:2px">[!] <span class="mono">{{.SAMAccountName}}</span> — Kerberoastable ({{len .SPNs}} SPN)</div>
+          {{end}}
+          {{range .KerberosResult.ASREPAccounts}}
+          <div style="font-size:0.82rem;color:var(--text-sev-high);margin-bottom:2px">[!] <span class="mono">{{.SAMAccountName}}</span> — AS-REP roastable</div>
+          {{end}}
+        </div>
+        {{end}}
+        {{end}}
+        <!-- ACL findings -->
+        {{if .ACLResult}}
+        {{if or .ACLResult.Findings .ACLResult.DCSyncFindings}}
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Dangerous ACLs</div>
+          {{range .ACLResult.DCSyncFindings}}
+          <div style="font-size:0.82rem;color:var(--text-sev-critical);margin-bottom:2px">[!!] <span class="mono">{{.PrincipalName}}</span> — DCSync</div>
+          {{end}}
+          {{range .ACLResult.Findings}}
+          <div style="font-size:0.82rem;{{if eq .Severity "Critical"}}color:var(--text-sev-critical){{else}}color:var(--text-sev-high){{end}};margin-bottom:2px">
+            {{if eq .Severity "Critical"}}[!!]{{else}}[!]{{end}} <span class="mono">{{.PrincipalName}}</span> → <span class="mono">{{.TargetName}}</span> ({{.Right}})
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+        {{end}}
+        <!-- Attack paths -->
+        {{if .AttackPaths}}
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Attack Paths to Privileged Groups</div>
+          {{range .AttackPaths}}
+          <div style="font-size:0.82rem;color:var(--text-sev-critical);margin-bottom:2px">
+            [!!] {{range $i, $n := .Nodes}}{{if $i}} → {{end}}<span class="mono">{{$n.SAMAccountName}}</span>{{end}} → <span class="mono">{{.TargetGroup}}</span>
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+        {{if and (not .KerberosResult) (not .ACLResult) (not .AttackPaths)}}
+        <p style="color:var(--color-ok);font-size:0.85rem">✓ No critical findings in this domain.</p>
+        {{end}}
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
 </div>
 
 <!-- USERS TAB -->

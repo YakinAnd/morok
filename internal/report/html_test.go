@@ -103,6 +103,7 @@ func TestGenerateReport(t *testing.T) {
 		nil, // SMBSigningResult
 		nil, // SYSVOLResult
 		nil, // LAPSACLResult
+		nil, // TrustedDomains
 		"Password",
 	)
 	if err != nil {

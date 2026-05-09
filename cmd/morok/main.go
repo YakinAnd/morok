@@ -388,6 +388,25 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
+	// ── Trusted domain enumeration (Variant A — follow trusts automatically) ──
+	var trustedResults []*report.TrustedDomainEnumResult
+	if trustResult != nil && !stealth {
+		for _, t := range trustResult.Trusts {
+			// enumerate within-forest (parent-child) and bidirectional trusts
+			if t.Direction == analysis.TrustDirectionDisabled {
+				continue
+			}
+			if !t.IsWithinForest && t.Direction != analysis.TrustDirectionBidirectional {
+				continue
+			}
+			if !quietMode {
+				color.White("  querying %s...", t.Name)
+			}
+			tr := enumerateTrustedDomain(t.Name)
+			trustedResults = append(trustedResults, tr)
+		}
+	}
+
 	// ── Compute risk totals (single source of truth for CLI + HTML) ──
 	cliRiskData := &report.ReportData{
 		AttackPaths:             paths,
@@ -419,6 +438,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	// ── Variant A terminal output ─────────────────────────────
 	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult, trustResult, cliCrit, cliHigh, cliMed, cliRiskScore)
+	printTrustedDomainResults(trustedResults)
 
 	// ── HTML report (opt-in via --report) ────────────────────
 	if reportPath != "" {
@@ -432,7 +452,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		case username == "":
 			authMethod = "Anonymous"
 		}
-		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, sysvolResult, lapsACLResult, authMethod); err != nil {
+		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, sysvolResult, lapsACLResult, trustedResults, authMethod); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
 		if !quietMode {
@@ -461,6 +481,123 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// ============================================================
+// Trusted domain enumeration helpers (Variant A — follow trusts)
+// ============================================================
+
+// enumerateTrustedDomain connects to a trusted domain using the same credentials
+// and runs a full enumeration. Returns a result struct (never nil).
+func enumerateTrustedDomain(trustDomain string) *report.TrustedDomainEnumResult {
+	tr := &report.TrustedDomainEnumResult{Domain: trustDomain}
+
+	client := adldap.NewClient(trustDomain, username, password, "", verbose)
+	client.NTHash = ntHash
+	client.CcachePath = ccachePath
+	client.ProxyURL = proxyURL
+	client.Quiet = true
+
+	if err := client.Connect(); err != nil {
+		tr.Error = fmt.Sprintf("connection failed: %v", err)
+		return tr
+	}
+	defer client.Close()
+
+	var bindErr error
+	switch {
+	case ccachePath != "":
+		bindErr = client.BindKerberos()
+	case ntHash != "":
+		bindErr = client.BindNTLM()
+	case username != "":
+		bindErr = client.Bind()
+	default:
+		bindErr = client.AnonymousBind()
+	}
+	if bindErr != nil {
+		tr.Error = fmt.Sprintf("auth failed: %v", bindErr)
+		return tr
+	}
+
+	result, err := client.EnumerateAll()
+	if err != nil {
+		tr.Error = fmt.Sprintf("enumeration failed: %v", err)
+		return tr
+	}
+
+	tr.Users = result.Users
+	tr.Groups = result.Groups
+	tr.Computers = result.Computers
+	tr.KerberosResult = analysis.AnalyzeKerberos(result)
+	tr.ACLResult, _ = analysis.AnalyzeACL(client, result)
+	g := graph.Build(result)
+	tr.AttackPaths = g.FindPathsToPrivilegedGroups(maxDepth)
+	return tr
+}
+
+// printTrustedDomainResults prints per-trusted-domain findings after the main summary.
+func printTrustedDomainResults(results []*report.TrustedDomainEnumResult) {
+	if len(results) == 0 {
+		return
+	}
+	for _, tr := range results {
+		fmt.Println()
+		color.Cyan("  TRUSTED DOMAIN  %s", tr.Domain)
+		if tr.Error != "" {
+			fmt.Printf("  %s  %s\n", medPrefix("[-]"), tr.Error)
+			continue
+		}
+		adminCount := 0
+		for _, u := range tr.Users {
+			if u.AdminCount {
+				adminCount++
+			}
+		}
+		color.White("  %d users · %d computers · %d groups · %d admins",
+			len(tr.Users), len(tr.Computers), len(tr.Groups), adminCount)
+
+		// Kerberos
+		if tr.KerberosResult != nil {
+			for _, a := range tr.KerberosResult.KerberoastableAccounts {
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "kerberoastable", a.SAMAccountName)
+			}
+			for _, a := range tr.KerberosResult.ASREPAccounts {
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", a.SAMAccountName)
+			}
+		}
+
+		// ACL
+		if tr.ACLResult != nil {
+			for _, f := range tr.ACLResult.DCSyncFindings {
+				fmt.Printf("  %s  %-20s %s → DCSync\n", critPrefix("[!!]"), "acl", f.PrincipalName)
+			}
+			for _, f := range tr.ACLResult.Findings {
+				if strings.TrimSpace(f.TargetName) == "" {
+					continue
+				}
+				pfx := highPrefix("[!] ")
+				if f.Severity == "Critical" {
+					pfx = critPrefix("[!!]")
+				}
+				fmt.Printf("  %s  %-20s %s → %s (%s)\n", pfx, "acl", f.PrincipalName, f.TargetName, string(f.Right))
+			}
+		}
+
+		// Attack paths
+		for _, p := range tr.AttackPaths {
+			names := make([]string, len(p.Nodes))
+			for i, n := range p.Nodes {
+				names[i] = n.SAMAccountName
+			}
+			chain := strings.Join(names, " → ")
+			fmt.Printf("  %s  %s  %s\n", critPrefix("[!!]"), chain, dimText(fmt.Sprintf("(→ %s)", p.TargetGroup)))
+		}
+
+		if tr.KerberosResult == nil && (tr.ACLResult == nil || (len(tr.ACLResult.Findings) == 0 && len(tr.ACLResult.DCSyncFindings) == 0)) && len(tr.AttackPaths) == 0 {
+			color.White("  no critical findings")
+		}
+	}
 }
 
 // ============================================================
