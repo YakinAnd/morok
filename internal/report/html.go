@@ -60,6 +60,7 @@ type ReportData struct {
 	TrustedDomains  []*TrustedDomainEnumResult
 	AllDomains      []string // unique source domains across users/groups/computers
 	AllComputerOS   []string // unique OS values across computers
+	AllGroupNames   []string // unique group SAMAccountNames for filter dropdown
 	// header risk summary
 	TotalCritical int
 	TotalHigh     int
@@ -199,6 +200,7 @@ func Generate(
 	TrustedDomains:          trustedDomains,
 	AllDomains:              buildAllDomains(result),
 	AllComputerOS:           buildAllComputerOS(result),
+	AllGroupNames:           buildAllGroupNames(result),
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -461,6 +463,21 @@ func buildAllDomains(result *adldap.EnumerationResult) []string {
 	}
 	sort.Strings(domains)
 	return domains
+}
+
+func buildAllGroupNames(result *adldap.EnumerationResult) []string {
+	seen := make(map[string]bool)
+	for _, g := range result.Groups {
+		if g.SAMAccountName != "" && !seen[g.SAMAccountName] {
+			seen[g.SAMAccountName] = true
+		}
+	}
+	var names []string
+	for n := range seen {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func buildAllComputerOS(result *adldap.EnumerationResult) []string {
@@ -1847,7 +1864,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     </select>
     <select data-col="13" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Group: all</option>
-      {{range .Groups}}<option value="{{.SAMAccountName}}">{{.SAMAccountName}}</option>{{end}}
+      {{range $.AllGroupNames}}<option value="{{.}}">{{.}}</option>{{end}}
     </select>
     <span class="filter-count" id="cnt-users"></span>
     <button onclick="clearFilters('tbl-users','cnt-users')">Clear</button>
