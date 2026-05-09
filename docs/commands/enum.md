@@ -52,6 +52,16 @@ morok enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | **Shadow Credentials** | Write access to msDS-KeyCredentialLink on DA/EA/DC objects |
 | **SMB Signing** | SMB signing status on the DC (port 445) — NTLM relay risk |
 
+## Multi-domain / trust following
+
+`enum` automatically follows trusted domains in the same forest. For each trusted domain it can reach, it runs a full enumeration and merges results:
+
+- CLI output prints a `══ domain.local ══` separator before each domain's findings
+- HTML report shows a domain tab per domain on all finding tables
+- Computers and users are deduplicated by ObjectSID — no duplicates when the GC query and trusted-domain enumeration overlap
+
+To enumerate a specific secondary domain only, target its DC with `--dc`.
+
 ## HTML report
 
 The report is saved to `<domain>_<timestamp>.html` by default (next to the binary). Specify a custom path with `--report`.

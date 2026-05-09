@@ -32,9 +32,15 @@ Domain and forest trusts enumerated from `trustedDomain` objects:
 - SID filtering status (enabled = safe; disabled = SID history abuse possible)
 - Foreign Security Principals in privileged groups
 
+## Domain filter
+
+All finding tables (Shadow Creds, ADCS, ACL, etc.) include a **Domain** filter dropdown when more than one domain is present. Selecting a domain shows only findings from that source domain.
+
 ## Users
 
-Full user table with columns: SAMAccountName, Enabled, Last Logon, Password Last Set, Admin Count, Email, Privileged Groups. Tables with more than 100 rows show the first 100 with a **Show all N rows** button.
+Full user table with columns: SAMAccountName, Enabled, Last Logon, Password Last Set, Admin Count, Email, Privileged Groups, Primary Group. Tables with more than 100 rows show the first 100 with a **Show all N rows** button.
+
+The **Group filter** dropdown covers both the `Member Of` column and the `Primary Group` column — filtering by `Domain Users` works correctly.
 
 ## Groups
 
@@ -99,6 +105,7 @@ Collapsible sections — each shows a count badge and severity badge in the head
 
 ## Shadow Creds
 
+- Source domain shown as a styled badge (same style as Attack Paths) when findings come from a trusted domain
 - Principals with write access to `msDS-KeyCredentialLink` on Domain Admins, Enterprise Admins, Schema Admins, and DC objects
 - Severity: Critical (DC target), High (DA/EA), Medium (other)
 - pywhisker / certipy shadow commands

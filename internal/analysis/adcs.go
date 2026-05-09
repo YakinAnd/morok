@@ -529,7 +529,7 @@ func checkESC4(e ldapEntry) []CertTemplateFinding {
 			CVSS:         CVSSScore(esc4Vec),
 			CVSSVector:   esc4Vec,
 		})
-		break // одна знахідка на шаблон достатньо
+		break // one finding per template is enough
 	}
 
 	return findings

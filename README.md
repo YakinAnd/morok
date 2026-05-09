@@ -16,7 +16,7 @@ morok is a lightweight, single-binary CLI tool for enumerating Active Directory 
 
 ## What morok does
 
-adpath connects to a Domain Controller over LDAP and runs a comprehensive security analysis across multiple domains:
+morok connects to a Domain Controller over LDAP and runs a comprehensive security analysis across multiple domains:
 
 | Category | What it checks |
 |---|---|
@@ -42,6 +42,7 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 ## Key features
 
 - **Single binary** — no Neo4j, no Python, no BloodHound required
+- **Multi-domain** — follows forest trusts automatically; per-domain sections in CLI output and per-domain tabs in the HTML report
 - **Any privilege level** — works with any valid domain account; low-privilege is enough for most checks
 - **Multiple auth methods** — password, Pass-the-Hash (NTLM), Pass-the-Ticket (Kerberos ccache)
 - **SOCKS5 proxy** — route all LDAP traffic through a proxy (`--proxy socks5://127.0.0.1:1080`)
@@ -156,7 +157,8 @@ The `--report` flag generates a full interactive HTML report with:
 - **Summary** tab — findings overview chart, attack surface metrics
 - **Attack Paths** — directed graph visualization (D3.js)
 - **Kerberos**, **ACL**, **Delegation**, **ADCS**, **Trusts**, **Shadow Creds**, **GPO**, **LDAP Security**, **Audit**, **SYSVOL**
-- **Users**, **Groups**, **Computers** — searchable/sortable tables
+- **Users**, **Groups**, **Computers** — searchable/sortable tables with per-column filters (including primary group)
+- **Multi-domain tabs** — separate tab per domain; domain filter on all finding tables
 - Light/dark theme toggle
 - CVSS scores with click-to-copy vectors
 
@@ -191,7 +193,7 @@ The `--quiet` output is plain ASCII with no ANSI color codes — safe for Jenkin
 
 ## Scoring & Severity Ratings
 
-Severity scores and risk ratings in adpath are based on empirical
+Severity scores and risk ratings in morok are based on empirical
 research and known attack patterns, but should be treated as
 **indicative estimates**, not definitive measurements.
 
@@ -209,7 +211,7 @@ Inaccuracies or edge cases? → open an issue or contact us.
 
 ## License
 
-adpath is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+morok is released under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
 
 ---
 

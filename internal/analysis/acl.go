@@ -11,10 +11,10 @@ import (
 )
 
 // ============================================================
-// Моделі даних
+// Data models
 // ============================================================
 
-// ACLRight — тип небезпечного права
+// ACLRight — dangerous right type
 type ACLRight string
 
 const (
@@ -43,7 +43,7 @@ type DCSyncFinding struct {
 	SourceDomain  string // set for findings from trusted domains
 }
 
-// ACLFinding — одна небезпечна ACL знахідка
+// ACLFinding — a single dangerous ACL finding
 type ACLFinding struct {
 	PrincipalDN   string
 	PrincipalName string
@@ -60,7 +60,6 @@ type ACLFinding struct {
 	SourceDomain string // set for findings from trusted domains
 }
 
-// ACLResult — результат ACL аналізу
 // OwnerFinding — non-default owner on a privileged AD object.
 // The owner always has implicit WriteDACL regardless of the DACL.
 type OwnerFinding struct {
@@ -81,10 +80,10 @@ type ACLResult struct {
 }
 
 // ============================================================
-// LDAP атрибути і константи
+// LDAP attributes and constants
 // ============================================================
 
-// GUID прав для розпізнавання extended rights
+// Right GUIDs for identifying extended rights
 const (
 	// ForceChangePassword extended right GUID
 	guidForceChangePassword = "00299570-246d-11d0-a768-00aa006e0529"
@@ -92,7 +91,7 @@ const (
 	guidAddMember = "bf9679c0-0de6-11d0-a285-00aa003049e2"
 )
 
-// ACL атрибути для LDAP запиту
+// ACL attributes for LDAP query
 var aclAttributes = []string{
 	"distinguishedName",
 	"sAMAccountName",
@@ -106,33 +105,31 @@ const (
 	ADS_RIGHT_WRITE_DACL    = 0x00040000
 	ADS_RIGHT_WRITE_OWNER   = 0x00080000
 
-	// специфічні маски AD
-	ADS_RIGHT_DS_WRITE_PROP     = 0x00000020 // GenericWrite еквівалент
+	// AD-specific masks
+	ADS_RIGHT_DS_WRITE_PROP     = 0x00000020 // GenericWrite equivalent
 	ADS_RIGHT_DS_CONTROL_ACCESS = 0x00000100 // Extended rights (ForceChangePassword, DCSync)
 	ADS_RIGHT_DS_SELF           = 0x00000008 // Validated write (AddMember / Self-Membership)
 	ADS_RIGHT_ACTRL_DS_LIST     = 0x00000004
-	// повний доступ до об'єкту
+	// full object access
 	ADS_RIGHT_DS_FULL = 0x000F01FF
 )
 
 // ============================================================
-// Основна функція аналізу
+// Core analysis function
 // ============================================================
 
-// AnalyzeACL збирає небезпечні ACL з AD
+// AnalyzeACL collects dangerous ACLs from AD
 func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraResults ...*adldap.EnumerationResult) (*ACLResult, error) {
 	aclResult := &ACLResult{
 		Domain: result.Domain,
 	}
 
-	// запитуємо ACL для всіх об'єктів
 	entries, err := client.SearchACL()
 	if err != nil {
 		return nil, fmt.Errorf("ACL search failed: %w", err)
 	}
 
-	// будуємо map DN → SAMAccountName для швидкого lookup
-	// extraResults дозволяє включити об'єкти з інших доменів (напр. primary domain при аналізі trusted)
+	// extraResults allows including objects from other domains (e.g. primary domain during trusted domain analysis).
 	nameMap := buildNameMap(result)
 	for _, extra := range extraResults {
 		if extra == nil {
@@ -147,12 +144,10 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 
 
 
-	// аналізуємо кожен об'єкт
 	for _, entry := range entries {
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	// фільтруємо стандартні системні права
 	aclResult.Findings = filterSystemACL(aclResult.Findings)
 
 	// DCSync: scan domain object for replication rights
@@ -349,10 +344,10 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 }
 
 // ============================================================
-// Парсинг ACL записів
+// ACL entry parsing
 // ============================================================
 
-// parseACLEntry аналізує security descriptor одного об'єкта
+// parseACLEntry analyzes the security descriptor of a single object
 func parseACLEntry(
 	entry *goldap.Entry,
 	nameMap map[string]nameInfo,
@@ -364,7 +359,6 @@ func parseACLEntry(
 	targetName := entry.GetAttributeValue("sAMAccountName")
 	targetType := getObjectType(entry)
 
-	// отримуємо raw bytes nTSecurityDescriptor
 	sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
 
 
@@ -372,7 +366,6 @@ func parseACLEntry(
 		return findings
 	}
 
-	// парсимо security descriptor
 	aces, err := parseSecurityDescriptor(sdBytes)
 	if err != nil {
 		return findings
@@ -381,19 +374,17 @@ func parseACLEntry(
 
 	for _, ace := range aces {
 
-		// шукаємо principal в нашому nameMap
 		principalInfo, exists := nameMap[ace.SID]
 		if !exists {
 			continue
 		}
 
 
-		// пропускаємо права на самого себе
 		if strings.EqualFold(ace.SID, getSIDForDN(targetDN, result)) {
 			continue
 		}
 
-		// перевіряємо кожне небезпечне право
+		// check each dangerous right
 		rights := detectDangerousRights(ace)
 
 
@@ -419,18 +410,18 @@ func parseACLEntry(
 
 
 // ============================================================
-// Парсинг Windows Security Descriptor
+// Windows Security Descriptor parsing
 // ============================================================
 
-// ACE — один запис в Access Control List
+// ACE — one entry in the Access Control List
 type ACE struct {
-	SID        string // SID того хто має право (у форматі S-1-5-...)
-	AccessMask uint32 // бітова маска прав
-	ObjectType string // GUID для extended rights (може бути порожнім)
+	SID        string // SID of the trustee (S-1-5-... format)
+	AccessMask uint32 // access rights bitmask
+	ObjectType string // GUID for extended rights (may be empty)
 	ACEType    byte   // 0x00=Allow, 0x01=Deny, 0x05=ObjectAllow
 }
 
-// parseSecurityDescriptor парсить raw bytes Windows Security Descriptor
+// parseSecurityDescriptor parses raw bytes of a Windows Security Descriptor
 func parseSecurityDescriptor(data []byte) ([]ACE, error) {
 	if len(data) < 20 {
 		return nil, fmt.Errorf("security descriptor too short")
@@ -472,7 +463,7 @@ func parseSDOwner(data []byte) string {
 	return parseSID(data, int(ownerOffset))
 }
 
-// parseACL парсить ACL структуру
+// parseACL parses an ACL structure
 func parseACL(data []byte, offset int) ([]ACE, error) {
 	if offset+8 > len(data) {
 		return nil, fmt.Errorf("ACL offset out of bounds")
@@ -517,7 +508,7 @@ func parseACL(data []byte, offset int) ([]ACE, error) {
 	return aces, nil
 }
 
-// parseACE парсить один ACE запис
+// parseACE parses a single ACE entry
 func parseACE(data []byte, offset int) (ACE, int, error) {
 	if offset+8 > len(data) {
 		return ACE{}, 0, fmt.Errorf("ACE too short")
@@ -549,9 +540,9 @@ func parseACE(data []byte, offset int) (ACE, int, error) {
 		0x0B, 0x0C: // ACCESS_ALLOWED_CALLBACK_OBJECT_ACE, ACCESS_DENIED_CALLBACK_OBJECT_ACE
 		// Offset 4:  AccessMask (4 bytes)
 		// Offset 8:  Flags (4 bytes)
-		// Offset 12: ObjectType GUID (16 bytes, якщо є)
-		// Offset 28: InheritedObjectType GUID (16 bytes, якщо є)
-		// потім SID
+		// Offset 12: ObjectType GUID (16 bytes, if present)
+		// Offset 28: InheritedObjectType GUID (16 bytes, if present)
+		// then SID
 		ace.AccessMask = readUint32LE(data, offset+4)
 		flags := readUint32LE(data, offset+8)
 
@@ -575,10 +566,10 @@ func parseACE(data []byte, offset int) (ACE, int, error) {
 }
 
 // ============================================================
-// Допоміжні функції парсингу
+// Parser helper functions
 // ============================================================
 
-// parseSID конвертує raw bytes SID в рядок S-1-5-...
+// parseSID converts raw SID bytes to S-1-5-... string
 func parseSID(data []byte, offset int) string {
 	if offset+8 > len(data) {
 		return ""
@@ -607,7 +598,7 @@ func parseSID(data []byte, offset int) string {
 	return sid
 }
 
-// formatGUID конвертує 16 bytes GUID в рядок
+// formatGUID converts 16 bytes to a GUID string
 func formatGUID(b []byte) string {
 	if len(b) < 16 {
 		return ""
@@ -639,10 +630,10 @@ func readUint16LE(data []byte, offset int) uint16 {
 }
 
 // ============================================================
-// Детектування небезпечних прав
+// Dangerous rights detection
 // ============================================================
 
-// detectDangerousRights перевіряє ACE на небезпечні права
+// detectDangerousRights reports dangerous rights granted by the ACE.
 func detectDangerousRights(ace ACE) []ACLRight {
 	// deny ACE types: 0x01, 0x06, 0x0A (callback deny), 0x0C (callback object deny)
 	if ace.ACEType == 0x01 || ace.ACEType == 0x06 || ace.ACEType == 0x0A || ace.ACEType == 0x0C {
@@ -652,7 +643,6 @@ func detectDangerousRights(ace ACE) []ACLRight {
 
 	var rights []ACLRight
 
-	// Generic права
 	if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 {
 		rights = append(rights, RightGenericAll)
 	}
@@ -666,17 +656,14 @@ func detectDangerousRights(ace ACE) []ACLRight {
 		rights = append(rights, RightGenericWrite)
 	}
 
-	// специфічні AD права — повний доступ
 	if ace.AccessMask&0x000F01FF == 0x000F01FF {
 		rights = append(rights, RightGenericAll)
 	}
-	// WriteDACL специфічний
 	if ace.AccessMask&0x00040000 != 0 {
 		if !containsRight(rights, RightWriteDACL) {
 			rights = append(rights, RightWriteDACL)
 		}
 	}
-	// WriteOwner специфічний
 	if ace.AccessMask&0x00080000 != 0 {
 		if !containsRight(rights, RightWriteOwner) {
 			rights = append(rights, RightWriteOwner)
@@ -702,7 +689,7 @@ func detectDangerousRights(ace ACE) []ACLRight {
 	return rights
 }
 
-// containsRight перевіряє чи є право вже в списку
+// containsRight reports whether right is already in the list.
 func containsRight(rights []ACLRight, right ACLRight) bool {
 	for _, r := range rights {
 		if r == right {
@@ -713,7 +700,7 @@ func containsRight(rights []ACLRight, right ACLRight) bool {
 }
 
 // ============================================================
-// Допоміжні структури і функції
+// Helper structures and functions
 // ============================================================
 
 type nameInfo struct {
@@ -722,7 +709,7 @@ type nameInfo struct {
 	Type string
 }
 
-// buildNameMap будує map SID → nameInfo з EnumerationResult
+// buildNameMap builds a SID → nameInfo map from EnumerationResult
 func buildNameMap(result *adldap.EnumerationResult) map[string]nameInfo {
 	m := make(map[string]nameInfo)
 	for _, u := range result.Users {
@@ -743,7 +730,7 @@ func buildNameMap(result *adldap.EnumerationResult) map[string]nameInfo {
 	return m
 }
 
-// getObjectType визначає тип об'єкта з objectClass
+// getObjectType determines the object type from objectClass
 func getObjectType(entry *goldap.Entry) string {
 	classes := entry.GetAttributeValues("objectClass")
 	for _, c := range classes {
@@ -759,7 +746,7 @@ func getObjectType(entry *goldap.Entry) string {
 	return "object"
 }
 
-// getSIDForDN повертає SID об'єкта за його DN
+// getSIDForDN returns the ObjectSID for the given DN.
 func getSIDForDN(dn string, result *adldap.EnumerationResult) string {
 	for _, u := range result.Users {
 		if strings.EqualFold(u.DN, dn) {
@@ -780,10 +767,8 @@ func getSIDForDN(dn string, result *adldap.EnumerationResult) string {
 }
 
 
-// filterSystemACL прибирає стандартні системні ACL
+// filterSystemACL removes standard built-in system principals from ACL findings
 func filterSystemACL(findings []ACLFinding) []ACLFinding {
-	// показуємо тільки знахідки де principal — звичайний user
-	// або кастомна група (не вбудована системна)
 	builtinGroups := map[string]bool{
 		"Administrators":                          true,
 		"Account Operators":                       true,
@@ -859,10 +844,10 @@ func isPrivilegedTarget(name string) bool {
 }
 
 // ============================================================
-// Вивід результатів
+// Output functions
 // ============================================================
 
-// PrintACLResult виводить результати ACL аналізу
+// PrintACLResult prints the ACL analysis results
 func PrintACLResult(aclResult *ACLResult) {
 	color.Cyan("\n  ACL FINDINGS")
 	if len(aclResult.Findings) == 0 {

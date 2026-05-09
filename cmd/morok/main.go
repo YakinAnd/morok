@@ -19,7 +19,7 @@ import (
 )
 
 // ============================================================
-// Глобальні змінні для CLI флагів
+// CLI flag variables
 // ============================================================
 
 var (
@@ -41,7 +41,7 @@ var (
 )
 
 // ============================================================
-// Cobra команди
+// Commands
 // ============================================================
 
 var rootCmd = &cobra.Command{
@@ -164,7 +164,7 @@ var smbCmd = &cobra.Command{
 }
 
 // ============================================================
-// Реєстрація флагів
+// Flag registration
 // ============================================================
 
 func init() {
@@ -214,10 +214,9 @@ func init() {
 // Report path helper
 // ============================================================
 
-// resolveReportPath повертає шлях до HTML звіту.
-// Якщо explicit задано — використовує його.
-// Інакше — генерує назву {domain}_{YYYY-MM-DD_HH-MM-SS}.html
-// поруч з бінарним файлом.
+// resolveReportPath returns the HTML report output path.
+// Uses the explicit path if provided; otherwise generates
+// {domain}_{YYYY-MM-DD_HH-MM-SS}.html next to the binary.
 func resolveReportPath(explicit, targetDomain string) string {
 	if explicit != "" {
 		return explicit
@@ -236,7 +235,7 @@ func resolveReportPath(explicit, targetDomain string) string {
 // Auth helper
 // ============================================================
 
-// connectAndBind підключається та автентифікується відповідним методом:
+// connectAndBind opens an LDAP connection and authenticates using the configured method:
 //
 //	--ccache  → Kerberos ccache (Pass-the-Ticket)
 //	-H/--hashes → NTLM hash (Pass-the-Hash)
@@ -301,7 +300,7 @@ func connectAndBind() (*adldap.Client, error) {
 }
 
 // ============================================================
-// Логіка команди enum
+// enum command handler
 // ============================================================
 
 func runEnum(cmd *cobra.Command, args []string) error {
@@ -428,7 +427,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
-	// ── Trusted domain enumeration (Variant A — follow trusts automatically) ──
+	// ── Trusted domain enumeration (follow trusts automatically) ─────────────
 	var trustedData []*trustedDomainData
 	if trustResult != nil && !stealth {
 		for _, t := range trustResult.Trusts {
@@ -531,7 +530,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	cliCrit, cliHigh, cliMed := report.CountRiskTotals(cliRiskData)
 	cliRiskScore := report.CalculateRiskScore(cliRiskData)
 
-	// ── Variant A terminal output ─────────────────────────────
+	// ── terminal output ───────────────────────────────────────
 	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult, trustResult, trustedResults, trustedData, cliCrit, cliHigh, cliMed, cliRiskScore)
 
 	// ── HTML report (opt-in via --report) ────────────────────
@@ -578,7 +577,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Trusted domain enumeration helpers (Variant A — follow trusts)
+// Trusted domain enumeration helpers
 // ============================================================
 
 // trustedDomainData holds full enumeration results from a trusted domain before merging.
@@ -692,7 +691,7 @@ func enumerateTrustedDomain(trustDomain string, primaryResult *adldap.Enumeratio
 
 
 // ============================================================
-// Variant A — minimalist enum summary
+// Enum summary output
 // ============================================================
 
 const enumMaxItems = 5 // max notable items to show per category before truncating
@@ -1306,7 +1305,7 @@ func printEnumSummary(
 
 
 // ============================================================
-// Логіка команди Kerberoasting
+// kerberos command handler
 // ============================================================
 func runKerberos(cmd *cobra.Command, args []string) error {
     printBanner()
@@ -1332,7 +1331,7 @@ func runKerberos(cmd *cobra.Command, args []string) error {
 
 
 // ============================================================
-// Логіка команди ACL аналіз
+// acl command handler
 // ============================================================
 func runACL(cmd *cobra.Command, args []string) error {
     printBanner()
@@ -1359,7 +1358,7 @@ func runACL(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди Delegation
+// delegation command handler
 // ============================================================
 
 func runDelegation(cmd *cobra.Command, args []string) error {
@@ -1382,7 +1381,7 @@ func runDelegation(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди GPO
+// gpo command handler
 // ============================================================
 
 func runGPO(cmd *cobra.Command, args []string) error {
@@ -1405,7 +1404,7 @@ func runGPO(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди ADCS
+// adcs command handler
 // ============================================================
 
 func runADCS(cmd *cobra.Command, args []string) error {
@@ -1427,7 +1426,7 @@ func runADCS(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди Trust
+// trust command handler
 // ============================================================
 
 func runTrust(cmd *cobra.Command, args []string) error {
@@ -1494,7 +1493,7 @@ func runShadow(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди Enum-Users (Kerberos AS-REQ, no creds)
+// kerb-enum command handler (Kerberos AS-REQ, no creds)
 // ============================================================
 
 func runEnumUsers(cmd *cobra.Command, args []string) error {
@@ -1513,7 +1512,7 @@ func runEnumUsers(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди Users
+// users command handler
 // ============================================================
 
 func runUsers(cmd *cobra.Command, args []string) error {
@@ -1613,7 +1612,7 @@ func runUsers(cmd *cobra.Command, args []string) error {
 }
 
 // ============================================================
-// Логіка команди Computers
+// computers command handler
 // ============================================================
 
 func runComputers(cmd *cobra.Command, args []string) error {
@@ -1726,7 +1725,7 @@ func printBanner() {
 }
 
 // ============================================================
-// Логіка команди SMB
+// smb command handler
 // ============================================================
 
 func runSMB(cmd *cobra.Command, args []string) error {

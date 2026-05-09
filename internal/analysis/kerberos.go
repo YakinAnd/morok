@@ -11,10 +11,10 @@ import (
 )
 
 // ============================================================
-// Моделі даних
+// Data models
 // ============================================================
 
-// KerberoastableAccount — акаунт з SPN який можна кербероастити
+// KerberoastableAccount — user with an SPN that can be Kerberoasted
 type KerberoastableAccount struct {
 	SAMAccountName  string
 	DN              string
@@ -30,7 +30,7 @@ type KerberoastableAccount struct {
 	SourceDomain    string // set for accounts from trusted domains
 }
 
-// ASREPAccount — акаунт з DONT_REQUIRE_PREAUTH
+// ASREPAccount — account with DONT_REQUIRE_PREAUTH set
 type ASREPAccount struct {
 	SAMAccountName  string
 	DN              string
@@ -44,7 +44,7 @@ type ASREPAccount struct {
 	SourceDomain    string // set for accounts from trusted domains
 }
 
-// KerberosResult — результат аналізу
+// KerberosResult — Kerberos analysis result
 type KerberosResult struct {
 	Domain              string
 	KerberoastableAccounts []KerberoastableAccount
@@ -53,10 +53,10 @@ type KerberosResult struct {
 }
 
 // ============================================================
-// Основні функції
+// Core functions
 // ============================================================
 
-// AnalyzeKerberos збирає всі кербероастабельні і AS-REP акаунти
+// AnalyzeKerberos collects all Kerberoastable and AS-REP roastable accounts
 func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 	kr := &KerberosResult{
 		Domain:     result.Domain,
@@ -72,7 +72,6 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 		if len(u.SPNs) == 0 {
 			continue
 		}
-		// пропускаємо krbtgt — системний акаунт
 		if strings.EqualFold(u.SAMAccountName, "krbtgt") {
 			continue
 		}
@@ -132,10 +131,10 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 }
 
 // ============================================================
-// Вивід результатів
+// Output functions
 // ============================================================
 
-// PrintKerberosResult виводить результати в термінал
+// PrintKerberosResult prints kerberos results to terminal
 func PrintKerberosResult(kr *KerberosResult) {
 	printKerberoastable(kr)
 	printASREP(kr)
@@ -197,10 +196,10 @@ func printHashcatHints(kr *KerberosResult) {
 }
 
 // ============================================================
-// Експорт хешів
+// Report export
 // ============================================================
 
-// FormatForReport форматує результати для HTML звіту
+// FormatForReport formats results for the HTML report
 func FormatForReport(kr *KerberosResult) string {
 	var sb strings.Builder
 

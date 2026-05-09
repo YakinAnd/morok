@@ -13,7 +13,7 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// Client зберігає параметри підключення та активне з'єднання
+// Client holds connection parameters and the active LDAP connection.
 type Client struct {
 	Host       string
 	Port       int
@@ -32,12 +32,12 @@ type Client struct {
 	Quiet      bool // suppress all informational output (for CI/--quiet mode)
 }
 
-// NewClient створює новий Client
-// dc — IP або hostname DC, якщо порожній — autodiscover через DNS
+// NewClient creates a new Client.
+// dc — DC IP or hostname; empty means autodiscover via DNS.
 func NewClient(domain, username, password, dc string, verbose bool) *Client {
 	host := dc
 	if host == "" {
-		host = domain // fallback: go-ldap сам резолвить
+		host = domain // fallback: go-ldap resolves via DNS
 	}
 
 	return &Client{
@@ -51,7 +51,7 @@ func NewClient(domain, username, password, dc string, verbose bool) *Client {
 	}
 }
 
-// Connect встановлює з'єднання: спочатку 389, потім 636 (LDAPS)
+// Connect dials the DC, trying port 389 first then 636 (LDAPS).
 func (c *Client) Connect() error {
 	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
 
@@ -61,7 +61,7 @@ func (c *Client) Connect() error {
 
 	conn, wrap, err := c.dialWithTimeout(address, false)
 	if err != nil {
-		// fallback на LDAPS port 636
+		// fallback to LDAPS port 636
 		if !c.Quiet {
 			color.White("  port 389 failed, trying LDAPS 636...")
 		}
@@ -83,10 +83,10 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// dialWithTimeout відкриває з'єднання з таймаутом.
-// Якщо ProxyURL встановлено — з'єднання йде через SOCKS5 proxy (DNS резолвиться на proxy-стороні).
-// Повертає go-ldap Conn, saslConn (для Kerberos wrapping), і помилку.
-// NOTE: PTT (Kerberos ccache) не підтримується через proxy — використовуй password або PTH.
+// dialWithTimeout opens a connection with a timeout.
+// If ProxyURL is set, traffic routes through a SOCKS5 proxy (DNS resolved on the proxy side).
+// Returns a go-ldap Conn, saslConn (for Kerberos wrapping), and an error.
+// NOTE: PTT (Kerberos ccache) is not supported through a proxy — use password or PTH instead.
 func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, *saslConn, error) {
 	timeout := 10 * time.Second
 
@@ -126,7 +126,7 @@ func (c *Client) dialWithTimeout(address string, useTLS bool) (*goldap.Conn, *sa
 	return conn, wrap, nil
 }
 
-// buildDialer повертає net.Dialer або SOCKS5 proxy dialer залежно від ProxyURL.
+// buildDialer returns a plain net.Dialer or a SOCKS5 proxy dialer depending on ProxyURL.
 func (c *Client) buildDialer(timeout time.Duration) (dialerIface, error) {
 	if c.ProxyURL == "" {
 		return &net.Dialer{Timeout: timeout}, nil
@@ -158,7 +158,7 @@ type dialerIface interface {
 	Dial(network, addr string) (net.Conn, error)
 }
 
-// Bind виконує автентифікацію
+// Bind authenticates to the LDAP server.
 func (c *Client) Bind() error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected, call Connect() first")
@@ -177,7 +177,7 @@ func (c *Client) Bind() error {
 
 	err := c.conn.Bind(upn, c.Password)
 	if err != nil {
-		// спробуй DOMAIN\user формат
+		// retry with DOMAIN\user format
 		nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(authDomain, ".")[0]), c.Username)
 		err2 := c.conn.Bind(nt, c.Password)
 		if err2 != nil {
@@ -191,8 +191,8 @@ func (c *Client) Bind() error {
 	return nil
 }
 
-// BindNTLM виконує Pass-the-Hash автентифікацію через NTLM.
-// Потребує NTHash у форматі hex (32 символи, без двокрапок).
+// BindNTLM performs Pass-the-Hash authentication via NTLM.
+// NTHash must be a 32-character hex string without colons.
 func (c *Client) BindNTLM() error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected, call Connect() first")
@@ -218,7 +218,7 @@ func (c *Client) BindNTLM() error {
 	return nil
 }
 
-// BindKerberos виконує Pass-the-Ticket автентифікацію через ccache файл.
+// BindKerberos performs Pass-the-Ticket authentication from a ccache file.
 func (c *Client) BindKerberos() error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected, call Connect() first")
@@ -260,7 +260,7 @@ func (c *Client) BindKerberos() error {
 	return nil
 }
 
-// AnonymousBind перевіряє null session
+// AnonymousBind tests null session access.
 func (c *Client) AnonymousBind() error {
 	if c.conn == nil {
 		return fmt.Errorf("not connected")
@@ -298,7 +298,7 @@ func (c *Client) ProbeAnonymousRead() bool {
 	return err == nil && len(sr.Entries) > 0
 }
 
-// Search виконує LDAP пошук з автоматичним paging (1000 записів за раз)
+// Search performs an LDAP search with automatic paging (1000 entries per page).
 func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
@@ -318,7 +318,7 @@ func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, er
 		nil,
 	)
 
-	// paging: великі AD можуть мати тисячі об'єктів
+	// paging: large AD environments can have thousands of objects
 	pagingControl := goldap.NewControlPaging(1000)
 	searchReq.Controls = append(searchReq.Controls, pagingControl)
 
@@ -330,7 +330,7 @@ func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, er
 
 		allEntries = append(allEntries, result.Entries...)
 
-		// перевірка чи є ще сторінки
+		// check if more pages remain
 		updatedControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
 		if updatedControl == nil {
 			break
@@ -497,7 +497,7 @@ func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([
 	return allEntries, nil
 }
 
-// Close закриває з'єднання
+// Close terminates the LDAP connection.
 func (c *Client) Close() {
 	if c.conn != nil {
 		c.conn.Close()
@@ -507,17 +507,17 @@ func (c *Client) Close() {
 	}
 }
 
-// GetBaseDN повертає BaseDN
+// GetBaseDN returns the base DN.
 func (c *Client) GetBaseDN() string {
 	return c.BaseDN
 }
 
-// GetConn повертає активне з'єднання
+// GetConn returns the active LDAP connection.
 func (c *Client) GetConn() *goldap.Conn {
     return c.conn
 }
 
-// SearchACL виконує LDAP пошук з nTSecurityDescriptor
+// SearchACL performs an LDAP search requesting nTSecurityDescriptor.
 func (c *Client) SearchACL() ([]*goldap.Entry, error) {
     sdControl := goldap.NewControlString(
         "1.2.840.113556.1.4.801",
@@ -568,7 +568,7 @@ func (c *Client) kerberosHost() string {
 	return fqdn
 }
 
-// domainToBaseDN конвертує "corp.local" → "DC=corp,DC=local"
+// domainToBaseDN converts "corp.local" → "DC=corp,DC=local".
 func domainToBaseDN(domain string) string {
 	parts := strings.Split(domain, ".")
 	dcs := make([]string, len(parts))
@@ -578,18 +578,18 @@ func domainToBaseDN(domain string) string {
 	return strings.Join(dcs, ",")
 }
 
-// GetDomain повертає домен
+// GetDomain returns the domain name.
 func (c *Client) GetDomain() string {
     return c.Domain
 }
 
-// GetHost повертає hostname/IP DC
+// GetHost returns the DC hostname or IP.
 func (c *Client) GetHost() string {
     return c.Host
 }
 
-// ConfigurationDN повертає DN конфігураційного розділу AD
-// (CN=Configuration,DC=...) через RootDSE або обчислює з домену.
+// ConfigurationDN returns the AD configuration partition DN
+// (CN=Configuration,DC=...) from RootDSE or derived from the domain.
 func (c *Client) ConfigurationDN() (string, error) {
     req := goldap.NewSearchRequest(
         "",

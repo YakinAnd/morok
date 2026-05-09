@@ -12,17 +12,17 @@ import (
 )
 
 // ============================================================
-// Моделі даних
+// Data models
 // ============================================================
 
-// GPOFinding — один знайдений GPO з інформацією безпеки
+// GPOFinding — a discovered GPO with its security findings
 type GPOFinding struct {
 	Name            string
 	DN              string
 	GUID            string
-	LinkedTo        []string // OU/Domain до яких прив'язаний
-	EditableBy      []string // хто може редагувати (крім адмінів)
-	HasCPassword    bool     // містить зашифровані паролі в Preferences
+	LinkedTo        []string // OUs/Domain this GPO is linked to
+	EditableBy      []string // principals that can edit this GPO (excluding admins)
+	HasCPassword    bool     // GPO uses Preferences CSE that may contain cpassword
 	IsHighRisk      bool
 	RiskReasons     []string
 	ACLFindings     []GPOACLFinding // dangerous write ACEs on this GPO object
@@ -41,18 +41,18 @@ type GPOACLFinding struct {
 	CVSSVector string
 }
 
-// PasswordPolicy — налаштування парольної політики
+// PasswordPolicy — domain password policy settings
 type PasswordPolicy struct {
 	MinLength            int
-	MaxAge               int  // днів
-	MinAge               int  // днів
+	MaxAge               int  // days
+	MinAge               int  // days
 	Complexity           bool
 	LockoutThreshold     int
-	LockoutDuration      int  // хвилин (0 = до ручного розблокування)
+	LockoutDuration      int  // minutes (0 = requires admin unlock)
 	ReversibleEncryption bool
 }
 
-// GPOResult — результат аналізу GPO
+// GPOResult — GPO analysis result
 type GPOResult struct {
 	Domain          string
 	GPOFindings     []GPOFinding
@@ -62,32 +62,27 @@ type GPOResult struct {
 }
 
 // ============================================================
-// LDAP фільтри
+// LDAP filters
 // ============================================================
 
 const (
-	// Всі GPO об'єкти
-	FilterAllGPO = "(objectClass=groupPolicyContainer)"
-
-	// GPO Links на OU
-	FilterOUWithGPO = "(&(objectClass=organizationalUnit)(gPLink=*))"
-
-	// Domain object для password policy і GPO links
+	FilterAllGPO       = "(objectClass=groupPolicyContainer)"
+	FilterOUWithGPO    = "(&(objectClass=organizationalUnit)(gPLink=*))"
 	FilterDomainObject = "(objectClass=domain)"
 )
 
 var gpoAttributes = []string{
 	"distinguishedName",
 	"displayName",
-	"name",                      // GUID у форматі {GUID}
-	"gPCFileSysPath",            // шлях до SYSVOL
-	"gPCMachineExtensionNames",  // CSE GUIDs для machine side
-	"gPCUserExtensionNames",     // CSE GUIDs для user side
+	"name",
+	"gPCFileSysPath",
+	"gPCMachineExtensionNames",
+	"gPCUserExtensionNames",
 	"nTSecurityDescriptor",
 	"objectClass",
 }
 
-// gppCSEGuids — GUIDs Client Side Extensions що можуть містити cpassword
+// gppCSEGuids — CSE GUIDs whose Preferences XML may contain cpassword
 // (Groups, Drives, Printers, ScheduledTasks, Services, DataSources)
 var gppCSEGuids = []string{
 	"AADCED64-746C-4633-A97C-D61349046527", // Groups (machine)
@@ -118,28 +113,25 @@ var domainAttributes = []string{
 }
 
 // ============================================================
-// Основна функція аналізу
+// Core analysis function
 // ============================================================
 
-// AnalyzeGPO знаходить небезпечні GPO конфігурації
+// AnalyzeGPO finds dangerous GPO configurations
 func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 	result := &GPOResult{
 		Domain: client.GetDomain(),
 	}
 
-	// збираємо всі GPO
 	gpos, err := collectGPOs(client)
 	if err != nil {
 		return nil, err
 	}
 
-	// збираємо GPO links (OU → GPO)
 	links, err := collectGPOLinks(client)
 	if err != nil {
 		return nil, err
 	}
 
-	// зіставляємо GPO з їх links
 	for i := range gpos {
 		guid := extractGUID(gpos[i].GUID)
 		for ou, ouLinks := range links {
@@ -151,13 +143,11 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 		}
 	}
 
-	// аналізуємо права на редагування GPO
 	emptyNameMap := make(map[string]nameInfo)
 	for i := range gpos {
 		analyzeGPOPermissions(client, &gpos[i], emptyNameMap)
 	}
 
-	// збираємо тільки знахідки з ризиками
 	for _, gpo := range gpos {
 		if gpo.IsHighRisk || len(gpo.EditableBy) > 0 {
 			result.GPOFindings = append(result.GPOFindings, gpo)
@@ -165,7 +155,6 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 		}
 	}
 
-	// аналізуємо password policy
 	pp, err := collectPasswordPolicy(client)
 	if err != nil {
 		color.Yellow("[!] Could not collect password policy: %v", err)
@@ -178,7 +167,7 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 }
 
 // ============================================================
-// Збір GPO об'єктів
+// GPO object collection
 // ============================================================
 
 func collectGPOs(client *adldap.Client) ([]GPOFinding, error) {
@@ -195,7 +184,7 @@ func collectGPOs(client *adldap.Client) ([]GPOFinding, error) {
 			GUID: entry.GetAttributeValue("name"),
 		}
 
-		// перевіряємо CSE GUIDs на наявність GPP Preferences
+		// check CSE GUIDs for GPP Preferences
 		machineCSE := entry.GetAttributeValue("gPCMachineExtensionNames")
 		userCSE    := entry.GetAttributeValue("gPCUserExtensionNames")
 		gpo.HasCPassword = checkForCPassword(machineCSE + userCSE)
@@ -215,13 +204,12 @@ func collectGPOs(client *adldap.Client) ([]GPOFinding, error) {
 }
 
 // ============================================================
-// Збір GPO Links
+// GPO link collection
 // ============================================================
 
 func collectGPOLinks(client *adldap.Client) (map[string][]string, error) {
 	links := make(map[string][]string)
 
-	// links на OU
 	ouEntries, err := client.Search(FilterOUWithGPO, ouAttributes)
 	if err != nil {
 		return nil, fmt.Errorf("OU GPO link search failed: %w", err)
@@ -242,7 +230,6 @@ func collectGPOLinks(client *adldap.Client) (map[string][]string, error) {
 		}
 	}
 
-	// links на domain object
 	domainEntries, err := client.Search(FilterDomainObject, domainAttributes)
 	if err == nil {
 		for _, entry := range domainEntries {
@@ -259,7 +246,7 @@ func collectGPOLinks(client *adldap.Client) (map[string][]string, error) {
 	return links, nil
 }
 
-// parseGPLink парсить атрибут gPLink формату:
+// parseGPLink parses a gPLink attribute value in the format:
 // [LDAP://cn={GUID},cn=policies,...;0][LDAP://cn={GUID},...;2]
 func parseGPLink(gPLink string) []string {
 	var guids []string
@@ -269,7 +256,7 @@ func parseGPLink(gPLink string) []string {
 		if part == "" {
 			continue
 		}
-		// знаходимо GUID у форматі {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
+		// extract GUID in {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} format
 		start := strings.Index(part, "{")
 		end := strings.Index(part, "}")
 		if start != -1 && end != -1 && end > start {
@@ -280,7 +267,7 @@ func parseGPLink(gPLink string) []string {
 	return guids
 }
 
-// extractGUID нормалізує GUID до формату {GUID}
+// extractGUID normalizes a GUID to {GUID} format
 func extractGUID(s string) string {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "{") {
@@ -293,7 +280,7 @@ func extractGUID(s string) string {
 }
 
 // ============================================================
-// Аналіз прав на GPO
+// GPO permission analysis
 // ============================================================
 
 // analyzeGPOPermissions checks who has dangerous write permissions on a GPO object.
@@ -438,7 +425,7 @@ func collectPasswordPolicy(client *adldap.Client) (*PasswordPolicy, error) {
 		fmt.Sscanf(v, "%d", &pp.MinLength)
 	}
 
-	// pwdProperties біт 0x1 = DOMAIN_PASSWORD_COMPLEX
+	// pwdProperties bit 0x1 = DOMAIN_PASSWORD_COMPLEX
 	if v := entry.GetAttributeValue("pwdProperties"); v != "" {
 		var props int
 		fmt.Sscanf(v, "%d", &props)
@@ -492,19 +479,19 @@ func collectPasswordPolicy(client *adldap.Client) (*PasswordPolicy, error) {
 }
 
 func assessPasswordPolicy(pp *PasswordPolicy, result *GPOResult) {
-	// перевіряємо слабкі налаштування
-	_ = pp   // буде використано в PrintGPOResult
+	// check for weak settings
+	_ = pp
 	_ = result
 }
 
 // ============================================================
-// Перевірка cpassword
+// cpassword detection
 // ============================================================
 
-// checkForCPassword перевіряє чи GPO використовує Preferences CSE,
-// що можуть містити cpassword (MS14-025 / GPP password exposure).
-// Перевірка через gPCMachineExtensionNames / gPCUserExtensionNames —
-// без доступу до SYSVOL, лише через LDAP.
+// checkForCPassword reports whether any of the GPO's CSE GUIDs are known to
+// produce Preferences XML that may contain cpassword (MS14-025 / GPP password exposure).
+// Detection is LDAP-only via gPCMachineExtensionNames / gPCUserExtensionNames —
+// SYSVOL access is required for definitive confirmation.
 func checkForCPassword(cseNames string) bool {
 	if cseNames == "" {
 		return false
@@ -519,10 +506,10 @@ func checkForCPassword(cseNames string) bool {
 }
 
 // ============================================================
-// Вивід результатів
+// Output functions
 // ============================================================
 
-// PrintGPOResult виводить результати GPO аналізу
+// PrintGPOResult prints GPO analysis results
 func PrintGPOResult(gr *GPOResult) {
 	printPasswordPolicyResult(gr)
 	printGPOFindings(gr)

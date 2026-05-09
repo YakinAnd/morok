@@ -8,7 +8,7 @@ import (
 )
 
 // ============================================================
-// BFS пошук attack paths
+// BFS attack path search
 // ============================================================
 
 // privilegedGroups lists all high-value AD groups to search paths to.
@@ -23,12 +23,12 @@ var privilegedGroups = []string{
 	"Group Policy Creator Owners",
 }
 
-// FindPathsToDA знаходить шляхи до Domain Admins (backward compat).
+// FindPathsToDA finds paths to Domain Admins (backward compat).
 func (g *Graph) FindPathsToDA(maxDepth int) []AttackPath {
 	return g.findPathsToGroup("Domain Admins", maxDepth, 200)
 }
 
-// FindPathsToPrivilegedGroups знаходить шляхи до всіх привілейованих груп.
+// FindPathsToPrivilegedGroups finds paths to all privileged groups.
 func (g *Graph) FindPathsToPrivilegedGroups(maxDepth int) []AttackPath {
 	if maxDepth <= 0 {
 		maxDepth = 10
@@ -71,7 +71,7 @@ func (g *Graph) findPathsToGroup(groupName string, maxDepth, limit int) []Attack
 	return allPaths
 }
 
-// FindPathsToTarget знаходить шляхи до довільного вузла за SAMAccountName
+// FindPathsToTarget finds paths to an arbitrary node by SAMAccountName.
 func (g *Graph) FindPathsToTarget(targetSAM string, maxDepth int) []AttackPath {
 	targetDN := g.findBySAM(targetSAM)
 	if targetDN == "" {
@@ -102,56 +102,50 @@ func (g *Graph) FindPathsToTarget(targetSAM string, maxDepth int) []AttackPath {
 }
 
 // ============================================================
-// BFS — основний алгоритм обходу
+// BFS — core traversal algorithm
 // ============================================================
 
-// bfsState зберігає стан одного вузла під час обходу
+// bfsState holds the traversal state for a single node.
 type bfsState struct {
-	dn    string  // поточний DN
-	path  []Edge  // шлях який привів сюди
-	depth int     // поточна глибина
+	dn    string  // current DN
+	path  []Edge  // edges that led here
+	depth int     // current depth
 }
 
-// bfs виконує пошук в ширину від startDN до targetDN
+// bfs performs a breadth-first search from startDN to targetDN.
 func (g *Graph) bfs(startDN, targetDN string, maxDepth int) []AttackPath {
 	var foundPaths []AttackPath
 
-	// visited — запобігає циклам: зберігаємо DN які вже відвідали
-	// на поточному шляху (не глобально — щоб знайти всі шляхи)
+	// Track visited DNs per-path (not globally) so all paths are found.
 	queue := []bfsState{
 		{dn: startDN, path: []Edge{}, depth: 0},
 	}
 
 	for len(queue) > 0 {
-		// беремо перший елемент з черги
 		current := queue[0]
 		queue = queue[1:]
 
-		// досягли максимальної глибини — не йдемо далі
 		if current.depth >= maxDepth {
 			continue
 		}
 
-		// перебираємо всіх сусідів поточного вузла
 		for _, edge := range g.Adj[current.dn] {
-			// перевіряємо чи не було цього вузла вже на цьому шляху
+			// skip if this node is already on the current path
 			if pathContains(current.path, edge.To) {
 				continue
 			}
 
-			// будуємо новий шлях = попередній + поточний edge
+			// build new path = previous path + current edge
 			newPath := make([]Edge, len(current.path)+1)
 			copy(newPath, current.path)
 			newPath[len(current.path)] = edge
 
-			// знайшли ціль
 			if strings.EqualFold(edge.To, targetDN) {
 				ap := g.buildAttackPath(newPath)
 				foundPaths = append(foundPaths, ap)
-				continue // продовжуємо шукати інші шляхи
+				continue // keep searching for other paths
 			}
 
-			// не знайшли — додаємо сусіда в чергу
 			queue = append(queue, bfsState{
 				dn:    edge.To,
 				path:  newPath,
@@ -163,9 +157,8 @@ func (g *Graph) bfs(startDN, targetDN string, maxDepth int) []AttackPath {
 	return foundPaths
 }
 
-// buildAttackPath будує AttackPath struct зі списку edges
+// buildAttackPath assembles an AttackPath from an edge list.
 func (g *Graph) buildAttackPath(edges []Edge) AttackPath {
-	// збираємо унікальні вузли вздовж шляху
 	nodeMap := make(map[string]bool)
 	var nodes []Node
 
@@ -192,10 +185,10 @@ func (g *Graph) buildAttackPath(edges []Edge) AttackPath {
 }
 
 // ============================================================
-// Допоміжні функції
+// Helper functions
 // ============================================================
 
-// findBySAM шукає DN об'єкта за SAMAccountName
+// findBySAM returns the DN of an object by SAMAccountName.
 func (g *Graph) findBySAM(sam string) string {
 	for dn, node := range g.Nodes {
 		if strings.EqualFold(node.SAMAccountName, sam) {
@@ -205,8 +198,7 @@ func (g *Graph) findBySAM(sam string) string {
 	return ""
 }
 
-// pathContains перевіряє чи вже є DN у поточному шляху
-// запобігає циклам типу A→B→C→B
+// pathContains reports whether the given DN is already on the path (cycle guard).
 func pathContains(path []Edge, dn string) bool {
 	for _, edge := range path {
 		if strings.EqualFold(edge.From, dn) ||
@@ -217,7 +209,7 @@ func pathContains(path []Edge, dn string) bool {
 	return false
 }
 
-// PrintPaths виводить знайдені шляхи в термінал
+// PrintPaths prints discovered attack paths to the terminal.
 func (g *Graph) PrintPaths(paths []AttackPath) {
 	color.Cyan("\n  ATTACK PATHS")
 	if len(paths) == 0 {
@@ -253,7 +245,7 @@ func (g *Graph) PrintPaths(paths []AttackPath) {
 	}
 }
 
-// nodeExtras формує рядок з додатковими прапорами вузла
+// nodeExtras returns a bracketed string of node flags.
 func nodeExtras(node Node) string {
 	var extras []string
 	if node.Kerberoastable {

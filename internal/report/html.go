@@ -14,10 +14,10 @@ import (
 )
 
 // ============================================================
-// Структури для шаблону
+// Template data structures
 // ============================================================
 
-// ReportData — всі дані що передаються в HTML шаблон
+// ReportData holds all data passed to the HTML template.
 type ReportData struct {
 	Domain      string
 	GeneratedAt string
@@ -79,7 +79,7 @@ type TrustedDomainEnumResult struct {
 	Error  string // non-empty if enumeration was skipped/failed
 }
 
-// Summary — короткий підсумок для executive section
+// Summary holds the executive summary counts.
 type Summary struct {
 	TotalUsers              int
 	TotalGroups             int
@@ -117,7 +117,7 @@ type Summary struct {
 	MachineAccountQuota     int
 }
 
-// GraphNode і GraphEdge для D3.js JSON
+// GraphNode and GraphEdge are used to serialize the graph for D3.js.
 type GraphNode struct {
 	ID             string `json:"id"`
 	Label          string `json:"label"`
@@ -139,10 +139,10 @@ type D3Graph struct {
 }
 
 // ============================================================
-// Генерація звіту
+// Report generation
 // ============================================================
 
-// Generate створює HTML звіт і зберігає у файл
+// Generate renders the HTML report and writes it to outputPath.
 func Generate(
 	outputPath string,
 	result *adldap.EnumerationResult,
@@ -209,20 +209,20 @@ func Generate(
 	data.RiskScore = CalculateRiskScore(&data)
 	data.TopIssues = BuildTopIssues(&data)
 
-	// парсимо шаблон
+	// parse template
 	tmpl, err := template.New("report").Funcs(templateFuncs()).Parse(htmlTemplate)
 	if err != nil {
 		return fmt.Errorf("template parse error: %w", err)
 	}
 
-	// створюємо файл
+	// create output file
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("cannot create report file: %w", err)
 	}
 	defer f.Close()
 
-	// рендеримо шаблон у файл
+	// render template to file
 	if err := tmpl.Execute(f, data); err != nil {
 		return fmt.Errorf("template render error: %w", err)
 	}
@@ -231,7 +231,7 @@ func Generate(
 }
 
 // ============================================================
-// Побудова Summary
+// Summary builder
 // ============================================================
 
 func buildSummary(
@@ -402,8 +402,8 @@ func CountRiskTotals(d *ReportData) (critical, high, medium int) {
 	return
 }
 
-// buildUserPrivGroups повертає map[userDN]→"DA, EA, ..." для кожного юзера
-// що є членом привілейованих груп.
+// buildUserPrivGroups returns a map of userDN → "DA, EA, ..." for users
+// that are members of privileged groups.
 func buildUserPrivGroups(result *adldap.EnumerationResult) map[string]string {
 	privNames := map[string]bool{
 		"domain admins":              true,
@@ -417,7 +417,7 @@ func buildUserPrivGroups(result *adldap.EnumerationResult) map[string]string {
 		"dnsadmins":                  true,
 		"group policy creator owners": true,
 	}
-	// DN групи → коротка назва
+	// group DN → short name
 	groupByDN := make(map[string]string, len(result.Groups))
 	for _, g := range result.Groups {
 		if privNames[strings.ToLower(g.SAMAccountName)] {
@@ -495,11 +495,11 @@ func buildAllComputerOS(result *adldap.EnumerationResult) []string {
 	return os
 }
 
-// Побудова D3.js JSON
+// D3.js JSON builder
 // ============================================================
 
-// buildD3JSON серіалізує граф attack paths у JSON для D3.js
-// включаємо тільки вузли і зв'язки що є в знайдених шляхах
+// buildD3JSON serializes attack-path nodes and edges to JSON for D3.js.
+// Only nodes and edges that appear in discovered paths are included.
 func buildD3JSON(g *graph.Graph, paths []graph.AttackPath) string {
 	nodeMap := make(map[string]GraphNode)
 	edgeMap := make(map[string]GraphEdge)
@@ -525,7 +525,7 @@ func buildD3JSON(g *graph.Graph, paths []graph.AttackPath) string {
 		}
 	}
 
-	// конвертуємо map → slice
+	// convert maps to slices
 	d3 := D3Graph{}
 	for _, n := range nodeMap {
 		d3.Nodes = append(d3.Nodes, n)
@@ -534,7 +534,7 @@ func buildD3JSON(g *graph.Graph, paths []graph.AttackPath) string {
 		d3.Edges = append(d3.Edges, e)
 	}
 
-	// простий JSON без encoding/json щоб уникнути зайвого import
+	// hand-rolled JSON to avoid an extra encoding/json import
 	return marshalD3(d3)
 }
 
@@ -546,7 +546,7 @@ type pathExploitResult struct {
 	AuditCmd    string
 }
 
-// marshalD3 — простий JSON серіалізатор для D3Graph
+// marshalD3 is a hand-rolled JSON serializer for D3Graph.
 func marshalD3(d3 D3Graph) string {
 	var sb strings.Builder
 	sb.WriteString(`{"nodes":[`)
@@ -949,7 +949,7 @@ func templateFuncs() template.FuncMap {
 }
 
 // ============================================================
-// HTML шаблон
+// HTML template
 // ============================================================
 
 const htmlTemplate = `<!DOCTYPE html>

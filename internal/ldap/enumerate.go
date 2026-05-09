@@ -12,10 +12,10 @@ import (
 )
 
 // ============================================================
-// Моделі даних
+// Data models
 // ============================================================
 
-// LDAPUser представляє користувача AD
+// LDAPUser represents an AD user object.
 type LDAPUser struct {
 	DN               string
 	SAMAccountName   string
@@ -40,12 +40,12 @@ type LDAPUser struct {
 	SourceDomain     string // set for objects from trusted domains
 }
 
-// LDAPGroup представляє групу AD
+// LDAPGroup represents an AD group object.
 type LDAPGroup struct {
 	DN             string
 	SAMAccountName string
 	Description    string
-	Members        []string // DN членів
+	Members        []string // member DNs
 	AdminCount     bool
 	GroupType      string
 	ObjectSid      string
@@ -56,7 +56,7 @@ type LDAPGroup struct {
 	SourceDomain   string   // set for objects from trusted domains
 }
 
-// LDAPComputer представляє комп'ютер AD
+// LDAPComputer represents an AD computer object.
 type LDAPComputer struct {
 	DN                      string
 	SAMAccountName          string
@@ -78,7 +78,7 @@ type LDAPComputer struct {
 	ChangedOn               string
 }
 
-// EnumerationResult містить всі зібрані дані
+// EnumerationResult holds all collected AD data.
 type EnumerationResult struct {
 	Domain      string
 	BaseDN      string
@@ -90,7 +90,7 @@ type EnumerationResult struct {
 }
 
 // ============================================================
-// LDAP фільтри
+// LDAP filters
 // ============================================================
 
 const (
@@ -102,7 +102,7 @@ const (
 )
 
 // ============================================================
-// Атрибути для запитів
+// LDAP query attributes
 // ============================================================
 
 var userAttributes = []string{
@@ -157,10 +157,10 @@ var computerAttributes = []string{
 }
 
 // ============================================================
-// Основні функції enumeration
+// Core enumeration functions
 // ============================================================
 
-// EnumerateAll запускає повний enumeration і повертає результат
+// EnumerateAll runs a full AD enumeration and returns the result.
 func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	result := &EnumerationResult{
 		Domain:      c.Domain,
@@ -215,7 +215,7 @@ func (c *Client) PrintEnumerationSummary(result *EnumerationResult) {
 	c.printQuickFindings(result)
 }
 
-// EnumerateUsers збирає всіх користувачів AD
+// EnumerateUsers collects all AD users.
 func (c *Client) EnumerateUsers() ([]LDAPUser, error) {
 	entries, err := c.Search(FilterAllUsers, userAttributes)
 	if err != nil {
@@ -229,7 +229,7 @@ func (c *Client) EnumerateUsers() ([]LDAPUser, error) {
 	return users, nil
 }
 
-// EnumerateGroups збирає всі групи AD
+// EnumerateGroups collects all AD groups.
 func (c *Client) EnumerateGroups() ([]LDAPGroup, error) {
 	entries, err := c.Search(FilterAllGroups, groupAttributes)
 	if err != nil {
@@ -243,7 +243,7 @@ func (c *Client) EnumerateGroups() ([]LDAPGroup, error) {
 	return groups, nil
 }
 
-// EnumerateComputers збирає всі комп'ютери AD
+// EnumerateComputers collects all AD computers.
 func (c *Client) EnumerateComputers() ([]LDAPComputer, error) {
 
 	entries, err := c.Search(FilterAllComputers, computerAttributes)
@@ -262,7 +262,7 @@ func (c *Client) EnumerateComputers() ([]LDAPComputer, error) {
 }
 
 // ============================================================
-// Парсери LDAP Entry → struct
+// Parsers: LDAP Entry → struct
 // ============================================================
 
 func parseUser(entry *goldap.Entry) LDAPUser {
@@ -334,10 +334,10 @@ func parseComputer(entry *goldap.Entry) LDAPComputer {
 }
 
 // ============================================================
-// Допоміжні функції
+// Helper functions
 // ============================================================
 
-// parseUAC конвертує рядок userAccountControl в число
+// parseUAC parses the userAccountControl string to a uint64.
 func parseUAC(val string) uint64 {
 	if val == "" {
 		return 0
@@ -349,13 +349,13 @@ func parseUAC(val string) uint64 {
 	return n
 }
 
-// isBitSet перевіряє чи встановлений конкретний біт у UAC
+// isBitSet reports whether the given bit is set in val.
 func isBitSet(uac uint64, bit uint64) bool {
 	return uac&bit != 0
 }
 
-// parseFileTime конвертує Windows FILETIME → читабельна дата
-// Windows FILETIME: кількість 100-наносекундних інтервалів з 1 січня 1601
+// parseFileTime converts a Windows FILETIME string to a human-readable date.
+// Windows FILETIME counts 100-nanosecond intervals since 1 January 1601.
 func parseFileTime(val string) string {
 	if val == "" || val == "0" || val == "9223372036854775807" {
 		return "Never"
@@ -366,8 +366,7 @@ func parseFileTime(val string) string {
 		return "Never"
 	}
 
-	// конвертуємо з Windows epoch (1601) до Unix epoch (1970)
-	// різниця: 11644473600 секунд
+	// Convert from Windows epoch (1601) to Unix epoch (1970): delta = 11644473600 seconds.
 	unixSec := n/10000000 - 11644473600
 	if unixSec <= 0 {
 		return "Never"
@@ -377,7 +376,7 @@ func parseFileTime(val string) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-// parseGroupType конвертує числовий groupType в рядок
+// parseGroupType converts the numeric groupType to a human-readable string.
 func parseGroupType(val string) string {
 	if val == "" {
 		return "Unknown"
@@ -387,10 +386,10 @@ func parseGroupType(val string) string {
 		return "Unknown"
 	}
 
-	// старший біт = Security group (vs Distribution)
+	// high bit set = Security group (vs Distribution)
 	isSecurity := n < 0
 
-	switch n & 0x7FFFFFFF { // маскуємо знаковий біт
+	switch n & 0x7FFFFFFF { // mask sign bit
 	case 1:
 		if isSecurity {
 			return "Security/System"
@@ -416,7 +415,7 @@ func parseGroupType(val string) string {
 	}
 }
 
-// printQuickFindings виводить короткий summary цікавих знахідок
+// printQuickFindings prints a brief summary of notable findings.
 func (c *Client) printQuickFindings(result *EnumerationResult) {
 	kerberoastable, asrep, adminUsers, pwdNeverExpires := 0, 0, 0, 0
 	for _, u := range result.Users {
@@ -619,7 +618,7 @@ func resolvePrimaryGroups(users []LDAPUser, groups []LDAPGroup) {
 	}
 }
 
-// parseSIDBytes конвертує raw objectSid bytes в рядок S-1-5-...
+// parseSIDBytes converts raw objectSid bytes to an S-1-5-... string.
 func parseSIDBytes(data []byte) string {
 	if len(data) < 8 {
 		return ""

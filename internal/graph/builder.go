@@ -6,13 +6,13 @@ import (
 	adldap "github.com/YakinAnd/morok/internal/ldap"
 )
 
-// Build будує граф з результатів enumeration
+// Build constructs the graph from enumeration results.
 func Build(result *adldap.EnumerationResult) *Graph {
 	g := NewGraph()
 
 
 	// --------------------------------------------------------
-	// Крок 1: додаємо всі вузли
+	// Step 1: add all nodes
 	// --------------------------------------------------------
 	for i := range result.Users {
 		u := &result.Users[i]
@@ -37,7 +37,7 @@ func Build(result *adldap.EnumerationResult) *Graph {
 			SAMAccountName: grp.SAMAccountName,
 			Type:           NodeGroup,
 			AdminCount:     grp.AdminCount,
-			Enabled:        true, // групи не мають поняття "disabled"
+			Enabled:        true, // groups have no disabled state
 		})
 	}
 
@@ -55,14 +55,14 @@ func Build(result *adldap.EnumerationResult) *Graph {
 	}
 
 	// --------------------------------------------------------
-	// Крок 2: додаємо зв'язки MemberOf
+	// Step 2: add MemberOf edges
 	// --------------------------------------------------------
 
 	// users → groups
 	for i := range result.Users {
 		u := &result.Users[i]
 		for _, groupDN := range u.MemberOf {
-			// перевіряємо що цільова група існує в нашому графі
+			// verify target group exists in the graph
 			if _, exists := g.Nodes[groupDN]; exists {
 				g.AddEdge(Edge{
 					From: u.DN,
@@ -73,11 +73,11 @@ func Build(result *adldap.EnumerationResult) *Graph {
 		}
 	}
 
-	// groups → groups (вкладені групи)
+	// groups → groups (nested membership)
 	for i := range result.Groups {
 		grp := &result.Groups[i]
 		for _, memberDN := range grp.Members {
-			// перевіряємо чи member є групою
+			// check if member is a group
 			if node, exists := g.Nodes[memberDN]; exists {
 				if node.Type == NodeGroup {
 					g.AddEdge(Edge{
@@ -107,8 +107,8 @@ func Build(result *adldap.EnumerationResult) *Graph {
 	return g
 }
 
-// findComputerGroups шукає групи в яких є комп'ютер як member
-// AD не завжди повертає memberOf для комп'ютерів — шукаємо через groups
+// findComputerGroups returns groups that list the given computer as a member.
+// AD does not always populate memberOf for computers — look up via groups.
 func findComputerGroups(result *adldap.EnumerationResult, computerDN string) []string {
 	var groups []string
 	for _, grp := range result.Groups {

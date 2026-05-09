@@ -11,7 +11,7 @@ import (
 )
 
 // ============================================================
-// Моделі даних
+// Data models
 // ============================================================
 
 type DelegationType string
@@ -43,7 +43,7 @@ type DelegationResult struct {
 }
 
 // ============================================================
-// LDAP фільтри
+// LDAP filters
 // ============================================================
 
 const (
@@ -72,7 +72,7 @@ var delegationAttributes = []string{
 }
 
 // ============================================================
-// Основна функція
+// Core function
 // ============================================================
 
 // AnalyzeDelegation runs all delegation checks. Pass enumResult to resolve RBCD trustee names;
@@ -99,7 +99,7 @@ func AnalyzeDelegation(client *adldap.Client, enumResult *adldap.EnumerationResu
 }
 
 // ============================================================
-// Пошук Unconstrained
+// Search: Unconstrained
 // ============================================================
 
 func findUnconstrainedUsers(client *adldap.Client, result *DelegationResult) error {
@@ -149,7 +149,7 @@ func findUnconstrainedComputers(client *adldap.Client, result *DelegationResult)
 }
 
 // ============================================================
-// Пошук Constrained
+// Search: Constrained
 // ============================================================
 
 func findConstrainedDelegation(client *adldap.Client, result *DelegationResult) error {
@@ -223,7 +223,7 @@ func assessConstrainedRisk(allowedServices []string) (bool, string) {
 }
 
 // ============================================================
-// Пошук RBCD
+// Search: RBCD
 // ============================================================
 
 func findRBCD(client *adldap.Client, result *DelegationResult, enumResult *adldap.EnumerationResult) error {
@@ -290,7 +290,7 @@ func findRBCD(client *adldap.Client, result *DelegationResult, enumResult *adlda
 }
 
 // ============================================================
-// Вивід
+// Output
 // ============================================================
 
 func PrintDelegationResult(dr *DelegationResult) {
@@ -343,7 +343,7 @@ func printDelegationFinding(f DelegationFinding) {
 }
 
 // ============================================================
-// Допоміжні функції
+// Helper functions
 // ============================================================
 
 func filterByDelegationType(findings []DelegationFinding, dt DelegationType) []DelegationFinding {
