@@ -120,7 +120,7 @@ const (
 // ============================================================
 
 // AnalyzeACL збирає небезпечні ACL з AD
-func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLResult, error) {
+func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraResults ...*adldap.EnumerationResult) (*ACLResult, error) {
 	aclResult := &ACLResult{
 		Domain: result.Domain,
 	}
@@ -132,7 +132,18 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult) (*ACLRe
 	}
 
 	// будуємо map DN → SAMAccountName для швидкого lookup
+	// extraResults дозволяє включити об'єкти з інших доменів (напр. primary domain при аналізі trusted)
 	nameMap := buildNameMap(result)
+	for _, extra := range extraResults {
+		if extra == nil {
+			continue
+		}
+		for sid, info := range buildNameMap(extra) {
+			if _, exists := nameMap[sid]; !exists {
+				nameMap[sid] = info
+			}
+		}
+	}
 
 
 

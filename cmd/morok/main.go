@@ -441,7 +441,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			if !quietMode {
 				color.White("  querying %s...", t.Name)
 			}
-			trustedData = append(trustedData, enumerateTrustedDomain(t.Name))
+			trustedData = append(trustedData, enumerateTrustedDomain(t.Name, result))
 		}
 	}
 	// build simplified list for HTML Trusts tab (only failed domains shown)
@@ -571,7 +571,7 @@ type trustedDomainData struct {
 
 // enumerateTrustedDomain connects to a trusted domain using the same credentials
 // and runs a full enumeration. Returns a result struct (never nil).
-func enumerateTrustedDomain(trustDomain string) *trustedDomainData {
+func enumerateTrustedDomain(trustDomain string, primaryResult *adldap.EnumerationResult) *trustedDomainData {
 	tr := &trustedDomainData{Domain: trustDomain}
 
 	client := adldap.NewClient(trustDomain, username, password, "", verbose)
@@ -630,7 +630,7 @@ func enumerateTrustedDomain(trustDomain string) *trustedDomainData {
 		kr.ASREPAccounts[i].SourceDomain = trustDomain
 	}
 
-	aclRes, aclErr := analysis.AnalyzeACL(client, result)
+	aclRes, aclErr := analysis.AnalyzeACL(client, result, primaryResult)
 	if aclErr != nil {
 		color.Yellow("    [trust/%s] ACL search failed: %v", trustDomain, aclErr)
 	} else if aclRes != nil {
