@@ -195,22 +195,23 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 						sid = parseSID(sdBytes, sidOff)
 					}
 					if sid != "" {
-						if _, inMap := nameMap[sid]; inMap {
-							inheritOnlySIDs[sid]++
-						}
+						inheritOnlySIDs[sid]++
 					}
 				}
 				aceOff += aceSize
 			}
 		}
 		if len(inheritOnlySIDs) > 0 {
-			color.Yellow("    [debug] SIDs found ONLY in INHERIT_ONLY ACEs (being skipped!):")
+			color.Yellow("    [debug] SIDs in INHERIT_ONLY ACEs (being skipped):")
 			for sid, count := range inheritOnlySIDs {
-				info := nameMap[sid]
-				color.Yellow("    [io-ace] %-30s %s (x%d)", info.Name, sid, count)
+				if info, inMap := nameMap[sid]; inMap {
+					color.Yellow("    [io-known] %-30s %s (x%d)", info.Name, sid, count)
+				} else {
+					color.Yellow("    [io-unknown] %s (x%d)", sid, count)
+				}
 			}
 		} else {
-			color.Yellow("    [debug] no nameMap SIDs found in INHERIT_ONLY ACEs")
+			color.Yellow("    [debug] no SIDs found in INHERIT_ONLY ACEs")
 		}
 	}
 	// фільтруємо стандартні системні права
