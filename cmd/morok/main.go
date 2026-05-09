@@ -630,8 +630,11 @@ func enumerateTrustedDomain(trustDomain string) *trustedDomainData {
 		kr.ASREPAccounts[i].SourceDomain = trustDomain
 	}
 
-	aclRes, _ := analysis.AnalyzeACL(client, result)
-	if aclRes != nil {
+	aclRes, aclErr := analysis.AnalyzeACL(client, result)
+	if aclErr != nil {
+		color.Yellow("    [trust/%s] ACL search failed: %v", trustDomain, aclErr)
+	} else if aclRes != nil {
+		color.White("    [trust/%s] ACL: %d findings, %d DCSync", trustDomain, len(aclRes.Findings), len(aclRes.DCSyncFindings))
 		for i := range aclRes.Findings {
 			aclRes.Findings[i].SourceDomain = trustDomain
 		}
