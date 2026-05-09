@@ -69,8 +69,9 @@ type CertTemplateFinding struct {
 	IssuancePolicyOID string // ESC13: policy OID linked to group
 	LinkedGroupDN     string // ESC13: privileged group DN
 	Severity          string
-	CVSS       float64
-	CVSSVector string
+	CVSS              float64
+	CVSSVector        string
+	SourceDomain      string
 }
 
 type CAFinding struct {

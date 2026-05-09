@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,7 +57,9 @@ type ReportData struct {
 	SYSVOLResult  *analysis.SYSVOLResult
 	LAPSACLResult *analysis.LAPSACLResult
 	// v1.1 — automatic trust following
-	TrustedDomains []*TrustedDomainEnumResult
+	TrustedDomains  []*TrustedDomainEnumResult
+	AllDomains      []string // unique source domains across users/groups/computers
+	AllComputerOS   []string // unique OS values across computers
 	// header risk summary
 	TotalCritical int
 	TotalHigh     int
@@ -194,6 +197,8 @@ func Generate(
 	SYSVOLResult:            sysvolResult,
 	LAPSACLResult:           lapsACLResult,
 	TrustedDomains:          trustedDomains,
+	AllDomains:              buildAllDomains(result),
+	AllComputerOS:           buildAllComputerOS(result),
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
@@ -433,6 +438,46 @@ func buildUserPrivGroups(result *adldap.EnumerationResult) map[string]string {
 }
 
 // ============================================================
+func buildAllDomains(result *adldap.EnumerationResult) []string {
+	seen := make(map[string]bool)
+	for _, u := range result.Users {
+		if u.SourceDomain != "" && !seen[u.SourceDomain] {
+			seen[u.SourceDomain] = true
+		}
+	}
+	for _, g := range result.Groups {
+		if g.SourceDomain != "" && !seen[g.SourceDomain] {
+			seen[g.SourceDomain] = true
+		}
+	}
+	for _, c := range result.Computers {
+		if c.Domain != "" && !seen[c.Domain] {
+			seen[c.Domain] = true
+		}
+	}
+	var domains []string
+	for d := range seen {
+		domains = append(domains, d)
+	}
+	sort.Strings(domains)
+	return domains
+}
+
+func buildAllComputerOS(result *adldap.EnumerationResult) []string {
+	seen := make(map[string]bool)
+	for _, c := range result.Computers {
+		if c.OperatingSystem != "" && !seen[c.OperatingSystem] {
+			seen[c.OperatingSystem] = true
+		}
+	}
+	var os []string
+	for s := range seen {
+		os = append(os, s)
+	}
+	sort.Strings(os)
+	return os
+}
+
 // Побудова D3.js JSON
 // ============================================================
 
@@ -1622,7 +1667,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           <div class="path-node
             {{if or $node.AdminCount (isPrivilegedGroup $node.SAMAccountName)}}is-admin{{end}}
             {{if $node.Kerberoastable}}is-kerb{{end}}">
-            {{nodeTypeIcon $node.Type}} {{$node.SAMAccountName}}{{if $node.SourceDomain}}<span style="color:var(--text-muted);font-size:0.75rem">/{{$node.SourceDomain}}</span>{{end}}
+            {{nodeTypeIcon $node.Type}} {{$node.SAMAccountName}}
           </div>
           {{if lt $j (dec (len $path.Nodes))}}
             <div class="path-arrow">→</div>
@@ -1779,6 +1824,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h2 class="section-title">Users <span class="help-icon" role="tooltip" tabindex="0" data-tip="All domain user accounts. Rows highlighted in red belong to privileged groups (DA, EA, etc.). Use filters to find Kerberoastable, AS-REP roastable, or expired-password accounts.">?</span> <span>{{.Summary.TotalUsers}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search users..." oninput="filterTable('tbl-users','cnt-users')">
+    <select data-col="3" onchange="filterTable('tbl-users','cnt-users')">
+      <option value="">Domain: all</option>
+      {{range $.AllDomains}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-users','cnt-users')">
       <option value="">Enabled: all</option>
       <option value="✓">Enabled only</option>
@@ -1856,6 +1905,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h2 class="section-title">Groups <span class="help-icon" role="tooltip" tabindex="0" data-tip="All security and distribution groups. Pay attention to high-member-count groups with sensitive names — attackers target these for privilege escalation via AddMember abuse.">?</span> <span>{{.Summary.TotalGroups}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search groups..." oninput="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="2" onchange="filterTable('tbl-groups','cnt-groups')">
+      <option value="">Domain: all</option>
+      {{range $.AllDomains}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
     <select data-col="3" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Type: all</option>
       <option value="Security">Security</option>
@@ -1917,6 +1970,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search computers..." oninput="filterTable('tbl-computers','cnt-computers')">
+    <select data-col="1" onchange="filterTable('tbl-computers','cnt-computers')">
+      <option value="">Domain: all</option>
+      {{range $.AllDomains}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
+    <select data-col="2" onchange="filterTable('tbl-computers','cnt-computers')">
+      <option value="">OS: all</option>
+      {{range $.AllComputerOS}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
     <select data-col="4" data-match="exact" onchange="filterTable('tbl-computers','cnt-computers')">
       <option value="">Enabled: all</option>
       <option value="✓">Enabled only</option>
@@ -2137,13 +2198,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="AddMember">AddMember</option>
       <option value="GenericWrite">GenericWrite</option>
     </select>
+    <select id="acl-domain" onchange="filterACL()">
+      <option value="">Domain: all</option>
+      {{range $.AllDomains}}<option value="{{.}}">{{.}}</option>{{end}}
+    </select>
     <span class="filter-count" id="cnt-acl"></span>
-    <button onclick="document.getElementById('acl-search').value='';document.getElementById('acl-severity').value='';document.getElementById('acl-right').value='';filterACL()">Clear</button>
+    <button onclick="document.getElementById('acl-search').value='';document.getElementById('acl-severity').value='';document.getElementById('acl-right').value='';document.getElementById('acl-domain').value='';filterACL()">Clear</button>
   </div>
   <div id="acl-grouped"></div>
   <div id="acl-findings" style="display:none">
   {{range $i, $f := .ACLResult.Findings}}
-  <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
+  <div class="path-card acl-card" style="margin-bottom:10px" data-severity="{{$f.Severity}}" data-right="{{$f.Right}}" data-domain="{{$f.SourceDomain}}" data-text="{{$f.PrincipalName}} {{$f.TargetName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-high{{else if eq $f.Severity "Medium"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
       <span class="cvss-score" data-vector="{{$f.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" $f.CVSS}}</span>
@@ -2164,7 +2229,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   </div>
   {{end}}
   {{range .ACLResult.DCSyncFindings}}
-  <div class="path-card acl-card" style="margin-bottom:10px" data-severity="Critical" data-right="DCSync" data-text="{{.PrincipalName}}">
+  <div class="path-card acl-card" style="margin-bottom:10px" data-severity="Critical" data-right="DCSync" data-domain="{{.SourceDomain}}" data-text="{{.PrincipalName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge badge-critical">Critical</span>
       <span class="mono" style="color:var(--text-main)">{{.PrincipalName}}{{if .SourceDomain}}<span style="color:var(--text-muted);font-size:0.8rem">/{{.SourceDomain}}</span>{{end}}</span>
@@ -2915,6 +2980,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         {{range .VulnTypes}}<span class="badge {{if eq $tmplSev "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
         <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
         <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
+        {{if .SourceDomain}}<span style="color:var(--text-muted);font-size:0.78rem">/{{.SourceDomain}}</span>{{end}}
         {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
         {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
       </div>
@@ -2923,10 +2989,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <div class="acc-body">
           <div class="acc-label">Exploit ({{range $i,$v := .VulnTypes}}{{if $i}}, {{end}}{{$v}}{{end}})</div>
           {{if .AllowsSANInject}}
-          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{$.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{$.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
-          <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{$.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy req -u user@{{coalesce .SourceDomain $.ADCSResult.Domain}} -p pass -ca &lt;CA&gt; -template {{.TemplateName}} -upn admin@{{coalesce .SourceDomain $.ADCSResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-cmd-wrap" style="margin-top:4px"><code class="acc-cmd">certipy auth -pfx admin.pfx -domain {{coalesce .SourceDomain $.ADCSResult.Domain}} -dc-ip &lt;DC&gt;</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
           {{else}}
-          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy find -u user@{{$.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+          <div class="acc-cmd-wrap"><code class="acc-cmd">certipy find -u user@{{coalesce .SourceDomain $.ADCSResult.Domain}} -p pass -dc-ip &lt;DC&gt; -vulnerable</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
           {{end}}
           <div class="acc-label" style="margin-top:10px">Fix</div>
           <div style="color:var(--text-secondary)">Remove CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT from template, restrict enrollment to specific groups, require CA manager approval, or disable the template if unused.</div>
@@ -2957,6 +3023,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <thead><tr>
         <th>Principal</th>
         <th>Type</th>
+        <th>Domain</th>
         <th>Target</th>
         <th>Target Type</th>
         <th>Right</th>
@@ -2968,6 +3035,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr class="{{if eq .Severity "Critical"}}row-critical{{else}}row-high{{end}}">
         <td class="mono">{{.PrincipalName}}</td>
         <td>{{.PrincipalType}}</td>
+        <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
         <td class="mono">{{.TargetName}}</td>
         <td>{{.TargetType}}</td>
         <td><span class="badge badge-medium" style="font-family:monospace;font-size:0.75rem">{{.Right}}</span></td>
@@ -3654,6 +3722,7 @@ function filterACL() {
   const q        = (document.getElementById('acl-search')?.value   ?? '').toLowerCase();
   const severity = (document.getElementById('acl-severity')?.value ?? '');
   const right    = (document.getElementById('acl-right')?.value    ?? '');
+  const domain   = (document.getElementById('acl-domain')?.value   ?? '');
   const cards    = document.querySelectorAll('#acl-findings .acl-card');
   let visible = 0;
   cards.forEach(card => {
@@ -3661,7 +3730,8 @@ function filterACL() {
     const show =
       (!q        || text.includes(q)) &&
       (!severity || card.dataset.severity === severity) &&
-      (!right    || card.dataset.right === right);
+      (!right    || card.dataset.right === right) &&
+      (!domain   || card.dataset.domain === domain);
     card.dataset.filtered = show ? 'false' : 'true';
     if (show) visible++;
   });

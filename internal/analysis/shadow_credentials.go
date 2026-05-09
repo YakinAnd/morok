@@ -31,8 +31,9 @@ type ShadowCredentialFinding struct {
 	TargetDN      string
 	Right         string
 	Severity      string
-	CVSS       float64
-	CVSSVector string
+	CVSS          float64
+	CVSSVector    string
+	SourceDomain  string
 }
 
 type ShadowCredentialsResult struct {

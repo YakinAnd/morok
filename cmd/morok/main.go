@@ -413,7 +413,17 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		adminSDResult, _ = analysis.AnalyzeAdminSDHolder(client, result)
 		psoResult, _ = analysis.AnalyzePSO(client)
 		adcsResult, _ = analysis.AnalyzeADCS(client)
+		if adcsResult != nil {
+			for i := range adcsResult.TemplateFindings {
+				adcsResult.TemplateFindings[i].SourceDomain = domain
+			}
+		}
 		shadowResult, _ = analysis.AnalyzeShadowCredentials(client, result)
+		if shadowResult != nil {
+			for i := range shadowResult.Findings {
+				shadowResult.Findings[i].SourceDomain = domain
+			}
+		}
 		sysvolResult = analysis.ScanSYSVOL(client)
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
@@ -457,6 +467,12 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		if aclResult != nil && td.ACLResult != nil {
 			aclResult.Findings = append(aclResult.Findings, td.ACLResult.Findings...)
 			aclResult.DCSyncFindings = append(aclResult.DCSyncFindings, td.ACLResult.DCSyncFindings...)
+		}
+		if shadowResult != nil && td.ShadowCredsResult != nil {
+			shadowResult.Findings = append(shadowResult.Findings, td.ShadowCredsResult.Findings...)
+		} else if shadowResult == nil && td.ShadowCredsResult != nil && len(td.ShadowCredsResult.Findings) > 0 {
+			shadowResult = &analysis.ShadowCredentialsResult{Domain: domain}
+			shadowResult.Findings = append(shadowResult.Findings, td.ShadowCredsResult.Findings...)
 		}
 		paths = append(paths, td.AttackPaths...)
 	}
@@ -542,14 +558,15 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 // trustedDomainData holds full enumeration results from a trusted domain before merging.
 type trustedDomainData struct {
-	Domain         string
-	Error          string
-	Users          []adldap.LDAPUser
-	Groups         []adldap.LDAPGroup
-	Computers      []adldap.LDAPComputer
-	KerberosResult *analysis.KerberosResult
-	ACLResult      *analysis.ACLResult
-	AttackPaths    []graph.AttackPath
+	Domain              string
+	Error               string
+	Users               []adldap.LDAPUser
+	Groups              []adldap.LDAPGroup
+	Computers           []adldap.LDAPComputer
+	KerberosResult      *analysis.KerberosResult
+	ACLResult           *analysis.ACLResult
+	AttackPaths         []graph.AttackPath
+	ShadowCredsResult   *analysis.ShadowCredentialsResult
 }
 
 // enumerateTrustedDomain connects to a trusted domain using the same credentials
@@ -629,12 +646,20 @@ func enumerateTrustedDomain(trustDomain string) *trustedDomainData {
 		attackPaths[i].SourceDomain = trustDomain
 	}
 
+	shadowRes, _ := analysis.AnalyzeShadowCredentials(client, result)
+	if shadowRes != nil {
+		for i := range shadowRes.Findings {
+			shadowRes.Findings[i].SourceDomain = trustDomain
+		}
+	}
+
 	tr.Users = result.Users
 	tr.Groups = result.Groups
 	tr.Computers = result.Computers
 	tr.KerberosResult = kr
 	tr.ACLResult = aclRes
 	tr.AttackPaths = attackPaths
+	tr.ShadowCredsResult = shadowRes
 	return tr
 }
 
