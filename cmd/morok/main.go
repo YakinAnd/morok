@@ -829,18 +829,18 @@ func printEnumSummary(
 		for _, f := range ldapSec.Findings {
 			switch f.Severity {
 			case "High":
-				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "ldap", f.Title)
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[++]"), "ldap", f.Title)
 			default:
-				fmt.Printf("  %s  %-20s %s\n", medPrefix("[-]"), "ldap", f.Title)
+				fmt.Printf("  %s  %-20s %s\n", medPrefix("[+]"), "ldap", f.Title)
 			}
 		}
 	}
 	if smb != nil && smb.Reachable && !smb.SigningRequired {
-		fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "smb signing", "not required — NTLM relay risk")
+		fmt.Printf("  %s  %-20s %s\n", highPrefix("[++]"), "smb signing", "not required — NTLM relay risk")
 	}
 	if audit != nil {
 		for _, f := range audit.Findings {
-			fmt.Printf("  %s  %-20s %s\n", medPrefix("[-]"), "audit", f.Title)
+			fmt.Printf("  %s  %-20s %s\n", medPrefix("[+]"), "audit", f.Title)
 		}
 	}
 
@@ -888,7 +888,7 @@ func printEnumSummary(
 	// ── TRUSTED DOMAIN SKIP MESSAGES ─────────────────────────
 	for _, tr := range trustedResults {
 		fmt.Printf("\n  %s  %s — skipped (auth failed, provide creds for this domain)\n",
-			medPrefix("[-]"), tr.Domain)
+			medPrefix("[+]"), tr.Domain)
 	}
 
 	// ── PER-DOMAIN SECTIONS ───────────────────────────────────
@@ -949,20 +949,20 @@ func printEnumSummary(
 		}
 		color.Cyan("  USERS    %s", dimText(fmt.Sprintf("%d total · %d enabled · %d disabled", totalUsers, enabledUsers, disabledUsers)))
 		if len(asrepUsers) > 0 {
-			fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", joinTrunc(asrepUsers, enumMaxItems))
+			fmt.Printf("  %s  %-20s %s\n", highPrefix("[++]"), "AS-REP roastable", joinTrunc(asrepUsers, enumMaxItems))
 		}
 		if adminUsers > 0 {
-			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[-]"), "adminCount=1", adminUsers)
+			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[+]"), "adminCount=1", adminUsers)
 		}
 		if pwdNeverUsers > 0 {
-			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[-]"), "pwd never expires", pwdNeverUsers)
+			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[+]"), "pwd never expires", pwdNeverUsers)
 		}
 		if isPrimary && hr != nil {
 			if len(hr.StaleUsers) > 0 {
-				fmt.Printf("  %s  %-20s %d accounts  %s\n", medPrefix("[-]"), "stale (>90d)", len(hr.StaleUsers), dimText("no logon · CIS: 90d threshold"))
+				fmt.Printf("  %s  %-20s %d accounts  %s\n", medPrefix("[+]"), "stale (>90d)", len(hr.StaleUsers), dimText("no logon · CIS: 90d threshold"))
 			}
 			if hr.KrbtgtAtRisk {
-				fmt.Printf("  %s  %-20s %s  %s\n", highPrefix("[!]"), "krbtgt age", fmt.Sprintf("%d days", hr.KrbtgtPwdAgeDays), dimText("golden ticket risk"))
+				fmt.Printf("  %s  %-20s %s  %s\n", highPrefix("[++]"), "krbtgt age", fmt.Sprintf("%d days", hr.KrbtgtPwdAgeDays), dimText("golden ticket risk"))
 			}
 		}
 
@@ -1006,13 +1006,13 @@ func printEnumSummary(
 			}
 			color.Cyan("  COMPUTERS  %s%s", dimText(fmt.Sprintf("%d total · %d enabled · %d disabled", totalComp, enabledComp, disabledComp)), scopeLabel)
 			if noLAPSComp > 0 {
-				fmt.Printf("  %s  %-20s %d hosts\n", medPrefix("[-]"), "no LAPS", noLAPSComp)
+				fmt.Printf("  %s  %-20s %d hosts\n", medPrefix("[+]"), "no LAPS", noLAPSComp)
 			}
 			if len(unconstrComp) > 0 {
-				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "unconstrained deleg", joinTrunc(unconstrComp, enumMaxItems))
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[++]"), "unconstrained deleg", joinTrunc(unconstrComp, enumMaxItems))
 			}
 			if isPrimary && hr != nil && len(hr.StaleComputers) > 0 {
-				fmt.Printf("  %s  %-20s %d hosts  %s\n", medPrefix("[-]"), "stale (>45d)", len(hr.StaleComputers), dimText("no logon · CIS: 45d threshold"))
+				fmt.Printf("  %s  %-20s %d hosts  %s\n", medPrefix("[+]"), "stale (>45d)", len(hr.StaleComputers), dimText("no logon · CIS: 45d threshold"))
 			}
 		}
 
@@ -1042,14 +1042,14 @@ func printEnumSummary(
 				for i, a := range krAccts {
 					names[i] = a.SAMAccountName
 				}
-				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "kerberoastable", joinTrunc(names, enumMaxItems))
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[++]"), "kerberoastable", joinTrunc(names, enumMaxItems))
 			}
 			if len(asrepAccts) > 0 {
 				names := make([]string, len(asrepAccts))
 				for i, a := range asrepAccts {
 					names[i] = a.SAMAccountName
 				}
-				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", joinTrunc(names, enumMaxItems))
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[++]"), "AS-REP roastable", joinTrunc(names, enumMaxItems))
 			}
 		}
 
@@ -1131,9 +1131,9 @@ func printEnumSummary(
 				if !hasValid {
 					continue
 				}
-				pfx := highPrefix("[!] ")
+				pfx := highPrefix("[++] ")
 				if g.sev == "Critical" {
-					pfx = critPrefix("[!!]")
+					pfx = critPrefix("[+++]")
 				}
 				fmt.Printf("  %s  %s\n", pfx, name)
 				for right, targets := range g.rights {
@@ -1178,9 +1178,9 @@ func printEnumSummary(
 				if limit > 0 && shown >= limit {
 					break
 				}
-				pfx := highPrefix("[!] ")
+				pfx := highPrefix("[++] ")
 				if f.Severity == "Critical" {
-					pfx = critPrefix("[!!]")
+					pfx = critPrefix("[+++]")
 				}
 				escLabel := ""
 				if len(f.VulnTypes) > 0 {
@@ -1223,7 +1223,7 @@ func printEnumSummary(
 				if limit > 0 && shown >= limit {
 					break
 				}
-				fmt.Printf("  %s  %s\n", critPrefix("[!!]"), name)
+				fmt.Printf("  %s  %s\n", critPrefix("[+++]"), name)
 				var targetStr string
 				if verbose {
 					targetStr = strings.Join(shadowGroups[name], ", ")
@@ -1262,7 +1262,7 @@ func printEnumSummary(
 					names[i] = n.SAMAccountName
 				}
 				chain := strings.Join(names, " → ")
-				fmt.Printf("  %s  %s  %s\n", critPrefix("[!!]"), chain, dimText(fmt.Sprintf("(depth %d → %s)", p.Depth, p.TargetGroup)))
+				fmt.Printf("  %s  %s  %s\n", critPrefix("[+++]"), chain, dimText(fmt.Sprintf("(depth %d → %s)", p.Depth, p.TargetGroup)))
 				shown++
 			}
 			if limit > 0 && len(sectionPaths) > limit {
@@ -1294,9 +1294,9 @@ func printEnumSummary(
 	fmt.Printf("  RISK  ")
 	scoreColor.Printf("%s  (%s · %d/100)", verdict, riskScore.Grade, riskScore.Total)
 	fmt.Printf("   %s  %s  %s\n",
-		critPrefix(fmt.Sprintf("[!!] %d critical", critTotal)),
-		highPrefix(fmt.Sprintf("[!] %d high", highTotal)),
-		medPrefix(fmt.Sprintf("[-] %d medium", medTotal)),
+		critPrefix(fmt.Sprintf("[+++] %d critical", critTotal)),
+		highPrefix(fmt.Sprintf("[++] %d high", highTotal)),
+		medPrefix(fmt.Sprintf("[+] %d medium", medTotal)),
 	)
 	fmt.Println()
 	if reportPath == "" {
