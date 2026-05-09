@@ -211,7 +211,7 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 	sidRights := make(map[string]*replRights)
 
 	for _, ace := range aces {
-		if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+		if ace.ACEType == 0x01 || ace.ACEType == 0x06 || ace.ACEType == 0x0A || ace.ACEType == 0x0C {
 			continue // deny ACE
 		}
 
@@ -548,13 +548,15 @@ func parseACE(data []byte, offset int) (ACE, int, error) {
 	ace := ACE{ACEType: aceType}
 
 	switch aceType {
-	case 0x00, 0x01: // ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE
+	case 0x00, 0x01, // ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE
+		0x09, 0x0A: // ACCESS_ALLOWED_CALLBACK_ACE, ACCESS_DENIED_CALLBACK_ACE (same layout, conditional ACEs)
 		// Offset 4: AccessMask (4 bytes)
-		// Offset 8: SID
+		// Offset 8: SID (condition data follows SID but we don't need it)
 		ace.AccessMask = readUint32LE(data, offset+4)
 		ace.SID = parseSID(data, offset+8)
 
-	case 0x05, 0x06: // ACCESS_ALLOWED_OBJECT_ACE, ACCESS_DENIED_OBJECT_ACE
+	case 0x05, 0x06, // ACCESS_ALLOWED_OBJECT_ACE, ACCESS_DENIED_OBJECT_ACE
+		0x0B, 0x0C: // ACCESS_ALLOWED_CALLBACK_OBJECT_ACE, ACCESS_DENIED_CALLBACK_OBJECT_ACE
 		// Offset 4:  AccessMask (4 bytes)
 		// Offset 8:  Flags (4 bytes)
 		// Offset 12: ObjectType GUID (16 bytes, якщо є)
@@ -652,7 +654,8 @@ func readUint16LE(data []byte, offset int) uint16 {
 
 // detectDangerousRights перевіряє ACE на небезпечні права
 func detectDangerousRights(ace ACE) []ACLRight {
-	if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
+	// deny ACE types: 0x01, 0x06, 0x0A (callback deny), 0x0C (callback object deny)
+	if ace.ACEType == 0x01 || ace.ACEType == 0x06 || ace.ACEType == 0x0A || ace.ACEType == 0x0C {
 		return nil
 	}
 
