@@ -1719,9 +1719,9 @@ func trunc(s string, maxLen int) string {
 // ============================================================
 
 func printBanner() {
-	color.New(color.FgYellow, color.Bold).Println(`  MOROK`)
-	color.New(color.FgHiBlack).Println(`  AD attack path enumerator  ·  v1.0`)
-	color.New(color.FgHiBlack).Println(`  see through the fog`)
+	color.New(color.FgHiWhite).Println(`  MOROK`)
+	color.New(color.FgHiBlack).Println(`  SEE · THROUGH · THE · FOG`)
+	color.New(color.FgHiBlack).Println(`  v1.0  ·  AD Attack Path Analysis`)
 	color.New(color.FgHiBlack).Println(`  ` + strings.Repeat("─", 40))
 }
 
