@@ -148,29 +148,12 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 
 
 	// аналізуємо кожен об'єкт
-	var totalACEs, matchedACEs int
 	for _, entry := range entries {
-		sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
-		if len(sdBytes) > 0 {
-			if aces, err := parseSecurityDescriptor(sdBytes); err == nil {
-				totalACEs += len(aces)
-				for _, ace := range aces {
-					if _, ok := nameMap[ace.SID]; ok {
-						matchedACEs++
-					}
-				}
-			}
-		}
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	beforeFilter := len(aclResult.Findings)
 	// фільтруємо стандартні системні права
 	aclResult.Findings = filterSystemACL(aclResult.Findings)
-	if len(extraResults) > 0 {
-		color.White("    [acl-debug] entries=%d nameMap=%d totalACEs=%d matchedSIDs=%d rawFindings=%d afterFilter=%d",
-			len(entries), len(nameMap), totalACEs, matchedACEs, beforeFilter, len(aclResult.Findings))
-	}
 
 	// DCSync: scan domain object for replication rights
 	aclResult.DCSyncFindings = checkDCSync(entries, nameMap, client.GetBaseDN())
