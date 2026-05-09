@@ -58,7 +58,7 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 # Build from source (requires Go 1.21+)
 git clone https://github.com/YakinAnd/morok
 cd morok
-go build -o adpath ./cmd/adpath/
+go build -o morok ./cmd/morok/
 ./morok version
 ```
 
