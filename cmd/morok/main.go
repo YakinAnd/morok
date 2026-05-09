@@ -353,12 +353,34 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// ── tag all primary domain objects with their domain ─────
+	for i := range result.Users {
+		result.Users[i].SourceDomain = domain
+	}
+	for i := range result.Groups {
+		result.Groups[i].SourceDomain = domain
+	}
+	for i := range result.Computers {
+		if result.Computers[i].Domain == "" {
+			result.Computers[i].Domain = domain
+		}
+	}
+
 	// ── graph + attack paths ──────────────────────────────────
 	g := graph.Build(result)
 	paths := g.FindPathsToPrivilegedGroups(maxDepth)
+	for i := range paths {
+		paths[i].SourceDomain = domain
+	}
 
 	// ── analysis ─────────────────────────────────────────────
 	kr := analysis.AnalyzeKerberos(result)
+	for i := range kr.KerberoastableAccounts {
+		kr.KerberoastableAccounts[i].SourceDomain = domain
+	}
+	for i := range kr.ASREPAccounts {
+		kr.ASREPAccounts[i].SourceDomain = domain
+	}
 	trustResult, _ := analysis.AnalyzeTrusts(client, result)
 	smbResult := analysis.CheckSMBSigning(client.Host)
 
@@ -376,6 +398,14 @@ func runEnum(cmd *cobra.Command, args []string) error {
 
 	if !stealth {
 		aclResult, _ = analysis.AnalyzeACL(client, result)
+		if aclResult != nil {
+			for i := range aclResult.Findings {
+				aclResult.Findings[i].SourceDomain = domain
+			}
+			for i := range aclResult.DCSyncFindings {
+				aclResult.DCSyncFindings[i].SourceDomain = domain
+			}
+		}
 		dr, _ = analysis.AnalyzeDelegation(client, result)
 		gr, _ = analysis.AnalyzeGPO(client)
 		hr = analysis.AnalyzeHygiene(result)
