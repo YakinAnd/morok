@@ -507,7 +507,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	cliRiskScore := report.CalculateRiskScore(cliRiskData)
 
 	// ── Variant A terminal output ─────────────────────────────
-	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult, trustResult, trustedResults, cliCrit, cliHigh, cliMed, cliRiskScore)
+	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult, trustResult, trustedResults, trustedData, cliCrit, cliHigh, cliMed, cliRiskScore)
 
 	// ── HTML report (opt-in via --report) ────────────────────
 	if reportPath != "" {
@@ -762,6 +762,7 @@ func printEnumSummary(
 	audit *analysis.AuditResult,
 	trustResult *analysis.TrustResult,
 	trustedResults []*report.TrustedDomainEnumResult,
+	trustedData []*trustedDomainData,
 	critTotal, highTotal, medTotal int,
 	riskScore report.RiskScore,
 ) {
@@ -865,12 +866,47 @@ func printEnumSummary(
 			medPrefix("[-]"), tr.Domain)
 	}
 
-	// ── USERS ─────────────────────────────────────────────────
+	// ── PER-DOMAIN SECTIONS ───────────────────────────────────
+	// Build ordered list: primary domain first, then successful trusted domains.
+	type domainSec struct {
+		name string
+		td   *trustedDomainData // nil = primary domain
+	}
+	var domainSections []domainSec
 	if result != nil {
+		domainSections = append(domainSections, domainSec{name: domain})
+	}
+	for _, td := range trustedData {
+		if td.Error == "" {
+			domainSections = append(domainSections, domainSec{name: td.Domain, td: td})
+		}
+	}
+
+	for _, sec := range domainSections {
+		isPrimary := sec.td == nil
+
+		if len(domainSections) > 1 {
+			fmt.Println()
+			color.Cyan("  ══  %s  ══", sec.name)
+		}
+
+		// ── USERS ─────────────────────────────────────────────
+		var sectionUsers []adldap.LDAPUser
+		if isPrimary {
+			for _, u := range result.Users {
+				if u.SourceDomain == "" || u.SourceDomain == domain {
+					sectionUsers = append(sectionUsers, u)
+				}
+			}
+		} else {
+			sectionUsers = sec.td.Users
+		}
+
 		fmt.Println()
-		totalUsers := len(result.Users)
-		enabledUsers, disabledUsers, asrepUsers, adminUsers, pwdNeverUsers := 0, 0, []string{}, 0, 0
-		for _, u := range result.Users {
+		totalUsers := len(sectionUsers)
+		enabledUsers, disabledUsers, adminUsers, pwdNeverUsers := 0, 0, 0, 0
+		var asrepUsers []string
+		for _, u := range sectionUsers {
 			if u.Enabled {
 				enabledUsers++
 			} else {
@@ -896,7 +932,7 @@ func printEnumSummary(
 		if pwdNeverUsers > 0 {
 			fmt.Printf("  %s  %-20s %d accounts\n", medPrefix("[-]"), "pwd never expires", pwdNeverUsers)
 		}
-		if hr != nil {
+		if isPrimary && hr != nil {
 			if len(hr.StaleUsers) > 0 {
 				fmt.Printf("  %s  %-20s %d accounts  %s\n", medPrefix("[-]"), "stale (>90d)", len(hr.StaleUsers), dimText("no logon · CIS: 90d threshold"))
 			}
@@ -905,12 +941,24 @@ func printEnumSummary(
 			}
 		}
 
-		// ── COMPUTERS ─────────────────────────────────────────────
-		if len(result.Computers) > 0 {
-			fmt.Println()
-			totalComp := len(result.Computers)
-			enabledComp, disabledComp, unconstrComp, noLAPSComp := 0, 0, []string{}, 0
+		// ── COMPUTERS ─────────────────────────────────────────
+		var sectionComputers []adldap.LDAPComputer
+		if isPrimary {
 			for _, c := range result.Computers {
+				if c.Domain == "" || c.Domain == domain {
+					sectionComputers = append(sectionComputers, c)
+				}
+			}
+		} else {
+			sectionComputers = sec.td.Computers
+		}
+
+		if len(sectionComputers) > 0 {
+			fmt.Println()
+			totalComp := len(sectionComputers)
+			enabledComp, disabledComp, noLAPSComp := 0, 0, 0
+			var unconstrComp []string
+			for _, c := range sectionComputers {
 				if c.Enabled {
 					enabledComp++
 					if !c.LAPSEnabled {
@@ -928,7 +976,7 @@ func printEnumSummary(
 				}
 			}
 			scopeLabel := ""
-			if result.ForestWide {
+			if isPrimary && result.ForestWide {
 				scopeLabel = "  " + dimText("(forest-wide)")
 			}
 			color.Cyan("  COMPUTERS  %s%s", dimText(fmt.Sprintf("%d total · %d enabled · %d disabled", totalComp, enabledComp, disabledComp)), scopeLabel)
@@ -938,218 +986,267 @@ func printEnumSummary(
 			if len(unconstrComp) > 0 {
 				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "unconstrained deleg", joinTrunc(unconstrComp, enumMaxItems))
 			}
-			if hr != nil && len(hr.StaleComputers) > 0 {
+			if isPrimary && hr != nil && len(hr.StaleComputers) > 0 {
 				fmt.Printf("  %s  %-20s %d hosts  %s\n", medPrefix("[-]"), "stale (>45d)", len(hr.StaleComputers), dimText("no logon · CIS: 45d threshold"))
 			}
 		}
-	}
 
-	// ── KERBEROS ──────────────────────────────────────────────
-	if kr != nil && (len(kr.KerberoastableAccounts) > 0 || len(kr.ASREPAccounts) > 0) {
-		fmt.Println()
-		color.Cyan("  KERBEROS")
-		if len(kr.KerberoastableAccounts) > 0 {
-			names := make([]string, len(kr.KerberoastableAccounts))
-			for i, a := range kr.KerberoastableAccounts {
-				names[i] = a.SAMAccountName
+		// ── KERBEROS ──────────────────────────────────────────
+		var krAccts []analysis.KerberoastableAccount
+		var asrepAccts []analysis.ASREPAccount
+		if isPrimary && kr != nil {
+			for _, a := range kr.KerberoastableAccounts {
+				if a.SourceDomain == "" || a.SourceDomain == domain {
+					krAccts = append(krAccts, a)
+				}
 			}
-			fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "kerberoastable", joinTrunc(names, enumMaxItems))
-		}
-		if len(kr.ASREPAccounts) > 0 {
-			names := make([]string, len(kr.ASREPAccounts))
-			for i, a := range kr.ASREPAccounts {
-				names[i] = a.SAMAccountName
+			for _, a := range kr.ASREPAccounts {
+				if a.SourceDomain == "" || a.SourceDomain == domain {
+					asrepAccts = append(asrepAccts, a)
+				}
 			}
-			fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", joinTrunc(names, enumMaxItems))
+		} else if !isPrimary && sec.td.KerberosResult != nil {
+			krAccts = sec.td.KerberosResult.KerberoastableAccounts
+			asrepAccts = sec.td.KerberosResult.ASREPAccounts
 		}
-	}
+		if len(krAccts) > 0 || len(asrepAccts) > 0 {
+			fmt.Println()
+			color.Cyan("  KERBEROS")
+			if len(krAccts) > 0 {
+				names := make([]string, len(krAccts))
+				for i, a := range krAccts {
+					names[i] = a.SAMAccountName
+				}
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "kerberoastable", joinTrunc(names, enumMaxItems))
+			}
+			if len(asrepAccts) > 0 {
+				names := make([]string, len(asrepAccts))
+				for i, a := range asrepAccts {
+					names[i] = a.SAMAccountName
+				}
+				fmt.Printf("  %s  %-20s %s\n", highPrefix("[!]"), "AS-REP roastable", joinTrunc(names, enumMaxItems))
+			}
+		}
 
-	// ── ACL (grouped by principal) ────────────────────────────
-	if acl != nil && (len(acl.Findings) > 0 || len(acl.DCSyncFindings) > 0) {
-		fmt.Println()
-		aclCrit, aclHigh := 0, 0
-		for _, f := range acl.Findings {
-			if f.Severity == "Critical" {
-				aclCrit++
-			} else {
-				aclHigh++
+		// ── ACL ───────────────────────────────────────────────
+		var sectionACLFindings []analysis.ACLFinding
+		var sectionDCSyncFindings []analysis.DCSyncFinding
+		if isPrimary && acl != nil {
+			for _, f := range acl.Findings {
+				if f.SourceDomain == "" || f.SourceDomain == domain {
+					sectionACLFindings = append(sectionACLFindings, f)
+				}
 			}
+			for _, f := range acl.DCSyncFindings {
+				if f.SourceDomain == "" || f.SourceDomain == domain {
+					sectionDCSyncFindings = append(sectionDCSyncFindings, f)
+				}
+			}
+		} else if !isPrimary && sec.td.ACLResult != nil {
+			sectionACLFindings = sec.td.ACLResult.Findings
+			sectionDCSyncFindings = sec.td.ACLResult.DCSyncFindings
 		}
-		aclCrit += len(acl.DCSyncFindings)
-		color.Cyan("  ACL      %s", dimText(fmt.Sprintf("%d critical · %d high", aclCrit, aclHigh)))
+		if len(sectionACLFindings) > 0 || len(sectionDCSyncFindings) > 0 {
+			fmt.Println()
+			aclCrit, aclHigh := 0, 0
+			for _, f := range sectionACLFindings {
+				if f.Severity == "Critical" {
+					aclCrit++
+				} else {
+					aclHigh++
+				}
+			}
+			aclCrit += len(sectionDCSyncFindings)
+			color.Cyan("  ACL      %s", dimText(fmt.Sprintf("%d critical · %d high", aclCrit, aclHigh)))
 
-		// group: principal → right → []targets
-		type aclEntry struct {
-			rights map[string][]string
-			sev    string
-		}
-		groups := make(map[string]*aclEntry)
-		var groupOrder []string
-		addGroup := func(principal, right, target, sev string) {
-			if _, ok := groups[principal]; !ok {
-				groups[principal] = &aclEntry{rights: make(map[string][]string), sev: sev}
-				groupOrder = append(groupOrder, principal)
+			type aclEntry struct {
+				rights map[string][]string
+				sev    string
 			}
-			g := groups[principal]
-			g.rights[right] = append(g.rights[right], target)
-			if sev == "Critical" {
-				g.sev = "Critical"
+			aclGroups := make(map[string]*aclEntry)
+			var aclGroupOrder []string
+			addACLGroup := func(principal, right, target, sev string) {
+				if _, ok := aclGroups[principal]; !ok {
+					aclGroups[principal] = &aclEntry{rights: make(map[string][]string), sev: sev}
+					aclGroupOrder = append(aclGroupOrder, principal)
+				}
+				g := aclGroups[principal]
+				g.rights[right] = append(g.rights[right], target)
+				if sev == "Critical" {
+					g.sev = "Critical"
+				}
 			}
-		}
-		for _, f := range acl.DCSyncFindings {
-			addGroup(f.PrincipalName, "DCSync", domain, "Critical")
-		}
-		for _, f := range acl.Findings {
-			if strings.TrimSpace(f.TargetName) == "" {
-				continue // skip unresolvable targets
+			for _, f := range sectionDCSyncFindings {
+				addACLGroup(f.PrincipalName, "DCSync", sec.name, "Critical")
 			}
-			addGroup(f.PrincipalName, string(f.Right), f.TargetName, f.Severity)
-		}
-		shown := 0
-		for _, name := range groupOrder {
-			if limit > 0 && shown >= limit {
-				break
+			for _, f := range sectionACLFindings {
+				if strings.TrimSpace(f.TargetName) == "" {
+					continue
+				}
+				addACLGroup(f.PrincipalName, string(f.Right), f.TargetName, f.Severity)
 			}
-			g := groups[name]
-			// Check if this principal has any non-empty targets
-			hasValid := false
-			for _, targets := range g.rights {
-				for _, t := range targets {
-					if strings.TrimSpace(t) != "" {
-						hasValid = true
+			shown := 0
+			for _, name := range aclGroupOrder {
+				if limit > 0 && shown >= limit {
+					break
+				}
+				g := aclGroups[name]
+				hasValid := false
+				for _, targets := range g.rights {
+					for _, t := range targets {
+						if strings.TrimSpace(t) != "" {
+							hasValid = true
+							break
+						}
+					}
+					if hasValid {
 						break
 					}
 				}
-				if hasValid {
-					break
-				}
-			}
-			if !hasValid {
-				continue
-			}
-			pfx := highPrefix("[!] ")
-			if g.sev == "Critical" {
-				pfx = critPrefix("[!!]")
-			}
-			fmt.Printf("  %s  %s\n", pfx, name)
-			for right, targets := range g.rights {
-				// Filter empty targets (unresolved SIDs)
-				valid := make([]string, 0, len(targets))
-				for _, t := range targets {
-					if strings.TrimSpace(t) != "" {
-						valid = append(valid, t)
-					}
-				}
-				if len(valid) == 0 {
+				if !hasValid {
 					continue
 				}
+				pfx := highPrefix("[!] ")
+				if g.sev == "Critical" {
+					pfx = critPrefix("[!!]")
+				}
+				fmt.Printf("  %s  %s\n", pfx, name)
+				for right, targets := range g.rights {
+					valid := make([]string, 0, len(targets))
+					for _, t := range targets {
+						if strings.TrimSpace(t) != "" {
+							valid = append(valid, t)
+						}
+					}
+					if len(valid) == 0 {
+						continue
+					}
+					var targetStr string
+					if verbose {
+						targetStr = strings.Join(valid, ", ")
+					} else {
+						targetStr = truncateTargets(valid, 70)
+					}
+					fmt.Printf("        %-20s → %s\n", dimText(right), targetStr)
+				}
+				shown++
+			}
+			if limit > 0 && len(aclGroups) > limit {
+				fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok acl -d %s ...)", len(aclGroups)-limit, sec.name)))
+			}
+		}
+
+		// ── ADCS (primary domain only) ────────────────────────
+		if isPrimary && adcs != nil && len(adcs.TemplateFindings) > 0 {
+			fmt.Println()
+			critCount, highCount := 0, 0
+			for _, f := range adcs.TemplateFindings {
+				if f.Severity == "Critical" {
+					critCount++
+				} else {
+					highCount++
+				}
+			}
+			color.Cyan("  ADCS     %s", dimText(fmt.Sprintf("%d critical · %d high", critCount, highCount)))
+			shown := 0
+			for _, f := range adcs.TemplateFindings {
+				if limit > 0 && shown >= limit {
+					break
+				}
+				pfx := highPrefix("[!] ")
+				if f.Severity == "Critical" {
+					pfx = critPrefix("[!!]")
+				}
+				escLabel := ""
+				if len(f.VulnTypes) > 0 {
+					escLabel = string(f.VulnTypes[0])
+				}
+				fmt.Printf("  %s  %-18s %s\n", pfx, f.TemplateName, dimText("("+escLabel+")"))
+				shown++
+			}
+			if limit > 0 && len(adcs.TemplateFindings) > limit {
+				fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok adcs -d %s ...)", len(adcs.TemplateFindings)-limit, sec.name)))
+			}
+		}
+
+		// ── SHADOW CREDENTIALS ────────────────────────────────
+		var sectionShadowFindings []analysis.ShadowCredentialFinding
+		if isPrimary && shadow != nil {
+			for _, f := range shadow.Findings {
+				if f.SourceDomain == "" || f.SourceDomain == domain {
+					sectionShadowFindings = append(sectionShadowFindings, f)
+				}
+			}
+		} else if !isPrimary && sec.td.ShadowCredsResult != nil {
+			sectionShadowFindings = sec.td.ShadowCredsResult.Findings
+		}
+		if len(sectionShadowFindings) > 0 {
+			fmt.Println()
+			color.Cyan("  SHADOW CREDS  %s  %s",
+				dimText(fmt.Sprintf("%d finding(s)", len(sectionShadowFindings))),
+				dimText("(detection only — exploit: pywhisker / certipy shadow)"))
+			shadowGroups := make(map[string][]string)
+			var shadowOrder []string
+			for _, f := range sectionShadowFindings {
+				if _, ok := shadowGroups[f.PrincipalName]; !ok {
+					shadowOrder = append(shadowOrder, f.PrincipalName)
+				}
+				shadowGroups[f.PrincipalName] = append(shadowGroups[f.PrincipalName], f.TargetName)
+			}
+			shown := 0
+			for _, name := range shadowOrder {
+				if limit > 0 && shown >= limit {
+					break
+				}
+				fmt.Printf("  %s  %s\n", critPrefix("[!!]"), name)
 				var targetStr string
 				if verbose {
-					targetStr = strings.Join(valid, ", ")
+					targetStr = strings.Join(shadowGroups[name], ", ")
 				} else {
-					targetStr = truncateTargets(valid, 70)
+					targetStr = truncateTargets(shadowGroups[name], 70)
 				}
-				fmt.Printf("        %-20s → %s\n", dimText(right), targetStr)
+				fmt.Printf("        %s %s\n", dimText("→"), targetStr)
+				shown++
 			}
-			shown++
+			if limit > 0 && len(shadowOrder) > limit {
+				fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok shadow -d %s ...)", len(shadowOrder)-limit, sec.name)))
+			}
 		}
-		if limit > 0 && len(groups) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok acl -d %s ...)", len(groups)-limit, domain)))
-		}
-	}
 
-	// ── ADCS ──────────────────────────────────────────────────
-	if adcs != nil && len(adcs.TemplateFindings) > 0 {
-		fmt.Println()
-		critCount, highCount := 0, 0
-		for _, f := range adcs.TemplateFindings {
-			if f.Severity == "Critical" {
-				critCount++
-			} else {
-				highCount++
+		// ── ATTACK PATHS ──────────────────────────────────────
+		var sectionPaths []graph.AttackPath
+		if isPrimary {
+			for _, p := range paths {
+				if p.SourceDomain == "" || p.SourceDomain == domain {
+					sectionPaths = append(sectionPaths, p)
+				}
 			}
+		} else {
+			sectionPaths = sec.td.AttackPaths
 		}
-		color.Cyan("  ADCS     %s", dimText(fmt.Sprintf("%d critical · %d high", critCount, highCount)))
-		shown := 0
-		for _, f := range adcs.TemplateFindings {
-			if limit > 0 && shown >= limit {
-				break
+		if len(sectionPaths) > 0 {
+			fmt.Println()
+			color.Cyan("  ATTACK PATHS  %s", dimText(fmt.Sprintf("%d found", len(sectionPaths))))
+			shown := 0
+			for _, p := range sectionPaths {
+				if limit > 0 && shown >= limit {
+					break
+				}
+				names := make([]string, len(p.Nodes))
+				for i, n := range p.Nodes {
+					names[i] = n.SAMAccountName
+				}
+				chain := strings.Join(names, " → ")
+				fmt.Printf("  %s  %s  %s\n", critPrefix("[!!]"), chain, dimText(fmt.Sprintf("(depth %d → %s)", p.Depth, p.TargetGroup)))
+				shown++
 			}
-			pfx := highPrefix("[!] ")
-			if f.Severity == "Critical" {
-				pfx = critPrefix("[!!]")
+			if limit > 0 && len(sectionPaths) > limit {
+				fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more)", len(sectionPaths)-limit)))
 			}
-			escLabel := ""
-			if len(f.VulnTypes) > 0 {
-				escLabel = string(f.VulnTypes[0])
-			}
-			fmt.Printf("  %s  %-18s %s\n", pfx, f.TemplateName, dimText("("+escLabel+")"))
-			shown++
+		} else if isPrimary {
+			fmt.Println()
+			color.Cyan("  ATTACK PATHS  %s", dimText("0 found"))
 		}
-		if limit > 0 && len(adcs.TemplateFindings) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok adcs -d %s ...)", len(adcs.TemplateFindings)-limit, domain)))
-		}
-	}
-
-	// ── SHADOW CREDENTIALS (grouped by principal) ─────────────
-	if shadow != nil && len(shadow.Findings) > 0 {
-		fmt.Println()
-		color.Cyan("  SHADOW CREDS  %s  %s",
-			dimText(fmt.Sprintf("%d finding(s)", len(shadow.Findings))),
-			dimText("(detection only — exploit: pywhisker / certipy shadow)"))
-
-		// group by principal → []targets
-		shadowGroups := make(map[string][]string)
-		var shadowOrder []string
-		for _, f := range shadow.Findings {
-			if _, ok := shadowGroups[f.PrincipalName]; !ok {
-				shadowOrder = append(shadowOrder, f.PrincipalName)
-			}
-			shadowGroups[f.PrincipalName] = append(shadowGroups[f.PrincipalName], f.TargetName)
-		}
-		shown := 0
-		for _, name := range shadowOrder {
-			if limit > 0 && shown >= limit {
-				break
-			}
-			fmt.Printf("  %s  %s\n", critPrefix("[!!]"), name)
-			var targetStr string
-			if verbose {
-				targetStr = strings.Join(shadowGroups[name], ", ")
-			} else {
-				targetStr = truncateTargets(shadowGroups[name], 70)
-			}
-			fmt.Printf("        %s %s\n", dimText("→"), targetStr)
-			shown++
-		}
-		if limit > 0 && len(shadowOrder) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more — run: morok shadow -d %s ...)", len(shadowOrder)-limit, domain)))
-		}
-	}
-
-	// ── ATTACK PATHS ──────────────────────────────────────────
-	if len(paths) > 0 {
-		fmt.Println()
-		color.Cyan("  ATTACK PATHS  %s", dimText(fmt.Sprintf("%d found", len(paths))))
-		shown := 0
-		for _, p := range paths {
-			if limit > 0 && shown >= limit {
-				break
-			}
-			names := make([]string, len(p.Nodes))
-			for i, n := range p.Nodes {
-				names[i] = n.SAMAccountName
-			}
-			chain := strings.Join(names, " → ")
-			fmt.Printf("  %s  %s  %s\n", critPrefix("[!!]"), chain, dimText(fmt.Sprintf("(depth %d → %s)", p.Depth, p.TargetGroup)))
-			shown++
-		}
-		if limit > 0 && len(paths) > limit {
-			fmt.Printf("  %s\n", dimText(fmt.Sprintf("       (+%d more)", len(paths)-limit)))
-		}
-	} else if result != nil {
-		fmt.Println()
-		color.Cyan("  ATTACK PATHS  %s", dimText("0 found"))
 	}
 
 	// ── RISK SUMMARY ──────────────────────────────────────────
