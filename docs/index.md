@@ -4,12 +4,7 @@
 
 morok is a lightweight, single-binary CLI tool for enumerating Active Directory environments, identifying attack paths to privileged groups, and detecting security misconfigurations — without requiring BloodHound, Neo4j, or any additional infrastructure.
 
-```
-  MOROK
-  SEE · THROUGH · THE · FOG
-  v1.0  ·  AD Attack Path Analysis
-  ────────────────────────────────────────
-```
+![CLI demo](assets/demo-cli.png)
 
 ---
 
