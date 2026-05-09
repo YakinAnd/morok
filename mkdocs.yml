@@ -83,4 +83,3 @@ nav:
     - Trust Attacks: techniques/trusts.md
     - Shadow Credentials: techniques/shadow-credentials.md
     - LDAP Relay: techniques/ldap-relay.md
-  - Roadmap: roadmap.md
