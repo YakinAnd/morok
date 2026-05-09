@@ -2980,7 +2980,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         {{range .VulnTypes}}<span class="badge {{if eq $tmplSev "Critical"}}badge-critical{{else}}badge-medium{{end}}" style="font-family:monospace">{{.}}</span>{{end}}
         <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
         <span class="mono" style="color:var(--text-main)">{{.TemplateName}}</span>
-        {{if .SourceDomain}}<span style="color:var(--text-muted);font-size:0.78rem">/{{.SourceDomain}}</span>{{end}}
+        {{if .SourceDomain}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted);font-size:0.75rem">{{.SourceDomain}}</span>{{end}}
         {{if .EnrollableBy}}<span class="badge" style="background:var(--bg-hover);color:var(--color-warn);margin-left:4px">enrollable by: {{range $i,$e := .EnrollableBy}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
         {{if .EKUs}}<span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{range $i,$e := .EKUs}}{{if $i}}, {{end}}{{$e}}{{end}}</span>{{end}}
       </div>
