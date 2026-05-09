@@ -152,12 +152,53 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	// debug: шукаємо Night Watch серед entries (тільки trusted domain)
+	// debug: dump всіх ACE Night Watch (тільки trusted domain)
 	if len(extraResults) > 0 {
-		color.Yellow("    [debug] all %d entry SAMAccountNames:", len(entries))
 		for _, entry := range entries {
 			sam := entry.GetAttributeValue("sAMAccountName")
-			color.Yellow("    [entry] %s", sam)
+			if !strings.EqualFold(sam, "Night Watch") {
+				continue
+			}
+			color.Yellow("    [debug] Night Watch DN: %s", entry.DN)
+			sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
+			color.Yellow("    [debug] Night Watch SD bytes: %d", len(sdBytes))
+			if len(sdBytes) < 20 {
+				break
+			}
+			daclOffset := int(readUint32LE(sdBytes, 16))
+			color.Yellow("    [debug] DACL offset: %d", daclOffset)
+			if daclOffset == 0 || daclOffset+8 > len(sdBytes) {
+				break
+			}
+			aceCount := int(readUint16LE(sdBytes, daclOffset+4))
+			color.Yellow("    [debug] ACE count: %d", aceCount)
+			aceOff := daclOffset + 8
+			for i := 0; i < aceCount; i++ {
+				if aceOff+8 > len(sdBytes) {
+					break
+				}
+				aceType := sdBytes[aceOff]
+				aceFlags := sdBytes[aceOff+1]
+				aceSize := int(readUint16LE(sdBytes, aceOff+2))
+				mask := readUint32LE(sdBytes, aceOff+4)
+				var sid string
+				switch aceType {
+				case 0x00, 0x01, 0x09, 0x0A:
+					sid = parseSID(sdBytes, aceOff+8)
+				case 0x05, 0x06, 0x0B, 0x0C:
+					f := readUint32LE(sdBytes, aceOff+8)
+					so := aceOff + 12
+					if f&0x01 != 0 { so += 16 }
+					if f&0x02 != 0 { so += 16 }
+					sid = parseSID(sdBytes, so)
+				}
+				name := sid
+				if info, ok := nameMap[sid]; ok {
+					name = info.Name
+				}
+				color.Yellow("    [ace%02d] type=0x%02X flags=0x%02X mask=0x%08X sid=%s (%s)", i, aceType, aceFlags, mask, sid, name)
+				aceOff += aceSize
+			}
 		}
 	}
 	// debug: скануємо raw ACE без INHERIT_ONLY фільтра — шукаємо SID що пропускаємо
