@@ -23,8 +23,9 @@ type Client struct {
 	NTHash     string // NT hash for Pass-the-Hash (NTLM auth)
 	CcachePath string // path to ccache file for Pass-the-Ticket (Kerberos auth)
 	ProxyURL   string // SOCKS5 proxy, e.g. socks5://127.0.0.1:1080 (PTT not supported through proxy)
-	IsAnon     bool   // true after successful anonymous bind
-	BaseDN     string
+	IsAnon        bool   // true after successful anonymous bind
+	PrimaryDomain string // auth domain for cross-domain binds (empty = use Domain)
+	BaseDN        string
 	conn       *goldap.Conn
 	saslWrap   *saslConn // non-nil only for Kerberos ccache connections
 	Verbose    bool
@@ -163,8 +164,12 @@ func (c *Client) Bind() error {
 		return fmt.Errorf("not connected, call Connect() first")
 	}
 
-	// формат: DOMAIN\username або username@domain
-	upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
+	// use PrimaryDomain for cross-domain binds (user lives in primary, not trusted domain)
+	authDomain := c.Domain
+	if c.PrimaryDomain != "" {
+		authDomain = c.PrimaryDomain
+	}
+	upn := fmt.Sprintf("%s@%s", c.Username, authDomain)
 
 	if c.Verbose {
 		color.Blue("[*] Binding as %s", upn)
@@ -173,7 +178,7 @@ func (c *Client) Bind() error {
 	err := c.conn.Bind(upn, c.Password)
 	if err != nil {
 		// спробуй DOMAIN\user формат
-		nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(c.Domain, ".")[0]), c.Username)
+		nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(authDomain, ".")[0]), c.Username)
 		err2 := c.conn.Bind(nt, c.Password)
 		if err2 != nil {
 			return fmt.Errorf("bind failed (tried UPN and NT format): %w", err)
@@ -193,7 +198,11 @@ func (c *Client) BindNTLM() error {
 		return fmt.Errorf("not connected, call Connect() first")
 	}
 
-	netbiosDomain := strings.ToUpper(strings.Split(c.Domain, ".")[0])
+	authDomain := c.Domain
+	if c.PrimaryDomain != "" {
+		authDomain = c.PrimaryDomain
+	}
+	netbiosDomain := strings.ToUpper(strings.Split(authDomain, ".")[0])
 
 	if c.Verbose {
 		color.Blue("[*] NTLM bind (Pass-the-Hash) as %s\\%s", netbiosDomain, c.Username)

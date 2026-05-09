@@ -497,6 +497,7 @@ func enumerateTrustedDomain(trustDomain string) *report.TrustedDomainEnumResult 
 	client.CcachePath = ccachePath
 	client.ProxyURL = proxyURL
 	client.Quiet = true
+	client.PrimaryDomain = domain // authenticate with primary domain credentials
 
 	if err := client.Connect(); err != nil {
 		tr.Error = fmt.Sprintf("connection failed: %v", err)
