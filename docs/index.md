@@ -41,13 +41,15 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 
 ## Key features
 
-- **Single binary** — no Neo4j, no Python, no Bloodhound required
+- **Single binary** — no Neo4j, no Python, no BloodHound required
+- **Multi-domain** — follows forest trusts automatically; per-domain sections in CLI output and per-domain tabs in the HTML report
 - **Any privilege level** — works with any valid domain account; low-privilege is enough for most checks
 - **Multiple auth methods** — password, Pass-the-Hash (NTLM), Pass-the-Ticket (Kerberos ccache)
 - **SOCKS5 proxy** — route all LDAP traffic through a proxy (`--proxy socks5://127.0.0.1:1080`)
 - **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
 - **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
 - **Self-contained HTML report** — single file, dark/light theme, global search, D3.js attack path graph
+- **CI mode** — `--quiet` prints a single-line verdict with no ANSI codes, safe for Jenkins/GitHub Actions/GitLab
 
 ---
 
@@ -55,36 +57,37 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 
 ```bash
 # Full enumeration + HTML report
-morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --report report.html
+
+# CI/automation — single line verdict
+morok enum --quiet -d corp.local -u svc_audit -p '...' --dc 10.0.0.1
+# → RISK CRITICAL (F · 83/100) — 38 critical, 40 high, 1 medium
+
+# Verbose — all findings without truncation
+morok enum --verbose -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Pass-the-Hash
 morok enum -d corp.local -u administrator -H :8846f7eaee8fb117ad06bdd830b7586c --dc 10.0.0.1
 
-# Pass-the-Ticket
+# Pass-the-Ticket (Kerberos ccache)
 morok enum -d corp.local --ccache admin.ccache --dc dc01.corp.local
 
-# With SOCKS5 proxy (pivoting)
+# SOCKS5 proxy (pivoting through a compromised host)
 morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
 
-# JSON export (compatible with BloodHound CE)
+# JSON export (compatible with BloodHound CE v5)
 morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --json ./json_out/
 
 # Scoped audit (Finance OU only)
 morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Finance,DC=corp,DC=local"
 
-# ADCS vulnerabilities only
-morok adcs -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
-
-# Audit policy + AD Recycle Bin check
-morok audit -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
-
 # Stealth mode — minimal LDAP footprint (SIEM-heavy environments)
-morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --stealth
+morok enum --stealth -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
 
 # Username enumeration without credentials (Kerberos AS-REQ)
 morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt
 
-# SMB signing check without credentials
+# SMB signing check (no credentials required)
 morok smb -d corp.local --dc 10.0.0.1
 ```
 
@@ -96,11 +99,11 @@ morok smb -d corp.local --dc 10.0.0.1
 # Build from source (requires Go 1.21+)
 git clone https://github.com/YakinAnd/morok
 cd morok
-go build -o morok ./cmd/morok/...
+go build -o morok ./cmd/morok/
 ./morok version
 ```
 
-Pre-built binaries are available on the [Releases](https://github.com/YakinAnd/morok/releases) page.
+Pre-built binaries for Linux, macOS, and Windows are available on the [Releases](https://github.com/YakinAnd/morok/releases) page.
 
 ---
 
