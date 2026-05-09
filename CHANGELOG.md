@@ -1,26 +1,20 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.1] — 2026-05-09
 
 ### CLI
 
-- **Per-domain output sections** — `══ domain.local ══` separator headers; each domain's findings appear in its own section when trusts are followed
-- **Severity prefixes** — `[!!!]` → `[+++]` (critical), `[!!]` → `[++]` (high), `[!]` → `[+]` (medium); `[-]` removed — no finding looks like an absence
-- **Banner** — updated to match HTML report branding: `MOROK / SEE · THROUGH · THE · FOG / v1.0 · AD Attack Path Analysis`
-- **Duplicate console messages** — removed duplicate "querying domain" message that appeared twice when following trusts; unified to `enumerating <domain>...`
+- **Per-domain output sections** — `══ domain.local ══` separator headers; each domain's findings in its own named block when trusts are followed
+- **Severity prefixes** — `[+++]` critical (red bold), `[++]` high (red), `[+]` medium (yellow); removed `[-]` which looked like an absence of findings
+- **Banner** — matches HTML report branding: `MOROK / SEE · THROUGH · THE · FOG / v1.0 · AD Attack Path Analysis`
+- **Duplicate messages** — removed duplicate "querying domain" line on trust enumeration; unified to `enumerating <domain>...`
 
 ### HTML Report
 
-- **SID-based computer deduplication** — forest-wide GC query and trusted-domain enumeration no longer produce duplicate computer entries; dedup applied at merge time using ObjectSID
-- **Group filter — Domain Users** — Users tab group filter now also checks the Primary Group column (col 12); `Domain Users` and other primary-group-only members are found correctly
-- **Group filter dropdown** — filter options now deduplicated across all domains; no repeated group names
-- **ADCS domain badge** — source domain label in ADCS tab now shown as a styled badge (same style as Attack Paths tab) instead of plain `/domain` text
-
-### Internal
-
-- **Ukrainian comments removed** — all Cyrillic text in Go source files replaced with English; codebase is now fully English for public release
-
-## [1.0.1] — 2026-05-07
+- **SID-based computer deduplication** — GC forest query and trusted-domain enumeration no longer produce duplicate computer rows; deduplicated at merge by ObjectSID
+- **Group filter — Domain Users** — Users tab filter now checks both `Member Of` and `Primary Group` columns; `Domain Users` and other primary-group-only members are found correctly
+- **Group filter dropdown** — options deduplicated across all domains; no repeated group names
+- **ADCS domain badge** — source domain shown as a styled badge (consistent with Attack Paths tab) instead of plain `/domain` text
 
 ### Analysis — fixes
 
