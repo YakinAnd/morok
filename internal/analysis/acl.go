@@ -152,25 +152,35 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	// debug: print non-builtin raw findings (тільки при trusted domain аналізі)
+	// debug: знаходимо SID що є в ACE але НЕ в nameMap (тільки при trusted domain аналізі)
 	if len(extraResults) > 0 {
-		builtinDebug := map[string]bool{
-			"Administrators": true, "Account Operators": true, "Server Operators": true,
-			"Print Operators": true, "Backup Operators": true, "Domain Admins": true,
-			"Enterprise Admins": true, "Schema Admins": true, "Group Policy Creator Owners": true,
-			"SYSTEM": true, "Administrator": true, "Domain Controllers": true,
-			"Read-only Domain Controllers": true, "Cloneable Domain Controllers": true,
-			"Key Admins": true, "Enterprise Key Admins": true,
-		}
-		var nonBuiltin int
-		for _, f := range aclResult.Findings {
-			if !builtinDebug[f.PrincipalName] {
-				color.Yellow("    [non-builtin] %-30s %-20s %s", f.PrincipalName, f.Right, f.TargetName)
-				nonBuiltin++
+		unknownSIDs := make(map[string]int) // SID → кількість появ
+		for _, entry := range entries {
+			sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
+			if len(sdBytes) == 0 {
+				continue
+			}
+			aces, err := parseSecurityDescriptor(sdBytes)
+			if err != nil {
+				continue
+			}
+			for _, ace := range aces {
+				if ace.SID == "" {
+					continue
+				}
+				if _, inMap := nameMap[ace.SID]; !inMap {
+					unknownSIDs[ace.SID]++
+				}
 			}
 		}
-		if nonBuiltin == 0 {
-			color.Yellow("    [debug] all %d raw findings are from builtin groups — no non-privileged ACEs detected", len(aclResult.Findings))
+		color.Yellow("    [debug] unknown SIDs (in ACE but not in nameMap): %d unique", len(unknownSIDs))
+		shown := 0
+		for sid, count := range unknownSIDs {
+			if shown >= 10 {
+				break
+			}
+			color.Yellow("    [sid] %s (x%d)", sid, count)
+			shown++
 		}
 	}
 	// фільтруємо стандартні системні права
