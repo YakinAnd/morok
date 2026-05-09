@@ -40,6 +40,7 @@ type DCSyncFinding struct {
 	CVSS          float64
 	CVSSVector    string
 	Severity      string
+	SourceDomain  string // set for findings from trusted domains
 }
 
 // ACLFinding — одна небезпечна ACL знахідка
@@ -52,10 +53,11 @@ type ACLFinding struct {
 	TargetName string
 	TargetType string
 
-	Right      ACLRight
-	Severity   string
-	CVSS       float64
-	CVSSVector string
+	Right        ACLRight
+	Severity     string
+	CVSS         float64
+	CVSSVector   string
+	SourceDomain string // set for findings from trusted domains
 }
 
 // ACLResult — результат ACL аналізу

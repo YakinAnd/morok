@@ -38,6 +38,7 @@ type Node struct {
 	ASREPRoastable          bool
 	PasswordNeverExpires    bool
 	UnconstrainedDelegation bool
+	SourceDomain            string // set for nodes from trusted domains
 }
 
 // Edge представляє спрямований зв'язок між двома вузлами
@@ -56,10 +57,11 @@ type Graph struct {
 
 // AttackPath — один знайдений шлях атаки
 type AttackPath struct {
-	Nodes       []Node
-	Edges       []Edge
-	Depth       int
-	TargetGroup string // e.g. "Domain Admins", "Backup Operators"
+	Nodes        []Node
+	Edges        []Edge
+	Depth        int
+	TargetGroup  string // e.g. "Domain Admins", "Backup Operators"
+	SourceDomain string // set for paths from trusted domains
 }
 
 // ============================================================

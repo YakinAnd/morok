@@ -37,6 +37,7 @@ type LDAPUser struct {
 	CreatedOn        string
 	ChangedOn        string
 	PrimaryGroup     string // resolved name, e.g. "Domain Users"
+	SourceDomain     string // set for objects from trusted domains
 }
 
 // LDAPGroup представляє групу AD
@@ -52,6 +53,7 @@ type LDAPGroup struct {
 	CreatedOn      string
 	ChangedOn      string
 	MemberOf       []string // DNs of parent groups (nested membership)
+	SourceDomain   string   // set for objects from trusted domains
 }
 
 // LDAPComputer представляє комп'ютер AD

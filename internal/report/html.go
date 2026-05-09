@@ -68,16 +68,11 @@ type ReportData struct {
 	TopIssues []TopIssue
 }
 
-// TrustedDomainEnumResult — findings from an automatically-enumerated trusted domain
+// TrustedDomainEnumResult — status of an automatically-enumerated trusted domain.
+// Findings are merged into the main ReportData structs; this is only for display in the Trusts tab.
 type TrustedDomainEnumResult struct {
-	Domain         string
-	Error          string // non-empty if enumeration failed
-	Users          []adldap.LDAPUser
-	Groups         []adldap.LDAPGroup
-	Computers      []adldap.LDAPComputer
-	KerberosResult *analysis.KerberosResult
-	ACLResult      *analysis.ACLResult
-	AttackPaths    []graph.AttackPath
+	Domain string
+	Error  string // non-empty if enumeration was skipped/failed
 }
 
 // Summary — короткий підсумок для executive section
@@ -880,6 +875,14 @@ func templateFuncs() template.FuncMap {
 			return privileged[name]
 		},
 		"lower": strings.ToLower,
+		"coalesce": func(vals ...string) string {
+			for _, v := range vals {
+				if v != "" {
+					return v
+				}
+			}
+			return ""
+		},
 	}
 }
 
@@ -1606,6 +1609,9 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{if $path.TargetGroup}}
       <span class="badge" style="background:var(--bg-hover);color:var(--text-sev-critical)">→ {{$path.TargetGroup}}</span>
       {{end}}
+      {{if $path.SourceDomain}}
+      <span class="badge" style="background:var(--bg-hover);color:var(--text-muted);font-size:0.75rem">{{$path.SourceDomain}}</span>
+      {{end}}
       <span style="color:var(--text-muted); font-size:0.85rem">
         Path {{inc $i}} &nbsp;|&nbsp; Depth: {{$path.Depth}}
       </span>
@@ -1616,7 +1622,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           <div class="path-node
             {{if or $node.AdminCount (isPrivilegedGroup $node.SAMAccountName)}}is-admin{{end}}
             {{if $node.Kerberoastable}}is-kerb{{end}}">
-            {{nodeTypeIcon $node.Type}} {{$node.SAMAccountName}}
+            {{nodeTypeIcon $node.Type}} {{$node.SAMAccountName}}{{if $node.SourceDomain}}<span style="color:var(--text-muted);font-size:0.75rem">/{{$node.SourceDomain}}</span>{{end}}
           </div>
           {{if lt $j (dec (len $path.Nodes))}}
             <div class="path-arrow">→</div>
@@ -1753,81 +1759,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <p style="color:var(--text-muted)">Trust data not available.</p>
   {{end}}
 
-  <!-- Trusted Domain Enumeration Results -->
+  <!-- Trusted Domain Skip Notices (auth failed) -->
   {{if .TrustedDomains}}
-  <div style="margin-top:28px">
-    <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;display:flex;align-items:center;gap:6px">
-      Trusted Domain Enumeration
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="morok automatically enumerated reachable trusted domains using the same credentials. Findings are listed per domain.">?</span>
-    </div>
+  <div style="margin-top:20px">
     {{range .TrustedDomains}}
-    <div class="collapsible-section" style="margin-bottom:16px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-      <button class="collapsible-header" onclick="toggleSection(this)" style="width:100%;display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-card);border:none;cursor:pointer;text-align:left">
-        <span style="font-weight:600;font-size:0.9rem;color:var(--text-main)" class="mono">{{.Domain}}</span>
-        {{if .Error}}
-          <span class="badge badge-medium">unreachable</span>
-        {{else}}
-          <span class="badge badge-ok">{{len .Users}} users</span>
-          <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{len .Computers}} computers</span>
-          {{if .KerberosResult}}
-            {{if .KerberosResult.KerberoastableAccounts}}<span class="badge badge-high">{{len .KerberosResult.KerberoastableAccounts}} kerberoastable</span>{{end}}
-            {{if .KerberosResult.ASREPAccounts}}<span class="badge badge-high">{{len .KerberosResult.ASREPAccounts}} AS-REP</span>{{end}}
-          {{end}}
-          {{if .ACLResult}}{{if .ACLResult.Findings}}<span class="badge badge-critical">{{len .ACLResult.Findings}} ACL findings</span>{{end}}{{end}}
-          {{if .AttackPaths}}<span class="badge badge-critical">{{len .AttackPaths}} attack paths</span>{{end}}
-        {{end}}
-        <span class="collapse-arrow" style="margin-left:auto;font-size:0.7rem;color:var(--text-muted)">▼</span>
-      </button>
-      <div class="collapsible-body" style="padding:16px;background:var(--bg-main)">
-        {{if .Error}}
-        <p style="color:var(--text-muted);font-size:0.85rem">⚠ Enumeration failed: {{.Error}}</p>
-        {{else}}
-        <!-- Kerberos findings -->
-        {{if .KerberosResult}}
-        {{if or .KerberosResult.KerberoastableAccounts .KerberosResult.ASREPAccounts}}
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Kerberos</div>
-          {{range .KerberosResult.KerberoastableAccounts}}
-          <div style="font-size:0.82rem;color:var(--text-sev-high);margin-bottom:2px">[!] <span class="mono">{{.SAMAccountName}}</span> — Kerberoastable ({{len .SPNs}} SPN)</div>
-          {{end}}
-          {{range .KerberosResult.ASREPAccounts}}
-          <div style="font-size:0.82rem;color:var(--text-sev-high);margin-bottom:2px">[!] <span class="mono">{{.SAMAccountName}}</span> — AS-REP roastable</div>
-          {{end}}
-        </div>
-        {{end}}
-        {{end}}
-        <!-- ACL findings -->
-        {{if .ACLResult}}
-        {{if or .ACLResult.Findings .ACLResult.DCSyncFindings}}
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Dangerous ACLs</div>
-          {{range .ACLResult.DCSyncFindings}}
-          <div style="font-size:0.82rem;color:var(--text-sev-critical);margin-bottom:2px">[!!] <span class="mono">{{.PrincipalName}}</span> — DCSync</div>
-          {{end}}
-          {{range .ACLResult.Findings}}
-          <div style="font-size:0.82rem;{{if eq .Severity "Critical"}}color:var(--text-sev-critical){{else}}color:var(--text-sev-high){{end}};margin-bottom:2px">
-            {{if eq .Severity "Critical"}}[!!]{{else}}[!]{{end}} <span class="mono">{{.PrincipalName}}</span> → <span class="mono">{{.TargetName}}</span> ({{.Right}})
-          </div>
-          {{end}}
-        </div>
-        {{end}}
-        {{end}}
-        <!-- Attack paths -->
-        {{if .AttackPaths}}
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Attack Paths to Privileged Groups</div>
-          {{range .AttackPaths}}
-          <div style="font-size:0.82rem;color:var(--text-sev-critical);margin-bottom:2px">
-            [!!] {{range $i, $n := .Nodes}}{{if $i}} → {{end}}<span class="mono">{{$n.SAMAccountName}}</span>{{end}} → <span class="mono">{{.TargetGroup}}</span>
-          </div>
-          {{end}}
-        </div>
-        {{end}}
-        {{if and (not .KerberosResult) (not .ACLResult) (not .AttackPaths)}}
-        <p style="color:var(--color-ok);font-size:0.85rem">✓ No critical findings in this domain.</p>
-        {{end}}
-        {{end}}
-      </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;font-size:0.85rem">
+      <span style="color:var(--text-sev-medium)">[-]</span>
+      <span class="mono" style="color:var(--text-main)">{{.Domain}}</span>
+      <span style="color:var(--text-muted)">— skipped (auth failed, provide creds for this domain)</span>
     </div>
     {{end}}
   </div>
@@ -1871,7 +1810,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">Account</th>
         <th class="sortable" onclick="sortTable(this)">CN</th>
         <th class="sortable" onclick="sortTable(this)">Display Name</th>
-        <th class="sortable" onclick="sortTable(this)">Email</th>
+        <th class="sortable" onclick="sortTable(this)">Domain</th>
         <th class="sortable" onclick="sortTable(this)">Enabled</th>
         <th class="sortable" onclick="sortTable(this)">Kerberoastable</th>
         <th class="sortable" onclick="sortTable(this)">AS-REP</th>
@@ -1892,7 +1831,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td class="mono">{{.SAMAccountName}}</td>
       <td class="mono">{{.CN}}</td>
       <td>{{.DisplayName}}</td>
-      <td class="mono">{{.Mail}}</td>
+      <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
       <td>{{if .Enabled}}<span class="txt-yes">✓</span>{{else}}—{{end}}</td>
       <td>{{if .SPNs}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
       <td>{{if .DontReqPreauth}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
@@ -1917,7 +1856,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <h2 class="section-title">Groups <span class="help-icon" role="tooltip" tabindex="0" data-tip="All security and distribution groups. Pay attention to high-member-count groups with sensitive names — attackers target these for privilege escalation via AddMember abuse.">?</span> <span>{{.Summary.TotalGroups}} total</span></h2>
   <div class="filter-bar">
     <input type="text" placeholder="Search groups..." oninput="filterTable('tbl-groups','cnt-groups')">
-    <select data-col="2" onchange="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="3" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Type: all</option>
       <option value="Security">Security</option>
       <option value="Distribution">Distribution</option>
@@ -1925,7 +1864,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <option value="Universal">Universal</option>
       <option value="Local">Local</option>
     </select>
-    <select data-col="4" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
+    <select data-col="5" data-match="exact" onchange="filterTable('tbl-groups','cnt-groups')">
       <option value="">Admin: all</option>
       <option value="✓">Admins only</option>
     </select>
@@ -1938,6 +1877,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <tr>
         <th class="sortable" onclick="sortTable(this)">Name</th>
         <th class="sortable" onclick="sortTable(this)">CN</th>
+        <th class="sortable" onclick="sortTable(this)">Domain</th>
         <th class="sortable" onclick="sortTable(this)">Type</th>
         <th class="sortable" onclick="sortTable(this)">Members</th>
         <th class="sortable" onclick="sortTable(this)">Admin</th>
@@ -1953,6 +1893,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <tr>
       <td class="mono">{{.SAMAccountName}}</td>
       <td class="mono">{{.CN}}</td>
+      <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
       <td>{{.GroupType}}</td>
       <td>{{len .Members}}</td>
       <td>{{if .AdminCount}}<span class="txt-warn">✓</span>{{else}}—{{end}}</td>
@@ -2078,6 +2019,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <thead>
         <tr>
           <th>Account</th>
+          <th>Domain</th>
           <th>SPNs</th>
           <th>Admin</th>
           <th>CVSS</th>
@@ -2089,6 +2031,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{range .KerberosResult.KerberoastableAccounts}}
       <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
         <td class="mono">{{.SAMAccountName}}</td>
+        <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
         <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
         <td>{{if .AdminCount}}<span class="badge badge-critical">✓</span>{{else}}—{{end}}</td>
         <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
@@ -2131,6 +2074,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <thead>
         <tr>
           <th>Account</th>
+          <th>Domain</th>
           <th>Admin</th>
           <th>CVSS</th>
           <th>Last Logon</th>
@@ -2141,6 +2085,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{range .KerberosResult.ASREPAccounts}}
       <tr class="{{if .AdminCount}}row-critical{{else}}row-high{{end}}">
         <td class="mono">{{.SAMAccountName}}</td>
+        <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
         <td>{{if .AdminCount}}<span class="badge badge-critical">✓</span>{{else}}—{{end}}</td>
         <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
         <td class="mono">{{.LastLogon}}</td>
@@ -2202,7 +2147,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq $f.Severity "Critical"}}badge-critical{{else if eq $f.Severity "High"}}badge-high{{else if eq $f.Severity "Medium"}}badge-medium{{else}}badge-ok{{end}}">{{$f.Severity}}</span>
       <span class="cvss-score" data-vector="{{$f.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" $f.CVSS}}</span>
-      <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}</span>
+      <span class="mono" style="color:var(--text-main)">{{$f.PrincipalName}}{{if $f.SourceDomain}}<span style="color:var(--text-muted);font-size:0.8rem">/{{$f.SourceDomain}}</span>{{end}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
       <span class="mono" style="color:var(--text-sev-high)">{{$f.TargetName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{$f.PrincipalType}} → {{$f.TargetType}}</span>
@@ -2211,7 +2156,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{$f.Right}})</div>
-        <div class="acc-cmd-wrap"><code class="acc-cmd">{{aclExploit (print $f.Right) $f.PrincipalName $f.TargetName $.ACLResult.Domain}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
+        <div class="acc-cmd-wrap"><code class="acc-cmd">{{aclExploit (print $f.Right) $f.PrincipalName $f.TargetName (coalesce $f.SourceDomain $.ACLResult.Domain)}}</code><button class="acc-cmd-copy" onclick="copyCmd(this)" title="Copy to clipboard">📋</button></div>
         <div class="acc-label" style="margin-top:10px">Fix</div>
         <div style="color:var(--text-secondary)">{{aclFix (print $f.Right)}}</div>
       </div>
@@ -2222,7 +2167,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card acl-card" style="margin-bottom:10px" data-severity="Critical" data-right="DCSync" data-text="{{.PrincipalName}}">
     <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge badge-critical">Critical</span>
-      <span class="mono" style="color:var(--text-main)">{{.PrincipalName}}</span>
+      <span class="mono" style="color:var(--text-main)">{{.PrincipalName}}{{if .SourceDomain}}<span style="color:var(--text-muted);font-size:0.8rem">/{{.SourceDomain}}</span>{{end}}</span>
       <span style="color:var(--text-subtle)">─▶</span>
       <span class="mono" style="color:var(--text-sev-high)">Domain Root</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{.PrincipalType}} → Domain</span>

@@ -27,6 +27,7 @@ type KerberoastableAccount struct {
 	CVSSVector      string
 	Severity        string
 	IsMSA           bool   // gMSA/MSA — 240-char random password, cracking is infeasible
+	SourceDomain    string // set for accounts from trusted domains
 }
 
 // ASREPAccount — акаунт з DONT_REQUIRE_PREAUTH
@@ -40,6 +41,7 @@ type ASREPAccount struct {
 	CVSS            float64
 	CVSSVector      string
 	Severity        string
+	SourceDomain    string // set for accounts from trusted domains
 }
 
 // KerberosResult — результат аналізу

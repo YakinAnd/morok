@@ -26,6 +26,7 @@ func Build(result *adldap.EnumerationResult) *Graph {
 			Kerberoastable:       len(u.SPNs) > 0,
 			ASREPRoastable:       u.DontReqPreauth,
 			PasswordNeverExpires: u.PasswordNeverExpires,
+			SourceDomain:         u.SourceDomain,
 		})
 	}
 
