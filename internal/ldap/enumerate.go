@@ -531,9 +531,6 @@ func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Ent
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)
 	}
-	if !c.Quiet {
-		color.White("  querying %s via %s", domain, addrs[0])
-	}
 	return c.SearchDomain(addrs[0], baseDN, FilterAllComputers, computerAttributes)
 }
 

@@ -439,7 +439,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			if !quietMode {
-				color.White("  querying %s...", t.Name)
+				color.White("  enumerating %s...", t.Name)
 			}
 			trustedData = append(trustedData, enumerateTrustedDomain(t.Name, result))
 		}
