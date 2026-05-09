@@ -152,15 +152,12 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	// debug: показуємо entries без nTSecurityDescriptor (тільки trusted domain)
+	// debug: шукаємо Night Watch серед entries (тільки trusted domain)
 	if len(extraResults) > 0 {
-		color.Yellow("    [debug] entries with empty nTSecurityDescriptor:")
+		color.Yellow("    [debug] all %d entry SAMAccountNames:", len(entries))
 		for _, entry := range entries {
-			sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
-			if len(sdBytes) == 0 {
-				sam := entry.GetAttributeValue("sAMAccountName")
-				color.Yellow("    [no-sd] %s / %s", sam, entry.DN)
-			}
+			sam := entry.GetAttributeValue("sAMAccountName")
+			color.Yellow("    [entry] %s", sam)
 		}
 	}
 	// debug: скануємо raw ACE без INHERIT_ONLY фільтра — шукаємо SID що пропускаємо
