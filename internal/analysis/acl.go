@@ -152,14 +152,25 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	// debug dump перших 20 raw findings (тільки при trusted domain аналізі)
+	// debug: print non-builtin raw findings (тільки при trusted domain аналізі)
 	if len(extraResults) > 0 {
-		limit := len(aclResult.Findings)
-		if limit > 20 {
-			limit = 20
+		builtinDebug := map[string]bool{
+			"Administrators": true, "Account Operators": true, "Server Operators": true,
+			"Print Operators": true, "Backup Operators": true, "Domain Admins": true,
+			"Enterprise Admins": true, "Schema Admins": true, "Group Policy Creator Owners": true,
+			"SYSTEM": true, "Administrator": true, "Domain Controllers": true,
+			"Read-only Domain Controllers": true, "Cloneable Domain Controllers": true,
+			"Key Admins": true, "Enterprise Key Admins": true,
 		}
-		for _, f := range aclResult.Findings[:limit] {
-			color.White("    [raw] %-30s %-20s %-20s %s", f.PrincipalName, f.Right, f.TargetName, f.Severity)
+		var nonBuiltin int
+		for _, f := range aclResult.Findings {
+			if !builtinDebug[f.PrincipalName] {
+				color.Yellow("    [non-builtin] %-30s %-20s %s", f.PrincipalName, f.Right, f.TargetName)
+				nonBuiltin++
+			}
+		}
+		if nonBuiltin == 0 {
+			color.Yellow("    [debug] all %d raw findings are from builtin groups — no non-privileged ACEs detected", len(aclResult.Findings))
 		}
 	}
 	// фільтруємо стандартні системні права
