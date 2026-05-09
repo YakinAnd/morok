@@ -453,13 +453,38 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── Merge trusted domain findings into main result ────────────
+	// Build SID sets for deduplication — primary GC may have already fetched
+	// child-domain objects (users, computers) during forest-wide enumeration.
+	existingUserSIDs := make(map[string]bool, len(result.Users))
+	for _, u := range result.Users {
+		if u.ObjectSid != "" {
+			existingUserSIDs[u.ObjectSid] = true
+		}
+	}
+	existingComputerSIDs := make(map[string]bool, len(result.Computers))
+	for _, c := range result.Computers {
+		if c.ObjectSid != "" {
+			existingComputerSIDs[c.ObjectSid] = true
+		}
+	}
+
 	for _, td := range trustedData {
 		if td.Error != "" {
 			continue
 		}
-		result.Users = append(result.Users, td.Users...)
+		for _, u := range td.Users {
+			if u.ObjectSid == "" || !existingUserSIDs[u.ObjectSid] {
+				existingUserSIDs[u.ObjectSid] = true
+				result.Users = append(result.Users, u)
+			}
+		}
 		result.Groups = append(result.Groups, td.Groups...)
-		result.Computers = append(result.Computers, td.Computers...)
+		for _, c := range td.Computers {
+			if c.ObjectSid == "" || !existingComputerSIDs[c.ObjectSid] {
+				existingComputerSIDs[c.ObjectSid] = true
+				result.Computers = append(result.Computers, c)
+			}
+		}
 		if kr != nil && td.KerberosResult != nil {
 			kr.KerberoastableAccounts = append(kr.KerberoastableAccounts, td.KerberosResult.KerberoastableAccounts...)
 			kr.ASREPAccounts = append(kr.ASREPAccounts, td.KerberosResult.ASREPAccounts...)
