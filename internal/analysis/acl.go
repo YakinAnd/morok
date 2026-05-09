@@ -152,35 +152,65 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
-	// debug: знаходимо SID що є в ACE але НЕ в nameMap (тільки при trusted domain аналізі)
+	// debug: скануємо raw ACE без INHERIT_ONLY фільтра — шукаємо SID що пропускаємо
 	if len(extraResults) > 0 {
-		unknownSIDs := make(map[string]int) // SID → кількість появ
+		inheritOnlySIDs := make(map[string]int) // SID → кількість ACE з IO flag
 		for _, entry := range entries {
 			sdBytes := entry.GetRawAttributeValue("nTSecurityDescriptor")
-			if len(sdBytes) == 0 {
+			if len(sdBytes) == 0 || len(sdBytes) < 20 {
 				continue
 			}
-			aces, err := parseSecurityDescriptor(sdBytes)
-			if err != nil {
+			// читаємо DACL offset напряму
+			daclOffset := int(readUint32LE(sdBytes, 16))
+			if daclOffset == 0 || daclOffset+8 > len(sdBytes) {
 				continue
 			}
-			for _, ace := range aces {
-				if ace.SID == "" {
-					continue
+			aceCount := int(readUint16LE(sdBytes, daclOffset+4))
+			aceOff := daclOffset + 8
+			for i := 0; i < aceCount; i++ {
+				if aceOff+4 > len(sdBytes) {
+					break
 				}
-				if _, inMap := nameMap[ace.SID]; !inMap {
-					unknownSIDs[ace.SID]++
+				aceType := sdBytes[aceOff]
+				aceFlags := sdBytes[aceOff+1]
+				aceSize := int(readUint16LE(sdBytes, aceOff+2))
+				if aceSize < 8 || aceOff+aceSize > len(sdBytes) {
+					break
 				}
+				// тільки ACE з INHERIT_ONLY flag
+				if aceFlags&0x08 != 0 {
+					var sid string
+					switch aceType {
+					case 0x00, 0x01, 0x09, 0x0A:
+						sid = parseSID(sdBytes, aceOff+8)
+					case 0x05, 0x06, 0x0B, 0x0C:
+						flags := readUint32LE(sdBytes, aceOff+8)
+						sidOff := aceOff + 12
+						if flags&0x01 != 0 {
+							sidOff += 16
+						}
+						if flags&0x02 != 0 {
+							sidOff += 16
+						}
+						sid = parseSID(sdBytes, sidOff)
+					}
+					if sid != "" {
+						if _, inMap := nameMap[sid]; inMap {
+							inheritOnlySIDs[sid]++
+						}
+					}
+				}
+				aceOff += aceSize
 			}
 		}
-		color.Yellow("    [debug] unknown SIDs (in ACE but not in nameMap): %d unique", len(unknownSIDs))
-		shown := 0
-		for sid, count := range unknownSIDs {
-			if shown >= 10 {
-				break
+		if len(inheritOnlySIDs) > 0 {
+			color.Yellow("    [debug] SIDs found ONLY in INHERIT_ONLY ACEs (being skipped!):")
+			for sid, count := range inheritOnlySIDs {
+				info := nameMap[sid]
+				color.Yellow("    [io-ace] %-30s %s (x%d)", info.Name, sid, count)
 			}
-			color.Yellow("    [sid] %s (x%d)", sid, count)
-			shown++
+		} else {
+			color.Yellow("    [debug] no nameMap SIDs found in INHERIT_ONLY ACEs")
 		}
 	}
 	// фільтруємо стандартні системні права
