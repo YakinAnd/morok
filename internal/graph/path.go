@@ -1,70 +1,84 @@
 package graph
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/fatih/color"
 )
 
 // ============================================================
-// BFS пошук attack paths
+// BFS attack path search
 // ============================================================
 
-// FindPathsToDA знаходить всі шляхи від будь-якого вузла до Domain Admins
+// privilegedGroups lists all high-value AD groups to search paths to.
+var privilegedGroups = []string{
+	"Domain Admins",
+	"Enterprise Admins",
+	"Backup Operators",
+	"Account Operators",
+	"Server Operators",
+	"Print Operators",
+	"DNSAdmins",
+	"Group Policy Creator Owners",
+}
+
+// FindPathsToDA finds paths to Domain Admins (backward compat).
 func (g *Graph) FindPathsToDA(maxDepth int) []AttackPath {
-	color.Blue("[*] Searching for attack paths to Domain Admins...")
+	return g.findPathsToGroup("Domain Admins", maxDepth, 200)
+}
 
-	// знаходимо DN групи Domain Admins
-	daDN := g.findDomainAdmins()
-	if daDN == "" {
-		color.Yellow("[!] Domain Admins group not found in graph")
-		return nil
-	}
-
+// FindPathsToPrivilegedGroups finds paths to all privileged groups.
+func (g *Graph) FindPathsToPrivilegedGroups(maxDepth int) []AttackPath {
 	if maxDepth <= 0 {
 		maxDepth = 10
 	}
 
-	var allPaths []AttackPath
+	var all []AttackPath
+	for _, groupName := range privilegedGroups {
+		paths := g.findPathsToGroup(groupName, maxDepth, 50)
+		all = append(all, paths...)
+	}
+	return all
+}
 
-	// запускаємо BFS від кожного увімкненого не-DA вузла
+// findPathsToGroup is the common BFS runner for a named group.
+func (g *Graph) findPathsToGroup(groupName string, maxDepth, limit int) []AttackPath {
+	targetDN := g.findBySAM(groupName)
+	if targetDN == "" {
+		return nil
+	}
+
+	var allPaths []AttackPath
 	for dn, node := range g.Nodes {
-		// пропускаємо сам DA і відключені акаунти
-		if strings.EqualFold(dn, daDN) {
+		if strings.EqualFold(dn, targetDN) {
 			continue
 		}
 		if !node.Enabled && node.Type != NodeGroup {
 			continue
 		}
-
-		paths := g.bfs(dn, daDN, maxDepth)
+		paths := g.bfs(dn, targetDN, maxDepth)
+		for i := range paths {
+			paths[i].TargetGroup = groupName
+		}
 		allPaths = append(allPaths, paths...)
-
-		// захист від переповнення: не більше 200 шляхів
-		if len(allPaths) >= 200 {
-			color.Yellow("[!] Over 200 attack paths found, truncating results")
+		if len(allPaths) >= limit {
 			break
 		}
 	}
 
-	if len(allPaths) == 0 {
-		color.Green("[+] No direct attack paths to Domain Admins found")
-	} else {
-		color.Red("[!] Found %d attack path(s) to Domain Admins", len(allPaths))
-	}
 
 	return allPaths
 }
 
-// FindPathsToTarget знаходить шляхи до довільного вузла за SAMAccountName
+// FindPathsToTarget finds paths to an arbitrary node by SAMAccountName.
 func (g *Graph) FindPathsToTarget(targetSAM string, maxDepth int) []AttackPath {
 	targetDN := g.findBySAM(targetSAM)
 	if targetDN == "" {
-		color.Yellow("[!] Target '%s' not found in graph", targetSAM)
+		color.White("  target '%s' not found in graph", targetSAM)
 		return nil
 	}
 
-	color.Blue("[*] Searching for attack paths to '%s'...", targetSAM)
 
 	if maxDepth <= 0 {
 		maxDepth = 10
@@ -88,56 +102,50 @@ func (g *Graph) FindPathsToTarget(targetSAM string, maxDepth int) []AttackPath {
 }
 
 // ============================================================
-// BFS — основний алгоритм обходу
+// BFS — core traversal algorithm
 // ============================================================
 
-// bfsState зберігає стан одного вузла під час обходу
+// bfsState holds the traversal state for a single node.
 type bfsState struct {
-	dn    string  // поточний DN
-	path  []Edge  // шлях який привів сюди
-	depth int     // поточна глибина
+	dn    string  // current DN
+	path  []Edge  // edges that led here
+	depth int     // current depth
 }
 
-// bfs виконує пошук в ширину від startDN до targetDN
+// bfs performs a breadth-first search from startDN to targetDN.
 func (g *Graph) bfs(startDN, targetDN string, maxDepth int) []AttackPath {
 	var foundPaths []AttackPath
 
-	// visited — запобігає циклам: зберігаємо DN які вже відвідали
-	// на поточному шляху (не глобально — щоб знайти всі шляхи)
+	// Track visited DNs per-path (not globally) so all paths are found.
 	queue := []bfsState{
 		{dn: startDN, path: []Edge{}, depth: 0},
 	}
 
 	for len(queue) > 0 {
-		// беремо перший елемент з черги
 		current := queue[0]
 		queue = queue[1:]
 
-		// досягли максимальної глибини — не йдемо далі
 		if current.depth >= maxDepth {
 			continue
 		}
 
-		// перебираємо всіх сусідів поточного вузла
 		for _, edge := range g.Adj[current.dn] {
-			// перевіряємо чи не було цього вузла вже на цьому шляху
+			// skip if this node is already on the current path
 			if pathContains(current.path, edge.To) {
 				continue
 			}
 
-			// будуємо новий шлях = попередній + поточний edge
+			// build new path = previous path + current edge
 			newPath := make([]Edge, len(current.path)+1)
 			copy(newPath, current.path)
 			newPath[len(current.path)] = edge
 
-			// знайшли ціль
 			if strings.EqualFold(edge.To, targetDN) {
 				ap := g.buildAttackPath(newPath)
 				foundPaths = append(foundPaths, ap)
-				continue // продовжуємо шукати інші шляхи
+				continue // keep searching for other paths
 			}
 
-			// не знайшли — додаємо сусіда в чергу
 			queue = append(queue, bfsState{
 				dn:    edge.To,
 				path:  newPath,
@@ -149,9 +157,8 @@ func (g *Graph) bfs(startDN, targetDN string, maxDepth int) []AttackPath {
 	return foundPaths
 }
 
-// buildAttackPath будує AttackPath struct зі списку edges
+// buildAttackPath assembles an AttackPath from an edge list.
 func (g *Graph) buildAttackPath(edges []Edge) AttackPath {
-	// збираємо унікальні вузли вздовж шляху
 	nodeMap := make(map[string]bool)
 	var nodes []Node
 
@@ -178,21 +185,10 @@ func (g *Graph) buildAttackPath(edges []Edge) AttackPath {
 }
 
 // ============================================================
-// Допоміжні функції
+// Helper functions
 // ============================================================
 
-// findDomainAdmins шукає DN групи Domain Admins у графі
-func (g *Graph) findDomainAdmins() string {
-	for dn, node := range g.Nodes {
-		if node.Type == NodeGroup &&
-			strings.EqualFold(node.SAMAccountName, "Domain Admins") {
-			return dn
-		}
-	}
-	return ""
-}
-
-// findBySAM шукає DN об'єкта за SAMAccountName
+// findBySAM returns the DN of an object by SAMAccountName.
 func (g *Graph) findBySAM(sam string) string {
 	for dn, node := range g.Nodes {
 		if strings.EqualFold(node.SAMAccountName, sam) {
@@ -202,8 +198,7 @@ func (g *Graph) findBySAM(sam string) string {
 	return ""
 }
 
-// pathContains перевіряє чи вже є DN у поточному шляху
-// запобігає циклам типу A→B→C→B
+// pathContains reports whether the given DN is already on the path (cycle guard).
 func pathContains(path []Edge, dn string) bool {
 	for _, edge := range path {
 		if strings.EqualFold(edge.From, dn) ||
@@ -214,47 +209,43 @@ func pathContains(path []Edge, dn string) bool {
 	return false
 }
 
-// PrintPaths виводить знайдені шляхи в термінал
+// PrintPaths prints discovered attack paths to the terminal.
 func (g *Graph) PrintPaths(paths []AttackPath) {
+	color.Cyan("\n  ATTACK PATHS")
 	if len(paths) == 0 {
+		color.White("  none found")
 		return
 	}
-
-	color.Red("\n[!] Attack Paths to Domain Admins:\n")
+	color.Red("  %d path(s) to privileged groups\n", len(paths))
 
 	for i, path := range paths {
-		color.Yellow("  Path %d (depth: %d):", i+1, path.Depth)
+		target := path.TargetGroup
+		if target == "" {
+			target = "Domain Admins"
+		}
+		color.Red("  #%-3d → %-30s  depth: %d", i+1, target, path.Depth)
 
 		for j, node := range path.Nodes {
-			prefix := "  "
-			if j < len(path.Nodes)-1 {
-				prefix = "  ├─"
-			} else {
-				prefix = "  └─"
+			prefix := "  │   ├─"
+			if j == len(path.Nodes)-1 {
+				prefix = "  │   └─"
 			}
-
-			// колір залежно від типу вузла
-			switch node.Type {
-			case NodeUser:
-				extras := nodeExtras(node)
-				color.Cyan("%s [USER] %s%s", prefix, node.SAMAccountName, extras)
-			case NodeGroup:
-				color.Magenta("%s [GROUP] %s", prefix, node.SAMAccountName)
-			case NodeComputer:
-				extras := nodeExtras(node)
-				color.Blue("%s [COMPUTER] %s%s", prefix, node.SAMAccountName, extras)
+			extras := ""
+			if node.Type == NodeUser || node.Type == NodeComputer {
+				extras = nodeExtras(node)
 			}
+			typeTag := strings.ToUpper(string(node.Type))
+			color.White("%s [%-8s] %s%s", prefix, typeTag, node.SAMAccountName, extras)
 
-			// показуємо тип зв'язку між вузлами
 			if j < len(path.Edges) {
-				color.White("  │   └─[%s]", path.Edges[j].Type)
+				color.White("  │        via %s", path.Edges[j].Type)
 			}
 		}
-		color.White("")
+		fmt.Println()
 	}
 }
 
-// nodeExtras формує рядок з додатковими прапорами вузла
+// nodeExtras returns a bracketed string of node flags.
 func nodeExtras(node Node) string {
 	var extras []string
 	if node.Kerberoastable {

@@ -2,7 +2,9 @@ package ldap
 
 import (
 	"fmt"
+	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -10,10 +12,10 @@ import (
 )
 
 // ============================================================
-// Моделі даних
+// Data models
 // ============================================================
 
-// LDAPUser представляє користувача AD
+// LDAPUser represents an AD user object.
 type LDAPUser struct {
 	DN               string
 	SAMAccountName   string
@@ -24,47 +26,71 @@ type LDAPUser struct {
 	SPNs             []string
 	AdminCount       bool
 	Enabled          bool
-	PasswordNeverExpires bool
-	DontReqPreauth   bool   // AS-REP roastable
+	PasswordNeverExpires  bool
+	PasswordNotRequired   bool   // UAC 0x20 — can authenticate with empty password
+	SmartcardRequired     bool   // UAC 0x40000 — password hash never rotates, PTH risk
+	DontReqPreauth        bool   // AS-REP roastable
 	LastLogon        string
 	PasswordLastSet  string
+	ObjectSid        string
+	CN               string
+	CreatedOn        string
+	ChangedOn        string
+	PrimaryGroup     string // resolved name, e.g. "Domain Users"
+	SourceDomain     string // set for objects from trusted domains
 }
 
-// LDAPGroup представляє групу AD
+// LDAPGroup represents an AD group object.
 type LDAPGroup struct {
 	DN             string
 	SAMAccountName string
 	Description    string
-	Members        []string // DN членів
+	Members        []string // member DNs
 	AdminCount     bool
 	GroupType      string
+	ObjectSid      string
+	CN             string
+	CreatedOn      string
+	ChangedOn      string
+	MemberOf       []string // DNs of parent groups (nested membership)
+	SourceDomain   string   // set for objects from trusted domains
 }
 
-// LDAPComputer представляє комп'ютер AD
+// LDAPComputer represents an AD computer object.
 type LDAPComputer struct {
-	DN                     string
-	SAMAccountName         string
-	DNSHostName            string
-	OperatingSystem        string
-	OperatingSystemVersion string
-	Enabled                bool
-	LastLogon              string
-	SPNs                   []string
+	DN                      string
+	SAMAccountName          string
+	DNSHostName             string
+	OperatingSystem         string
+	OperatingSystemVersion  string
+	OperatingSystemSP       string
+	Enabled                 bool
+	LastLogon               string
+	SPNs                    []string
 	UnconstrainedDelegation bool
+	ObjectSid               string
+	Description             string
+	WhenCreated             string
+	LAPSEnabled             bool
+	Domain                  string // e.g. "north.sevenkingdoms.local"
+	IsGC                    bool   // true if data came from GC (may be partial)
+	CN                      string
+	ChangedOn               string
 }
 
-// EnumerationResult містить всі зібрані дані
+// EnumerationResult holds all collected AD data.
 type EnumerationResult struct {
-	Domain    string
-	BaseDN    string
-	Users     []LDAPUser
-	Groups    []LDAPGroup
-	Computers []LDAPComputer
+	Domain      string
+	BaseDN      string
+	Users       []LDAPUser
+	Groups      []LDAPGroup
+	Computers   []LDAPComputer
 	CollectedAt time.Time
+	ForestWide  bool // true if computers cover entire forest (GC was used)
 }
 
 // ============================================================
-// LDAP фільтри
+// LDAP filters
 // ============================================================
 
 const (
@@ -76,7 +102,7 @@ const (
 )
 
 // ============================================================
-// Атрибути для запитів
+// LDAP query attributes
 // ============================================================
 
 var userAttributes = []string{
@@ -91,6 +117,11 @@ var userAttributes = []string{
 	"userAccountControl",
 	"lastLogonTimestamp",
 	"pwdLastSet",
+	"objectSid",
+	"cn",
+	"whenCreated",
+	"whenChanged",
+	"primaryGroupID",
 }
 
 var groupAttributes = []string{
@@ -100,6 +131,11 @@ var groupAttributes = []string{
 	"member",
 	"adminCount",
 	"groupType",
+	"objectSid",
+	"cn",
+	"whenCreated",
+	"whenChanged",
+	"memberOf",
 }
 
 var computerAttributes = []string{
@@ -108,16 +144,23 @@ var computerAttributes = []string{
 	"dNSHostName",
 	"operatingSystem",
 	"operatingSystemVersion",
+	"operatingSystemServicePack",
 	"userAccountControl",
 	"lastLogonTimestamp",
 	"servicePrincipalName",
+	"objectSid",
+	"description",
+	"whenCreated",
+	"whenChanged",
+	"ms-MCS-AdmPwdExpirationTime",
+	"cn",
 }
 
 // ============================================================
-// Основні функції enumeration
+// Core enumeration functions
 // ============================================================
 
-// EnumerateAll запускає повний enumeration і повертає результат
+// EnumerateAll runs a full AD enumeration and returns the result.
 func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	result := &EnumerationResult{
 		Domain:      c.Domain,
@@ -125,7 +168,9 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 		CollectedAt: time.Now(),
 	}
 
-	color.Cyan("\n[*] Starting enumeration of %s\n", c.Domain)
+	if !c.Quiet {
+		color.White("\n  enumerating %s ...", c.Domain)
+	}
 
 	// Users
 	users, err := c.EnumerateUsers()
@@ -141,68 +186,65 @@ func (c *Client) EnumerateAll() (*EnumerationResult, error) {
 	}
 	result.Groups = groups
 
-	// Computers
-	computers, err := c.EnumerateComputers()
+	// Resolve user primary groups now that we have both users and groups
+	resolvePrimaryGroups(result.Users, result.Groups)
+
+	// Computers — try forest-wide (GC), fall back to domain-only
+	computers, forestWide, err := c.enumerateComputersForest()
 	if err != nil {
 		return nil, fmt.Errorf("computer enumeration failed: %w", err)
 	}
 	result.Computers = computers
-
-	// Підсумок
-	color.Cyan("\n[*] Enumeration complete:")
-	color.Green("    Users:     %d", len(result.Users))
-	color.Green("    Groups:    %d", len(result.Groups))
-	color.Green("    Computers: %d", len(result.Computers))
-
-	// Швидкий аналіз цікавих об'єктів
-	c.printQuickFindings(result)
+	result.ForestWide = forestWide
 
 	return result, nil
 }
 
-// EnumerateUsers збирає всіх користувачів AD
-func (c *Client) EnumerateUsers() ([]LDAPUser, error) {
-	color.Blue("[*] Enumerating users...")
+// PrintEnumerationSummary prints the "OBJECTS COLLECTED" and quick findings sections.
+// Call this only from the enum command — not from targeted analysis commands.
+func (c *Client) PrintEnumerationSummary(result *EnumerationResult) {
+	compLabel := "domain"
+	if result.ForestWide {
+		compLabel = "forest-wide"
+	}
+	color.Cyan("\n  OBJECTS COLLECTED")
+	color.White("  %-12s %d", "users", len(result.Users))
+	color.White("  %-12s %d", "groups", len(result.Groups))
+	color.White("  %-12s %d  (%s)", "computers", len(result.Computers), compLabel)
 
+	c.printQuickFindings(result)
+}
+
+// EnumerateUsers collects all AD users.
+func (c *Client) EnumerateUsers() ([]LDAPUser, error) {
 	entries, err := c.Search(FilterAllUsers, userAttributes)
 	if err != nil {
 		return nil, err
 	}
 
 	users := make([]LDAPUser, 0, len(entries))
-
 	for _, entry := range entries {
-		user := parseUser(entry)
-		users = append(users, user)
+		users = append(users, parseUser(entry))
 	}
-
-	color.Green("[+] Found %d users", len(users))
 	return users, nil
 }
 
-// EnumerateGroups збирає всі групи AD
+// EnumerateGroups collects all AD groups.
 func (c *Client) EnumerateGroups() ([]LDAPGroup, error) {
-	color.Blue("[*] Enumerating groups...")
-
 	entries, err := c.Search(FilterAllGroups, groupAttributes)
 	if err != nil {
 		return nil, err
 	}
 
 	groups := make([]LDAPGroup, 0, len(entries))
-
 	for _, entry := range entries {
-		group := parseGroup(entry)
-		groups = append(groups, group)
+		groups = append(groups, parseGroup(entry))
 	}
-
-	color.Green("[+] Found %d groups", len(groups))
 	return groups, nil
 }
 
-// EnumerateComputers збирає всі комп'ютери AD
+// EnumerateComputers collects all AD computers.
 func (c *Client) EnumerateComputers() ([]LDAPComputer, error) {
-	color.Blue("[*] Enumerating computers...")
 
 	entries, err := c.Search(FilterAllComputers, computerAttributes)
 	if err != nil {
@@ -216,12 +258,11 @@ func (c *Client) EnumerateComputers() ([]LDAPComputer, error) {
 		computers = append(computers, computer)
 	}
 
-	color.Green("[+] Found %d computers", len(computers))
 	return computers, nil
 }
 
 // ============================================================
-// Парсери LDAP Entry → struct
+// Parsers: LDAP Entry → struct
 // ============================================================
 
 func parseUser(entry *goldap.Entry) LDAPUser {
@@ -238,9 +279,16 @@ func parseUser(entry *goldap.Entry) LDAPUser {
 		AdminCount:           entry.GetAttributeValue("adminCount") == "1",
 		Enabled:              !isBitSet(uac, 0x0002),  // ADS_UF_ACCOUNTDISABLE
 		PasswordNeverExpires: isBitSet(uac, 0x10000),  // ADS_UF_DONT_EXPIRE_PASSWD
+		PasswordNotRequired:  isBitSet(uac, 0x0020),   // ADS_UF_PASSWD_NOTREQD
+		SmartcardRequired:    isBitSet(uac, 0x40000),  // ADS_UF_SMARTCARD_REQUIRED
 		DontReqPreauth:       isBitSet(uac, 0x400000), // ADS_UF_DONT_REQUIRE_PREAUTH
 		LastLogon:            parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		PasswordLastSet:      parseFileTime(entry.GetAttributeValue("pwdLastSet")),
+		ObjectSid:            parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
+		CN:           entry.GetAttributeValue("cn"),
+		CreatedOn:    parseADDateTime(entry.GetAttributeValue("whenCreated")),
+		ChangedOn:    parseADDateTime(entry.GetAttributeValue("whenChanged")),
+		PrimaryGroup: entry.GetAttributeValue("primaryGroupID"), // raw RID; resolved in EnumerateAll
 	}
 }
 
@@ -252,11 +300,17 @@ func parseGroup(entry *goldap.Entry) LDAPGroup {
 		Members:        entry.GetAttributeValues("member"),
 		AdminCount:     entry.GetAttributeValue("adminCount") == "1",
 		GroupType:      parseGroupType(entry.GetAttributeValue("groupType")),
+		ObjectSid:      parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
+		CN:             entry.GetAttributeValue("cn"),
+		CreatedOn:      parseADDateTime(entry.GetAttributeValue("whenCreated")),
+		ChangedOn:      parseADDateTime(entry.GetAttributeValue("whenChanged")),
+		MemberOf:       entry.GetAttributeValues("memberOf"),
 	}
 }
 
 func parseComputer(entry *goldap.Entry) LDAPComputer {
 	uac := parseUAC(entry.GetAttributeValue("userAccountControl"))
+	lapsExpiry := entry.GetAttributeValue("ms-MCS-AdmPwdExpirationTime")
 
 	return LDAPComputer{
 		DN:                      entry.DN,
@@ -264,18 +318,26 @@ func parseComputer(entry *goldap.Entry) LDAPComputer {
 		DNSHostName:             entry.GetAttributeValue("dNSHostName"),
 		OperatingSystem:         entry.GetAttributeValue("operatingSystem"),
 		OperatingSystemVersion:  entry.GetAttributeValue("operatingSystemVersion"),
+		OperatingSystemSP:       entry.GetAttributeValue("operatingSystemServicePack"),
 		Enabled:                 !isBitSet(uac, 0x0002),
 		LastLogon:               parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		SPNs:                    entry.GetAttributeValues("servicePrincipalName"),
-		UnconstrainedDelegation: isBitSet(uac, 0x80000), // ADS_UF_TRUSTED_FOR_DELEGATION
+		UnconstrainedDelegation: isBitSet(uac, 0x80000) && !isBitSet(uac, 0x2000),
+		ObjectSid:               parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
+		Description:             entry.GetAttributeValue("description"),
+		WhenCreated:             parseGeneralizedTime(entry.GetAttributeValue("whenCreated")),
+		LAPSEnabled:             lapsExpiry != "",
+		Domain:                  dnToDomainLabel(entry.DN),
+		CN:                      entry.GetAttributeValue("cn"),
+		ChangedOn:               parseADDateTime(entry.GetAttributeValue("whenChanged")),
 	}
 }
 
 // ============================================================
-// Допоміжні функції
+// Helper functions
 // ============================================================
 
-// parseUAC конвертує рядок userAccountControl в число
+// parseUAC parses the userAccountControl string to a uint64.
 func parseUAC(val string) uint64 {
 	if val == "" {
 		return 0
@@ -287,13 +349,13 @@ func parseUAC(val string) uint64 {
 	return n
 }
 
-// isBitSet перевіряє чи встановлений конкретний біт у UAC
+// isBitSet reports whether the given bit is set in val.
 func isBitSet(uac uint64, bit uint64) bool {
 	return uac&bit != 0
 }
 
-// parseFileTime конвертує Windows FILETIME → читабельна дата
-// Windows FILETIME: кількість 100-наносекундних інтервалів з 1 січня 1601
+// parseFileTime converts a Windows FILETIME string to a human-readable date.
+// Windows FILETIME counts 100-nanosecond intervals since 1 January 1601.
 func parseFileTime(val string) string {
 	if val == "" || val == "0" || val == "9223372036854775807" {
 		return "Never"
@@ -304,8 +366,7 @@ func parseFileTime(val string) string {
 		return "Never"
 	}
 
-	// конвертуємо з Windows epoch (1601) до Unix epoch (1970)
-	// різниця: 11644473600 секунд
+	// Convert from Windows epoch (1601) to Unix epoch (1970): delta = 11644473600 seconds.
 	unixSec := n/10000000 - 11644473600
 	if unixSec <= 0 {
 		return "Never"
@@ -315,7 +376,7 @@ func parseFileTime(val string) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-// parseGroupType конвертує числовий groupType в рядок
+// parseGroupType converts the numeric groupType to a human-readable string.
 func parseGroupType(val string) string {
 	if val == "" {
 		return "Unknown"
@@ -325,10 +386,10 @@ func parseGroupType(val string) string {
 		return "Unknown"
 	}
 
-	// старший біт = Security group (vs Distribution)
+	// high bit set = Security group (vs Distribution)
 	isSecurity := n < 0
 
-	switch n & 0x7FFFFFFF { // маскуємо знаковий біт
+	switch n & 0x7FFFFFFF { // mask sign bit
 	case 1:
 		if isSecurity {
 			return "Security/System"
@@ -354,16 +415,9 @@ func parseGroupType(val string) string {
 	}
 }
 
-// printQuickFindings виводить короткий summary цікавих знахідок
+// printQuickFindings prints a brief summary of notable findings.
 func (c *Client) printQuickFindings(result *EnumerationResult) {
-	color.Yellow("\n[!] Quick findings:")
-
-	// Кербероастабельні акаунти
-	kerberoastable := 0
-	asrep := 0
-	adminUsers := 0
-	passwordNeverExpires := 0
-
+	kerberoastable, asrep, adminUsers, pwdNeverExpires := 0, 0, 0, 0
 	for _, u := range result.Users {
 		if !u.Enabled {
 			continue
@@ -378,30 +432,213 @@ func (c *Client) printQuickFindings(result *EnumerationResult) {
 			adminUsers++
 		}
 		if u.PasswordNeverExpires {
-			passwordNeverExpires++
+			pwdNeverExpires++
 		}
 	}
-
-	printFinding("Kerberoastable accounts", kerberoastable)
-	printFinding("AS-REP roastable accounts", asrep)
-	printFinding("AdminCount=1 users", adminUsers)
-	printFinding("Password never expires", passwordNeverExpires)
-
-	// Комп'ютери з Unconstrained Delegation
-	unconstrainedDelegation := 0
+	unconstrainedDeleg := 0
 	for _, comp := range result.Computers {
 		if comp.UnconstrainedDelegation && comp.Enabled {
-			unconstrainedDelegation++
+			unconstrainedDeleg++
 		}
 	}
-	printFinding("Unconstrained delegation computers", unconstrainedDelegation)
+
+	color.Cyan("\n  QUICK FINDINGS")
+	printFinding("kerberoastable", kerberoastable)
+	printFinding("AS-REP roastable", asrep)
+	printFinding("privileged accts (SDProp)", adminUsers)
+	printFinding("password never expires", pwdNeverExpires)
+	printFinding("unconstrained delegation", unconstrainedDeleg)
 }
 
-// printFinding виводить знахідку з кольором залежно від кількості
 func printFinding(label string, count int) {
 	if count == 0 {
-		color.Green("    %-40s %d", label+":", count)
+		color.White("  %-28s %d", label, count)
 	} else {
-		color.Red("    %-40s %d  ◄", label+":", count)
+		color.Yellow("  %-28s %d", label, count)
 	}
+}
+
+// ============================================================
+// Forest-wide computer enumeration
+// ============================================================
+
+// EnumerateComputersForest tries GC (port 3268) to get all forest computers,
+// then upgrades to full attributes via direct domain DC queries.
+// Returns (computers, forestWide, error).
+func (c *Client) EnumerateComputersForest() ([]LDAPComputer, bool, error) {
+	return c.enumerateComputersForest()
+}
+
+// enumerateComputersForest tries GC (port 3268) to get all forest computers,
+// then upgrades to full attributes via direct domain DC queries.
+// Returns (computers, forestWide, error).
+func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
+	gcEntries, err := c.SearchGC(FilterAllComputers, computerAttributes)
+	if err != nil {
+		if !c.Quiet {
+			color.White("  GC unavailable (%v), domain-only", err)
+		}
+		computers, err := c.EnumerateComputers()
+		return computers, false, err
+	}
+
+	// Group entries by domain baseDN
+	domainEntries := make(map[string][]*goldap.Entry)
+	for _, entry := range gcEntries {
+		baseDN := dnToBaseDN(entry.DN)
+		domainEntries[baseDN] = append(domainEntries[baseDN], entry)
+	}
+
+	var computers []LDAPComputer
+
+	for baseDN, entries := range domainEntries {
+		if baseDN == strings.ToLower(c.BaseDN) {
+			// Current domain — query directly for full attributes
+			full, err := c.EnumerateComputers()
+			if err == nil {
+				computers = append(computers, full...)
+				continue
+			}
+		}
+
+		// Child domain — try to resolve DC and query directly
+		childDomain := baseDNToDomain(baseDN)
+		fullEntries, err := c.queryChildDomainComputers(childDomain, baseDN)
+		if err == nil {
+			for _, e := range fullEntries {
+				comp := parseComputer(e)
+				computers = append(computers, comp)
+			}
+		} else {
+			if !c.Quiet {
+				color.White("  cannot reach %s (%v), using partial GC data", childDomain, err)
+			}
+			for _, e := range entries {
+				comp := parseComputer(e)
+				comp.IsGC = true
+				computers = append(computers, comp)
+			}
+		}
+	}
+
+	return computers, true, nil
+}
+
+// queryChildDomainComputers resolves the child domain's DC via DNS and queries it.
+func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Entry, error) {
+	addrs, err := net.LookupHost(domain)
+	if err != nil || len(addrs) == 0 {
+		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)
+	}
+	return c.SearchDomain(addrs[0], baseDN, FilterAllComputers, computerAttributes)
+}
+
+// dnToBaseDN extracts the DC= components from a DN as a lowercase string.
+// "CN=CASTELBLACK,CN=Computers,DC=north,DC=sevenkingdoms,DC=local" → "dc=north,dc=sevenkingdoms,dc=local"
+func dnToBaseDN(dn string) string {
+	parts := strings.Split(strings.ToLower(dn), ",")
+	var dcs []string
+	for _, p := range parts {
+		if strings.HasPrefix(strings.TrimSpace(p), "dc=") {
+			dcs = append(dcs, strings.TrimSpace(p))
+		}
+	}
+	return strings.Join(dcs, ",")
+}
+
+// dnToDomainLabel extracts the domain label (e.g. "north.sevenkingdoms.local") from a DN.
+func dnToDomainLabel(dn string) string {
+	return baseDNToDomain(dnToBaseDN(dn))
+}
+
+// baseDNToDomain converts "dc=north,dc=sevenkingdoms,dc=local" → "north.sevenkingdoms.local"
+func baseDNToDomain(baseDN string) string {
+	parts := strings.Split(strings.ToLower(baseDN), ",")
+	var labels []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if strings.HasPrefix(p, "dc=") {
+			labels = append(labels, strings.TrimPrefix(p, "dc="))
+		}
+	}
+	return strings.Join(labels, ".")
+}
+
+// parseGeneralizedTime parses LDAP generalized time "20230101120000.0Z" → "2023-01-01"
+func parseGeneralizedTime(val string) string {
+	if val == "" {
+		return ""
+	}
+	for _, layout := range []string{"20060102150405.0Z", "20060102150405Z", "20060102150405.0-0700", "20060102150405-0700"} {
+		if t, err := time.Parse(layout, val); err == nil {
+			return t.Format("2006-01-02")
+		}
+	}
+	return val
+}
+
+// parseADDateTime parses LDAP generalized time → "2023-01-01 12:00:00" (date + time).
+func parseADDateTime(val string) string {
+	if val == "" {
+		return ""
+	}
+	for _, layout := range []string{"20060102150405.0Z", "20060102150405Z", "20060102150405.0-0700", "20060102150405-0700"} {
+		if t, err := time.Parse(layout, val); err == nil {
+			return t.UTC().Format("2006-01-02 15:04:05")
+		}
+	}
+	return val
+}
+
+// resolvePrimaryGroups replaces each user's PrimaryGroup (currently holding the raw RID string)
+// with the SAMAccountName of the matching group, looked up by the last sub-authority of the group SID.
+func resolvePrimaryGroups(users []LDAPUser, groups []LDAPGroup) {
+	// Build RID → SAMAccountName from the last component of each group's SID.
+	ridToName := make(map[string]string, len(groups))
+	for _, g := range groups {
+		if g.ObjectSid == "" {
+			continue
+		}
+		idx := strings.LastIndex(g.ObjectSid, "-")
+		if idx < 0 {
+			continue
+		}
+		rid := g.ObjectSid[idx+1:]
+		ridToName[rid] = g.SAMAccountName
+	}
+
+	for i := range users {
+		rid := users[i].PrimaryGroup
+		if rid == "" {
+			continue
+		}
+		if name, ok := ridToName[rid]; ok {
+			users[i].PrimaryGroup = name
+		}
+	}
+}
+
+// parseSIDBytes converts raw objectSid bytes to an S-1-5-... string.
+func parseSIDBytes(data []byte) string {
+	if len(data) < 8 {
+		return ""
+	}
+	revision := data[0]
+	subAuthorityCount := int(data[1])
+	if len(data) < 8+subAuthorityCount*4 {
+		return ""
+	}
+	var authority uint64
+	for i := 0; i < 6; i++ {
+		authority = authority<<8 | uint64(data[2+i])
+	}
+	sid := fmt.Sprintf("S-%d-%d", revision, authority)
+	for i := 0; i < subAuthorityCount; i++ {
+		subAuth := uint32(data[8+i*4]) |
+			uint32(data[9+i*4])<<8 |
+			uint32(data[10+i*4])<<16 |
+			uint32(data[11+i*4])<<24
+		sid += fmt.Sprintf("-%d", subAuth)
+	}
+	return sid
 }

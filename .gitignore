@@ -6,3 +6,15 @@ dist/
 *.log
 report*.html
 adpath
+morok
+*.html
+.DS_Store
+**/.DS_Store
+
+# Internal tooling — not for public repo
+.claude/
+CLAUDE.md
+CONTEXT.md
+ui-polish/
+gendemo
+-o
