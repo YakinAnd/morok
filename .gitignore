@@ -12,9 +12,6 @@ morok
 **/.DS_Store
 
 # Internal tooling — not for public repo
-.claude/
-CLAUDE.md
-CONTEXT.md
 ui-polish/
 gendemo
 -o
