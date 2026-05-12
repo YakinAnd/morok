@@ -11,7 +11,7 @@ morok
 .DS_Store
 **/.DS_Store
 
-# Internal tooling — not for public repo
+# Internal tooling
 ui-polish/
 gendemo
 -o
