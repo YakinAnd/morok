@@ -3440,6 +3440,7 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
         </span>
       </label>
     </div>
+    <div id="history-load-errors" style="display:none;padding:10px 14px;background:rgba(244,67,54,0.1);border:1px solid var(--sev-critical);border-radius:6px;color:var(--sev-critical);font-size:0.85rem;margin-bottom:12px"></div>
     <div id="history-domain-warning" style="display:none;padding:10px 14px;background:rgba(255,152,0,0.12);border:1px solid var(--sev-medium);border-radius:6px;color:var(--sev-medium);font-size:0.85rem;margin-bottom:16px"></div>
     <div id="history-empty" style="text-align:center;padding:60px 20px;color:var(--text-muted)">
       <div style="font-size:3rem;margin-bottom:12px">&#128202;</div>
@@ -4444,23 +4445,46 @@ var _HIST_CATEGORIES = [
 function loadHistoryFiles(input) {
   var files = Array.from(input.files);
   if (!files.length) return;
+  var errors = [];
   var pending = files.length;
   files.forEach(function(file) {
     var reader = new FileReader();
     reader.onload = function(e) {
+      var ok = false;
       try {
         var parser = new DOMParser();
         var doc = parser.parseFromString(e.target.result, 'text/html');
         var el = doc.getElementById('morok-data');
-        if (el) {
+        if (!el) {
+          errors.push(file.name + ': not a morok report (no embedded data block — must be v1.1.0+)');
+        } else {
           var snap = JSON.parse(el.textContent);
-          snap._filename = file.name;
-          // deduplicate by generated_at
-          var exists = _histSnapshots.some(function(s) { return s.generated_at === snap.generated_at; });
-          if (!exists) _histSnapshots.push(snap);
+          if (!snap.v || !snap.generated_at) {
+            errors.push(file.name + ': unrecognised snapshot format');
+          } else {
+            snap._filename = file.name;
+            var exists = _histSnapshots.some(function(s) { return s.generated_at === snap.generated_at; });
+            if (exists) {
+              errors.push(file.name + ': already loaded (same timestamp)');
+            } else {
+              _histSnapshots.push(snap);
+              ok = true;
+            }
+          }
         }
-      } catch(ex) { console.error('Failed to parse ' + file.name, ex); }
-      if (--pending === 0) _histRender();
+      } catch(ex) {
+        errors.push(file.name + ': failed to parse (' + ex.message + ')');
+      }
+      if (--pending === 0) {
+        var errEl = document.getElementById('history-load-errors');
+        if (errors.length) {
+          errEl.style.display = '';
+          errEl.innerHTML = '&#10007; ' + errors.map(_histEsc).join('<br>&#10007; ');
+        } else {
+          errEl.style.display = 'none';
+        }
+        _histRender();
+      }
     };
     reader.readAsText(file);
   });
