@@ -3440,6 +3440,7 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
         </span>
       </label>
     </div>
+    <div id="history-domain-warning" style="display:none;padding:10px 14px;background:rgba(255,152,0,0.12);border:1px solid var(--sev-medium);border-radius:6px;color:var(--sev-medium);font-size:0.85rem;margin-bottom:16px"></div>
     <div id="history-empty" style="text-align:center;padding:60px 20px;color:var(--text-muted)">
       <div style="font-size:3rem;margin-bottom:12px">&#128202;</div>
       <div style="font-size:1rem;font-weight:500;margin-bottom:8px">No baseline reports loaded</div>
@@ -4467,6 +4468,24 @@ function loadHistoryFiles(input) {
 function _histRender() {
   if (!_histCurrentSnap || !_histSnapshots.length) return;
   _histSnapshots.sort(function(a, b) { return a.generated_at.localeCompare(b.generated_at); });
+
+  // domain mismatch check
+  var curDomain = _histCurrentSnap.domain || '';
+  var mismatchedDomains = _histSnapshots
+    .filter(function(s) { return s.domain && s.domain !== curDomain; })
+    .map(function(s) { return s.domain; })
+    .filter(function(d, i, arr) { return arr.indexOf(d) === i; }); // unique
+  var warnEl = document.getElementById('history-domain-warning');
+  if (mismatchedDomains.length) {
+    warnEl.style.display = '';
+    warnEl.innerHTML = '&#9888;&#65039; Domain mismatch: loaded report(s) for <strong>' +
+      mismatchedDomains.map(_histEsc).join(', ') +
+      '</strong> but current report is <strong>' + _histEsc(curDomain) +
+      '</strong>. Findings may not be directly comparable.';
+  } else {
+    warnEl.style.display = 'none';
+  }
+
   _histRenderTimeline();
   _histRenderChart();
   _histRenderCategories();
@@ -4492,10 +4511,12 @@ function _histRenderTimeline() {
     var isCur = !!snap._cur;
     var tr = document.createElement('tr');
     tr.style.cssText = 'border-bottom:1px solid var(--border)' + (isCur ? ';background:var(--bg-card)' : '');
+    var domainMismatch = !isCur && snap.domain && snap.domain !== (_histCurrentSnap.domain || '');
     tr.innerHTML =
       '<td style="padding:10px 12px">' + snap.generated_at +
         (isCur ? ' <span style="font-size:0.7rem;background:var(--accent);color:#fff;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">CURRENT</span>' : '') + '</td>' +
-      '<td style="padding:10px 12px">' + (snap.domain || '') + '</td>' +
+      '<td style="padding:10px 12px">' + (snap.domain || '') +
+        (domainMismatch ? ' <span style="font-size:0.7rem;background:var(--sev-medium);color:#fff;padding:2px 5px;border-radius:3px;margin-left:4px">&#8800; domain</span>' : '') + '</td>' +
       '<td style="padding:10px 12px;text-align:center;font-weight:700;color:' + _histGradeColor(grade) + '">' + grade + '</td>' +
       '<td style="padding:10px 12px;text-align:center">' + value + '/100</td>' +
       '<td style="padding:10px 12px;text-align:center;color:var(--sev-critical);font-weight:600">' + (c.critical != null ? c.critical : '?') + '</td>' +
