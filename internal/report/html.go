@@ -3447,6 +3447,7 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
       <div style="font-size:0.85rem">Select one or more previous morok HTML reports to compare findings over time.<br>Use this tab for remediation tracking or drift detection.</div>
     </div>
     <div id="history-content" style="display:none">
+      <div id="history-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:28px"></div>
       <div style="margin-bottom:32px">
         <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Timeline</h3>
         <div style="overflow-x:auto">
@@ -4486,12 +4487,65 @@ function _histRender() {
     warnEl.style.display = 'none';
   }
 
+  _histRenderSummaryCards();
   _histRenderTimeline();
   _histRenderChart();
   _histRenderCategories();
   _histRenderDiff();
   document.getElementById('history-empty').style.display = 'none';
   document.getElementById('history-content').style.display = '';
+}
+
+function _histSurface(snap) {
+  var c = snap.counts || {};
+  return (c.critical || 0) * 3 + (c.high || 0) * 2 + (c.medium || 0);
+}
+
+function _histPct(baseline, current) {
+  if (!baseline) return null;
+  return Math.round((current - baseline) / baseline * 100);
+}
+
+function _histMetricCard(label, baseVal, curVal, unit, lowerIsBetter) {
+  var pct = _histPct(baseVal, curVal);
+  var improved = lowerIsBetter ? curVal < baseVal : curVal > baseVal;
+  var same = curVal === baseVal;
+  var pctColor = same ? 'var(--text-muted)' : (improved ? '#4caf50' : 'var(--sev-critical)');
+  var arrow = same ? '—' : (curVal < baseVal ? '&#8595;' : '&#8593;');
+  var pctStr = pct === null ? '' : (pct > 0 ? '+' : '') + pct + '%';
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px 18px">' +
+    '<div style="font-size:0.75rem;color:var(--text-muted);font-weight:500;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">' + label + '</div>' +
+    '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">' +
+      '<span style="font-size:1.6rem;font-weight:700;color:var(--text-main)">' + curVal + '</span>' +
+      (unit ? '<span style="font-size:0.8rem;color:var(--text-muted)">' + unit + '</span>' : '') +
+    '</div>' +
+    '<div style="font-size:0.85rem;color:var(--text-muted)">was ' + baseVal + (unit ? ' ' + unit : '') + '</div>' +
+    '<div style="margin-top:8px;font-size:0.9rem;font-weight:700;color:' + pctColor + '">' +
+      arrow + ' ' + pctStr +
+    '</div>' +
+  '</div>';
+}
+
+function _histRenderSummaryCards() {
+  var container = document.getElementById('history-summary-cards');
+  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var cur = _histCurrentSnap;
+  var html = '';
+  html += _histMetricCard('Risk Score',
+    baseline.score ? baseline.score.value : 0,
+    cur.score ? cur.score.value : 0,
+    '/100', true);
+  html += _histMetricCard('Attack Surface',
+    _histSurface(baseline), _histSurface(cur), 'pts', true);
+  html += _histMetricCard('Attack Paths',
+    ((baseline.findings || {}).attack_paths || []).length,
+    ((cur.findings || {}).attack_paths || []).length,
+    'paths', true);
+  html += _histMetricCard('Critical Findings',
+    baseline.counts ? baseline.counts.critical : 0,
+    cur.counts ? cur.counts.critical : 0,
+    '', true);
+  container.innerHTML = html;
 }
 
 function _histGradeColor(grade) {
