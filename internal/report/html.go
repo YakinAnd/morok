@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"os"
@@ -70,6 +71,8 @@ type ReportData struct {
 	// P2 features
 	RiskScore RiskScore
 	TopIssues []TopIssue
+	// History tab — embedded JSON snapshot for cross-report comparison
+	SnapshotJSON template.JS
 }
 
 // TrustedDomainEnumResult — status of an automatically-enumerated trusted domain.
@@ -208,6 +211,7 @@ func Generate(
 	data.TotalCritical, data.TotalHigh, data.TotalMedium = CountRiskTotals(&data)
 	data.RiskScore = CalculateRiskScore(&data)
 	data.TopIssues = BuildTopIssues(&data)
+	data.SnapshotJSON = buildSnapshot(&data)
 
 	// parse template
 	tmpl, err := template.New("report").Funcs(templateFuncs()).Parse(htmlTemplate)
@@ -575,6 +579,110 @@ func marshalD3(d3 D3Graph) string {
 
 	sb.WriteString(`]}`)
 	return sb.String()
+}
+
+// ============================================================
+// Snapshot builder — embedded JSON for History tab cross-report comparison
+// ============================================================
+
+// buildSnapshot serializes a compact fingerprint of all findings into JSON.
+// The resulting blob is embedded in the HTML report so that other reports can
+// load this file as a "baseline" and compute NEW / FIXED / PERSISTENT diffs.
+func buildSnapshot(d *ReportData) template.JS {
+	type snapScore struct {
+		Grade string `json:"grade"`
+		Value int    `json:"value"`
+	}
+	type snapCounts struct {
+		Critical int `json:"critical"`
+		High     int `json:"high"`
+		Medium   int `json:"medium"`
+	}
+	type snapshot struct {
+		V           int                 `json:"v"`
+		GeneratedAt string              `json:"generated_at"`
+		Domain      string              `json:"domain"`
+		Version     string              `json:"version"`
+		Score       snapScore           `json:"score"`
+		Counts      snapCounts          `json:"counts"`
+		Findings    map[string][]string `json:"findings"`
+	}
+
+	snap := snapshot{
+		V:           1,
+		GeneratedAt: d.GeneratedAt,
+		Domain:      d.Domain,
+		Version:     d.Version,
+		Score:       snapScore{Grade: d.RiskScore.Grade, Value: d.RiskScore.Total},
+		Counts:      snapCounts{Critical: d.TotalCritical, High: d.TotalHigh, Medium: d.TotalMedium},
+		Findings:    make(map[string][]string),
+	}
+	f := snap.Findings
+
+	if d.KerberosResult != nil {
+		for _, acc := range d.KerberosResult.KerberoastableAccounts {
+			f["kerberoastable"] = append(f["kerberoastable"], acc.SAMAccountName)
+		}
+		for _, acc := range d.KerberosResult.ASREPAccounts {
+			f["asrep"] = append(f["asrep"], acc.SAMAccountName)
+		}
+	}
+
+	if d.ACLResult != nil {
+		for _, af := range d.ACLResult.Findings {
+			f["acl"] = append(f["acl"], af.PrincipalName+"|"+string(af.Right)+"|"+af.TargetName)
+		}
+	}
+
+	if d.DelegationResult != nil {
+		for _, df := range d.DelegationResult.Findings {
+			switch df.DelegationType {
+			case analysis.DelegationUnconstrained:
+				f["unconstrained_deleg"] = append(f["unconstrained_deleg"], df.SAMAccountName)
+			case analysis.DelegationConstrained:
+				f["constrained_deleg"] = append(f["constrained_deleg"], df.SAMAccountName+"|"+strings.Join(df.AllowedServices, ","))
+			case analysis.DelegationRBCD:
+				f["rbcd"] = append(f["rbcd"], df.SAMAccountName+"|"+strings.Join(df.TrusteeNames, ","))
+			}
+		}
+	}
+
+	for _, path := range d.AttackPaths {
+		if len(path.Nodes) > 0 {
+			f["attack_paths"] = append(f["attack_paths"],
+				fmt.Sprintf("%s→%s(%dhops)", path.Nodes[0].SAMAccountName, path.TargetGroup, path.Depth))
+		}
+	}
+
+	if d.ADCSResult != nil {
+		for _, tf := range d.ADCSResult.TemplateFindings {
+			vulns := make([]string, len(tf.VulnTypes))
+			for i, v := range tf.VulnTypes {
+				vulns[i] = string(v)
+			}
+			f["adcs_templates"] = append(f["adcs_templates"], tf.TemplateName+"|"+strings.Join(vulns, "/"))
+		}
+	}
+
+	if d.ShadowCredentialsResult != nil {
+		for _, sf := range d.ShadowCredentialsResult.Findings {
+			f["shadow_creds"] = append(f["shadow_creds"], sf.PrincipalName+"|"+sf.TargetName)
+		}
+	}
+
+	if d.GPOResult != nil {
+		for _, af := range d.GPOResult.GPOACLFindings {
+			f["gpo_write"] = append(f["gpo_write"], af.PrincipalName+"|"+af.GPOName)
+		}
+		for _, gpo := range d.GPOResult.GPOFindings {
+			if gpo.HasCPassword {
+				f["gpp_passwords"] = append(f["gpp_passwords"], gpo.Name)
+			}
+		}
+	}
+
+	b, _ := json.Marshal(snap)
+	return template.JS(b)
 }
 
 // ============================================================
@@ -1418,6 +1526,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button role="tab" aria-selected="false" aria-controls="tab-users" id="tab-btn-users" onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-groups" id="tab-btn-groups" onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-computers" id="tab-btn-computers" onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-history" id="tab-btn-history" onclick="showTab('history')">History</button>
 </div>
 
 <div class="content">
@@ -3317,6 +3426,66 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
   {{end}}
 </div>
 
+<div id="tab-history" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0" aria-hidden="true">
+  <div style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div>
+        <h2 style="margin:0 0 4px;font-size:1.2rem">Remediation History</h2>
+        <p style="margin:0;color:var(--text-muted);font-size:0.85rem">Load previous morok reports to track findings over time and measure remediation progress</p>
+      </div>
+      <label style="cursor:pointer">
+        <input type="file" id="history-file-input" accept=".html" multiple style="display:none" onchange="loadHistoryFiles(this)">
+        <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:var(--accent);color:#fff;border-radius:6px;font-size:0.875rem;font-weight:500;user-select:none">
+          &#128194; Load baseline reports&#8230;
+        </span>
+      </label>
+    </div>
+    <div id="history-empty" style="text-align:center;padding:60px 20px;color:var(--text-muted)">
+      <div style="font-size:3rem;margin-bottom:12px">&#128202;</div>
+      <div style="font-size:1rem;font-weight:500;margin-bottom:8px">No baseline reports loaded</div>
+      <div style="font-size:0.85rem">Select one or more previous morok HTML reports to compare findings over time.<br>Use this tab for remediation tracking or drift detection.</div>
+    </div>
+    <div id="history-content" style="display:none">
+      <div style="margin-bottom:32px">
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Timeline</h3>
+        <div style="overflow-x:auto">
+          <table id="history-timeline-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border)">
+                <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500">Date</th>
+                <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500">Domain</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Grade</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Score</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--sev-critical);font-weight:500">Critical</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--sev-high);font-weight:500">High</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--sev-medium);font-weight:500">Medium</th>
+              </tr>
+            </thead>
+            <tbody id="history-timeline-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div style="margin-bottom:32px">
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Risk Score Trend</h3>
+        <div id="history-chart-container" style="width:100%;height:200px;position:relative"></div>
+      </div>
+      <div style="margin-bottom:32px">
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Category Comparison
+          <span style="font-size:0.8rem;font-weight:400;color:var(--text-muted);margin-left:8px">(latest baseline vs current)</span>
+        </h3>
+        <div id="history-category-table"></div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
+          <h3 style="font-size:1rem;font-weight:600;margin:0">Finding Diff</h3>
+          <span style="font-size:0.8rem;color:var(--text-muted)">latest baseline &#8594; current</span>
+        </div>
+        <div id="history-diff-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /content -->
 
 <script>
@@ -4247,6 +4416,213 @@ function copyCmd(btn) {
     }, 1500);
   });
 }
+
+// ============================================================
+// History tab — cross-report comparison
+// ============================================================
+
+var _histSnapshots = [];
+var _histCurrentSnap = null;
+try { _histCurrentSnap = JSON.parse(document.getElementById('morok-data').textContent); } catch(e) {}
+
+var _HIST_CATEGORIES = [
+  { key: 'kerberoastable',    label: 'Kerberoastable',          tab: 'kerberos' },
+  { key: 'asrep',             label: 'AS-REP Roastable',        tab: 'kerberos' },
+  { key: 'acl',               label: 'Dangerous ACLs',          tab: 'acl' },
+  { key: 'unconstrained_deleg', label: 'Unconstrained Delegation', tab: 'delegation' },
+  { key: 'constrained_deleg', label: 'Constrained Delegation',  tab: 'delegation' },
+  { key: 'rbcd',              label: 'RBCD',                    tab: 'delegation' },
+  { key: 'attack_paths',      label: 'Attack Paths',            tab: 'paths' },
+  { key: 'adcs_templates',    label: 'ADCS Templates',          tab: 'adcs' },
+  { key: 'shadow_creds',      label: 'Shadow Credentials',      tab: 'shadow' },
+  { key: 'gpo_write',         label: 'GPO Write ACL',           tab: 'gpo' },
+  { key: 'gpp_passwords',     label: 'GPP Passwords',           tab: 'gpo' },
+];
+
+function loadHistoryFiles(input) {
+  var files = Array.from(input.files);
+  if (!files.length) return;
+  var pending = files.length;
+  files.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(e.target.result, 'text/html');
+        var el = doc.getElementById('morok-data');
+        if (el) {
+          var snap = JSON.parse(el.textContent);
+          snap._filename = file.name;
+          // deduplicate by generated_at
+          var exists = _histSnapshots.some(function(s) { return s.generated_at === snap.generated_at; });
+          if (!exists) _histSnapshots.push(snap);
+        }
+      } catch(ex) { console.error('Failed to parse ' + file.name, ex); }
+      if (--pending === 0) _histRender();
+    };
+    reader.readAsText(file);
+  });
+}
+
+function _histRender() {
+  if (!_histCurrentSnap || !_histSnapshots.length) return;
+  _histSnapshots.sort(function(a, b) { return a.generated_at.localeCompare(b.generated_at); });
+  _histRenderTimeline();
+  _histRenderChart();
+  _histRenderCategories();
+  _histRenderDiff();
+  document.getElementById('history-empty').style.display = 'none';
+  document.getElementById('history-content').style.display = '';
+}
+
+function _histGradeColor(grade) {
+  var m = { A: '#4caf50', B: '#8bc34a', C: 'var(--sev-medium)', D: 'var(--sev-high)', F: 'var(--sev-critical)' };
+  return m[grade] || 'var(--text-muted)';
+}
+
+function _histRenderTimeline() {
+  var cur = _histCurrentSnap;
+  var all = _histSnapshots.concat([{ _cur: true, generated_at: cur.generated_at, domain: cur.domain, score: cur.score, counts: cur.counts }]);
+  var tbody = document.getElementById('history-timeline-body');
+  tbody.innerHTML = '';
+  all.forEach(function(snap) {
+    var grade = snap.score ? snap.score.grade : '?';
+    var value = snap.score ? snap.score.value : '?';
+    var c = snap.counts || {};
+    var isCur = !!snap._cur;
+    var tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid var(--border)' + (isCur ? ';background:var(--bg-card)' : '');
+    tr.innerHTML =
+      '<td style="padding:10px 12px">' + snap.generated_at +
+        (isCur ? ' <span style="font-size:0.7rem;background:var(--accent);color:#fff;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">CURRENT</span>' : '') + '</td>' +
+      '<td style="padding:10px 12px">' + (snap.domain || '') + '</td>' +
+      '<td style="padding:10px 12px;text-align:center;font-weight:700;color:' + _histGradeColor(grade) + '">' + grade + '</td>' +
+      '<td style="padding:10px 12px;text-align:center">' + value + '/100</td>' +
+      '<td style="padding:10px 12px;text-align:center;color:var(--sev-critical);font-weight:600">' + (c.critical != null ? c.critical : '?') + '</td>' +
+      '<td style="padding:10px 12px;text-align:center;color:var(--sev-high);font-weight:600">' + (c.high != null ? c.high : '?') + '</td>' +
+      '<td style="padding:10px 12px;text-align:center;color:var(--sev-medium);font-weight:600">' + (c.medium != null ? c.medium : '?') + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function _histRenderChart() {
+  var container = document.getElementById('history-chart-container');
+  container.innerHTML = '';
+  var cur = _histCurrentSnap;
+  var allSnaps = _histSnapshots.concat([cur]);
+  if (allSnaps.length < 2) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;padding:20px 0">Load at least two reports to show the trend chart.</p>';
+    return;
+  }
+  var data = allSnaps.map(function(s, i) {
+    return { x: i, label: (s.generated_at || '').slice(0, 10), value: s.score ? s.score.value : 0, isCur: i === allSnaps.length - 1 };
+  });
+  var W = container.clientWidth || 600, H = 180;
+  var pad = { top: 20, right: 24, bottom: 40, left: 44 };
+  var iW = W - pad.left - pad.right, iH = H - pad.top - pad.bottom;
+  var maxVal = Math.max.apply(null, data.map(function(d) { return d.value; })) || 100;
+  var xS = function(i) { return data.length < 2 ? iW / 2 : (i / (data.length - 1)) * iW; };
+  var yS = function(v) { return iH - (v / maxVal) * iH; };
+  var svg = d3.select(container).append('svg').attr('width', W).attr('height', H);
+  var g = svg.append('g').attr('transform', 'translate(' + pad.left + ',' + pad.top + ')');
+  [0, 25, 50, 75, 100].forEach(function(v) {
+    if (v > maxVal * 1.15 && v !== 0) return;
+    g.append('line').attr('x1', 0).attr('y1', yS(v)).attr('x2', iW).attr('y2', yS(v))
+      .attr('stroke', 'var(--border)').attr('stroke-dasharray', '3,3');
+    g.append('text').attr('x', -6).attr('y', yS(v) + 4).attr('text-anchor', 'end')
+      .attr('font-size', 10).attr('fill', 'var(--text-muted)').text(v);
+  });
+  var lineGen = d3.line()
+    .x(function(d) { return xS(d.x); }).y(function(d) { return yS(d.value); })
+    .curve(d3.curveMonotoneX);
+  g.append('path').datum(data).attr('fill', 'none')
+    .attr('stroke', 'var(--sev-high)').attr('stroke-width', 2).attr('d', lineGen);
+  data.forEach(function(d) {
+    var cx = xS(d.x), cy = yS(d.value);
+    g.append('circle').attr('cx', cx).attr('cy', cy).attr('r', 5)
+      .attr('fill', d.isCur ? 'var(--accent)' : 'var(--sev-high)')
+      .attr('stroke', 'var(--bg-main)').attr('stroke-width', 2);
+    g.append('text').attr('x', cx).attr('y', cy - 10).attr('text-anchor', 'middle')
+      .attr('font-size', 11).attr('font-weight', d.isCur ? 700 : 400).attr('fill', 'var(--text-main)').text(d.value);
+    g.append('text').attr('x', cx).attr('y', iH + 22).attr('text-anchor', 'middle')
+      .attr('font-size', 9).attr('fill', 'var(--text-muted)').text(d.label);
+  });
+}
+
+function _histRenderCategories() {
+  var container = document.getElementById('history-category-table');
+  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var cur = _histCurrentSnap;
+  var rows = '';
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var prev = (baseline.findings && baseline.findings[cat.key]) || [];
+    var curr = (cur.findings && cur.findings[cat.key]) || [];
+    if (!prev.length && !curr.length) return;
+    var delta = curr.length - prev.length;
+    var deltaHtml = delta === 0
+      ? '<span style="color:var(--text-muted)">&#8212;</span>'
+      : delta > 0
+        ? '<span style="color:var(--sev-high);font-weight:600">+' + delta + '</span>'
+        : '<span style="color:#4caf50;font-weight:600">' + delta + '</span>';
+    rows += '<tr style="border-bottom:1px solid var(--border)">' +
+      '<td style="padding:8px 12px"><a href="#" onclick="showTab(\'' + cat.tab + '\');return false" style="color:var(--accent);text-decoration:none">' + cat.label + '</a></td>' +
+      '<td style="padding:8px 12px;text-align:center">' + prev.length + '</td>' +
+      '<td style="padding:8px 12px;text-align:center">' + curr.length + '</td>' +
+      '<td style="padding:8px 12px;text-align:center">' + deltaHtml + '</td></tr>';
+  });
+  container.innerHTML = rows
+    ? '<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr style="border-bottom:2px solid var(--border)">' +
+      '<th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500">Category</th>' +
+      '<th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Baseline</th>' +
+      '<th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Current</th>' +
+      '<th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Delta</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>'
+    : '<p style="color:var(--text-muted);font-size:0.85rem">No findings in either report.</p>';
+}
+
+function _histRenderDiff() {
+  var container = document.getElementById('history-diff-container');
+  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var cur = _histCurrentSnap;
+  var html = '';
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var prevArr = (baseline.findings && baseline.findings[cat.key]) || [];
+    var curArr = (cur.findings && cur.findings[cat.key]) || [];
+    if (!prevArr.length && !curArr.length) return;
+    var prevSet = new Set(prevArr), curSet = new Set(curArr);
+    var newItems = curArr.filter(function(x) { return !prevSet.has(x); });
+    var fixedItems = prevArr.filter(function(x) { return !curSet.has(x); });
+    var persistItems = curArr.filter(function(x) { return prevSet.has(x); });
+    var changeCount = newItems.length + fixedItems.length;
+    var badge = changeCount > 0
+      ? ' <span style="background:var(--sev-high);color:#fff;font-size:0.7rem;padding:2px 6px;border-radius:3px;margin-left:6px">' + changeCount + ' change' + (changeCount > 1 ? 's' : '') + '</span>'
+      : ' <span style="background:#4caf50;color:#fff;font-size:0.7rem;padding:2px 6px;border-radius:3px;margin-left:6px">no change</span>';
+    html += '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">' +
+      '<div style="display:flex;align-items:center;padding:12px 16px;background:var(--bg-card);cursor:pointer;user-select:none" onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'block\':\'none\'">' +
+      '<span style="font-size:0.875rem;font-weight:600">' + cat.label + badge + '</span></div>' +
+      '<div style="padding:14px 16px;display:none">';
+    function itemList(items, bg, color, emoji) {
+      if (!items.length) return '';
+      var s = '<div style="margin-bottom:10px"><div style="font-size:0.75rem;font-weight:600;color:' + color + ';margin-bottom:5px">' + emoji + ' (' + items.length + ')</div>';
+      items.forEach(function(item) {
+        s += '<div style="font-size:0.8rem;padding:4px 8px;background:' + bg + ';border-radius:4px;margin-bottom:2px;font-family:monospace;word-break:break-all">' + _histEsc(item) + '</div>';
+      });
+      return s + '</div>';
+    }
+    html += itemList(newItems, 'rgba(255,152,0,0.1)', 'var(--sev-high)', '&#128305; NEW');
+    html += itemList(fixedItems, 'rgba(76,175,80,0.1)', '#4caf50', '&#9989; FIXED');
+    html += itemList(persistItems, 'var(--bg-card)', 'var(--text-muted)', '&#9888;&#65039; PERSISTENT');
+    if (!newItems.length && !fixedItems.length && !persistItems.length) {
+      html += '<p style="color:var(--text-muted);font-size:0.85rem;margin:0">No findings in either report.</p>';
+    }
+    html += '</div></div>';
+  });
+  container.innerHTML = html || '<p style="color:var(--text-muted)">No findings to compare.</p>';
+}
+
+function _histEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 </script>
 
 <footer style="text-align:center;padding:20px 40px;border-top:1px solid var(--border);
@@ -4255,6 +4631,8 @@ function copyCmd(btn) {
     style="color:var(--accent);text-decoration:none">morok v{{.Version}}</a>
   &middot; {{.GeneratedAt}} &middot; Active Directory Attack Path Analysis
 </footer>
+
+<script type="application/json" id="morok-data">{{.SnapshotJSON}}</script>
 
 </body>
 </html>`
