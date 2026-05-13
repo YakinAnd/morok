@@ -4426,7 +4426,10 @@ function copyCmd(btn) {
 
 var _histSnapshots = [];
 var _histCurrentSnap = null;
-try { _histCurrentSnap = JSON.parse(document.getElementById('morok-data').textContent); } catch(e) {}
+function _histInitCurrentSnap() {
+  if (_histCurrentSnap) return;
+  try { _histCurrentSnap = JSON.parse(document.getElementById('morok-data').textContent); } catch(e) {}
+}
 
 var _HIST_CATEGORIES = [
   { key: 'kerberoastable',    label: 'Kerberoastable',          tab: 'kerberos' },
@@ -4443,6 +4446,7 @@ var _HIST_CATEGORIES = [
 ];
 
 function loadHistoryFiles(input) {
+  _histInitCurrentSnap();
   var files = Array.from(input.files);
   if (!files.length) return;
   var errors = [];
