@@ -3468,22 +3468,17 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
           </table>
         </div>
       </div>
-      <div style="margin-bottom:32px">
-        <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Risk Score Trend</h3>
-        <div id="history-chart-container" style="width:100%;height:200px;position:relative"></div>
-      </div>
-      <div style="margin-bottom:32px">
-        <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Category Comparison
-          <span style="font-size:0.8rem;font-weight:400;color:var(--text-muted);margin-left:8px">(latest baseline vs current)</span>
-        </h3>
-        <div id="history-category-table"></div>
-      </div>
-      <div>
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px">
-          <h3 style="font-size:1rem;font-weight:600;margin:0">Finding Diff</h3>
-          <span style="font-size:0.8rem;color:var(--text-muted)">latest baseline &#8594; current</span>
+      <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start">
+        <div>
+          <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Category Comparison
+            <span style="font-size:0.8rem;font-weight:400;color:var(--text-muted);margin-left:8px">baseline vs current</span>
+          </h3>
+          <div id="history-bar-chart"></div>
         </div>
-        <div id="history-diff-container"></div>
+        <div>
+          <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Remediation Status</h3>
+          <div id="history-status-list"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -4498,28 +4493,25 @@ function _histRender() {
   if (!_histCurrentSnap || !_histSnapshots.length) return;
   _histSnapshots.sort(function(a, b) { return a.generated_at.localeCompare(b.generated_at); });
 
-  // domain mismatch check
   var curDomain = _histCurrentSnap.domain || '';
-  var mismatchedDomains = _histSnapshots
+  var mismatched = _histSnapshots
     .filter(function(s) { return s.domain && s.domain !== curDomain; })
     .map(function(s) { return s.domain; })
-    .filter(function(d, i, arr) { return arr.indexOf(d) === i; }); // unique
+    .filter(function(d, i, arr) { return arr.indexOf(d) === i; });
   var warnEl = document.getElementById('history-domain-warning');
-  if (mismatchedDomains.length) {
+  if (mismatched.length) {
     warnEl.style.display = '';
-    warnEl.innerHTML = '&#9888;&#65039; Domain mismatch: loaded report(s) for <strong>' +
-      mismatchedDomains.map(_histEsc).join(', ') +
-      '</strong> but current report is <strong>' + _histEsc(curDomain) +
-      '</strong>. Findings may not be directly comparable.';
+    warnEl.innerHTML = '&#9888;&#65039; Domain mismatch: baseline(s) are for <strong>' +
+      mismatched.map(_histEsc).join(', ') + '</strong>, current is <strong>' +
+      _histEsc(curDomain) + '</strong>. Comparison may be inaccurate.';
   } else {
     warnEl.style.display = 'none';
   }
 
   _histRenderSummaryCards();
   _histRenderTimeline();
-  _histRenderChart();
-  _histRenderCategories();
-  _histRenderDiff();
+  _histRenderBarChart();
+  _histRenderStatusList();
   document.getElementById('history-empty').style.display = 'none';
   document.getElementById('history-content').style.display = '';
 }
@@ -4608,119 +4600,93 @@ function _histRenderTimeline() {
   });
 }
 
-function _histRenderChart() {
-  var container = document.getElementById('history-chart-container');
+function _histRenderBarChart() {
+  var container = document.getElementById('history-bar-chart');
   container.innerHTML = '';
-  var cur = _histCurrentSnap;
-  var allSnaps = _histSnapshots.concat([cur]);
-  if (allSnaps.length < 2) {
-    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;padding:20px 0">Load at least two reports to show the trend chart.</p>';
-    return;
-  }
-  var data = allSnaps.map(function(s, i) {
-    return { x: i, label: (s.generated_at || '').slice(0, 10), value: s.score ? s.score.value : 0, isCur: i === allSnaps.length - 1 };
-  });
-  var W = container.clientWidth || 600, H = 180;
-  var pad = { top: 20, right: 24, bottom: 40, left: 44 };
-  var iW = W - pad.left - pad.right, iH = H - pad.top - pad.bottom;
-  var maxVal = Math.max.apply(null, data.map(function(d) { return d.value; })) || 100;
-  var xS = function(i) { return data.length < 2 ? iW / 2 : (i / (data.length - 1)) * iW; };
-  var yS = function(v) { return iH - (v / maxVal) * iH; };
-  var svg = d3.select(container).append('svg').attr('width', W).attr('height', H);
-  var g = svg.append('g').attr('transform', 'translate(' + pad.left + ',' + pad.top + ')');
-  [0, 25, 50, 75, 100].forEach(function(v) {
-    if (v > maxVal * 1.15 && v !== 0) return;
-    g.append('line').attr('x1', 0).attr('y1', yS(v)).attr('x2', iW).attr('y2', yS(v))
-      .attr('stroke', 'var(--border)').attr('stroke-dasharray', '3,3');
-    g.append('text').attr('x', -6).attr('y', yS(v) + 4).attr('text-anchor', 'end')
-      .attr('font-size', 10).attr('fill', 'var(--text-muted)').text(v);
-  });
-  var lineGen = d3.line()
-    .x(function(d) { return xS(d.x); }).y(function(d) { return yS(d.value); })
-    .curve(d3.curveMonotoneX);
-  g.append('path').datum(data).attr('fill', 'none')
-    .attr('stroke', 'var(--sev-high)').attr('stroke-width', 2).attr('d', lineGen);
-  data.forEach(function(d) {
-    var cx = xS(d.x), cy = yS(d.value);
-    g.append('circle').attr('cx', cx).attr('cy', cy).attr('r', 5)
-      .attr('fill', d.isCur ? 'var(--accent)' : 'var(--sev-high)')
-      .attr('stroke', 'var(--bg-main)').attr('stroke-width', 2);
-    g.append('text').attr('x', cx).attr('y', cy - 10).attr('text-anchor', 'middle')
-      .attr('font-size', 11).attr('font-weight', d.isCur ? 700 : 400).attr('fill', 'var(--text-main)').text(d.value);
-    g.append('text').attr('x', cx).attr('y', iH + 22).attr('text-anchor', 'middle')
-      .attr('font-size', 9).attr('fill', 'var(--text-muted)').text(d.label);
-  });
-}
-
-function _histRenderCategories() {
-  var container = document.getElementById('history-category-table');
   var baseline = _histSnapshots[_histSnapshots.length - 1];
   var cur = _histCurrentSnap;
-  var rows = '';
+
+  var data = [];
   _HIST_CATEGORIES.forEach(function(cat) {
-    var prev = (baseline.findings && baseline.findings[cat.key]) || [];
-    var curr = (cur.findings && cur.findings[cat.key]) || [];
-    if (!prev.length && !curr.length) return;
-    var delta = curr.length - prev.length;
-    var deltaHtml = delta === 0
-      ? '<span style="color:var(--text-muted)">&#8212;</span>'
-      : delta > 0
-        ? '<span style="color:var(--sev-high);font-weight:600">+' + delta + '</span>'
-        : '<span style="color:#4caf50;font-weight:600">' + delta + '</span>';
-    rows += '<tr style="border-bottom:1px solid var(--border)">' +
-      '<td style="padding:8px 12px"><a href="#" onclick="showTab(\'' + cat.tab + '\');return false" style="color:var(--accent);text-decoration:none">' + cat.label + '</a></td>' +
-      '<td style="padding:8px 12px;text-align:center">' + prev.length + '</td>' +
-      '<td style="padding:8px 12px;text-align:center">' + curr.length + '</td>' +
-      '<td style="padding:8px 12px;text-align:center">' + deltaHtml + '</td></tr>';
+    var bv = ((baseline.findings || {})[cat.key] || []).length;
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (bv === 0 && cv === 0) return;
+    data.push({ label: cat.label, tab: cat.tab, baseline: bv, current: cv });
   });
-  container.innerHTML = rows
-    ? '<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr style="border-bottom:2px solid var(--border)">' +
-      '<th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500">Category</th>' +
-      '<th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Baseline</th>' +
-      '<th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Current</th>' +
-      '<th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Delta</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table>'
-    : '<p style="color:var(--text-muted);font-size:0.85rem">No findings in either report.</p>';
+
+  if (!data.length) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem">No findings to compare.</p>';
+    return;
+  }
+
+  var rowH = 28, gap = 6, padLeft = 148, padRight = 60, padTop = 8, barH = 11;
+  var W = container.clientWidth || 560;
+  var iW = W - padLeft - padRight;
+  var H = data.length * (rowH + gap) + padTop * 2;
+  var maxVal = Math.max.apply(null, data.map(function(d) { return Math.max(d.baseline, d.current); })) || 1;
+  var xS = function(v) { return (v / maxVal) * iW; };
+
+  var svg = d3.select(container).append('svg').attr('width', W).attr('height', H);
+
+  data.forEach(function(d, i) {
+    var y = padTop + i * (rowH + gap);
+    var g = svg.append('g').attr('transform', 'translate(' + padLeft + ',' + y + ')');
+
+    // label (clickable)
+    svg.append('text')
+      .attr('x', padLeft - 8).attr('y', y + rowH / 2 + 4)
+      .attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--accent)')
+      .style('cursor', 'pointer')
+      .text(d.label)
+      .on('click', (function(tab) { return function() { showTab(tab); }; })(d.tab));
+
+    // baseline bar
+    g.append('rect').attr('x', 0).attr('y', 0).attr('height', barH).attr('rx', 2)
+      .attr('width', Math.max(xS(d.baseline), d.baseline > 0 ? 2 : 0))
+      .attr('fill', 'rgba(255,152,0,0.7)');
+    if (d.baseline > 0)
+      g.append('text').attr('x', xS(d.baseline) + 4).attr('y', barH - 1)
+        .attr('font-size', 10).attr('fill', 'var(--text-muted)').text(d.baseline);
+
+    // current bar
+    var curColor = d.current < d.baseline ? '#4caf50' : d.current > d.baseline ? 'var(--sev-critical)' : 'var(--text-muted)';
+    g.append('rect').attr('x', 0).attr('y', barH + 4).attr('height', barH).attr('rx', 2)
+      .attr('width', Math.max(xS(d.current), d.current > 0 ? 2 : 0))
+      .attr('fill', curColor);
+    if (d.current > 0)
+      g.append('text').attr('x', xS(d.current) + 4).attr('y', barH * 2 + 4 - 1)
+        .attr('font-size', 10).attr('fill', 'var(--text-muted)').text(d.current);
+  });
+
+  // legend
+  var leg = svg.append('g').attr('transform', 'translate(' + padLeft + ',' + (H - 4) + ')');
+  leg.append('rect').attr('width', 10).attr('height', 8).attr('rx', 1).attr('fill', 'rgba(255,152,0,0.7)');
+  leg.append('text').attr('x', 14).attr('y', 8).attr('font-size', 10).attr('fill', 'var(--text-muted)').text('Baseline');
+  leg.append('rect').attr('x', 72).attr('width', 10).attr('height', 8).attr('rx', 1).attr('fill', '#4caf50');
+  leg.append('text').attr('x', 86).attr('y', 8).attr('font-size', 10).attr('fill', 'var(--text-muted)').text('Current');
 }
 
-function _histRenderDiff() {
-  var container = document.getElementById('history-diff-container');
+function _histRenderStatusList() {
+  var container = document.getElementById('history-status-list');
   var baseline = _histSnapshots[_histSnapshots.length - 1];
   var cur = _histCurrentSnap;
   var html = '';
   _HIST_CATEGORIES.forEach(function(cat) {
-    var prevArr = (baseline.findings && baseline.findings[cat.key]) || [];
-    var curArr = (cur.findings && cur.findings[cat.key]) || [];
-    if (!prevArr.length && !curArr.length) return;
-    var prevSet = new Set(prevArr), curSet = new Set(curArr);
-    var newItems = curArr.filter(function(x) { return !prevSet.has(x); });
-    var fixedItems = prevArr.filter(function(x) { return !curSet.has(x); });
-    var persistItems = curArr.filter(function(x) { return prevSet.has(x); });
-    var changeCount = newItems.length + fixedItems.length;
-    var badge = changeCount > 0
-      ? ' <span style="background:var(--sev-high);color:#fff;font-size:0.7rem;padding:2px 6px;border-radius:3px;margin-left:6px">' + changeCount + ' change' + (changeCount > 1 ? 's' : '') + '</span>'
-      : ' <span style="background:#4caf50;color:#fff;font-size:0.7rem;padding:2px 6px;border-radius:3px;margin-left:6px">no change</span>';
-    html += '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">' +
-      '<div style="display:flex;align-items:center;padding:12px 16px;background:var(--bg-card);cursor:pointer;user-select:none" onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'block\':\'none\'">' +
-      '<span style="font-size:0.875rem;font-weight:600">' + cat.label + badge + '</span></div>' +
-      '<div style="padding:14px 16px;display:none">';
-    function itemList(items, bg, color, emoji) {
-      if (!items.length) return '';
-      var s = '<div style="margin-bottom:10px"><div style="font-size:0.75rem;font-weight:600;color:' + color + ';margin-bottom:5px">' + emoji + ' (' + items.length + ')</div>';
-      items.forEach(function(item) {
-        s += '<div style="font-size:0.8rem;padding:4px 8px;background:' + bg + ';border-radius:4px;margin-bottom:2px;font-family:monospace;word-break:break-all">' + _histEsc(item) + '</div>';
-      });
-      return s + '</div>';
-    }
-    html += itemList(newItems, 'rgba(255,152,0,0.1)', 'var(--sev-high)', '&#128305; NEW');
-    html += itemList(fixedItems, 'rgba(76,175,80,0.1)', '#4caf50', '&#9989; FIXED');
-    html += itemList(persistItems, 'var(--bg-card)', 'var(--text-muted)', '&#9888;&#65039; PERSISTENT');
-    if (!newItems.length && !fixedItems.length && !persistItems.length) {
-      html += '<p style="color:var(--text-muted);font-size:0.85rem;margin:0">No findings in either report.</p>';
-    }
-    html += '</div></div>';
+    var bv = ((baseline.findings || {})[cat.key] || []).length;
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (bv === 0 && cv === 0) return;
+    var icon, color, label;
+    if (cv === 0 && bv > 0) { icon = '&#9989;'; color = '#4caf50'; label = 'Fixed'; }
+    else if (cv < bv)        { icon = '&#8595;'; color = '#4caf50'; label = 'Improved'; }
+    else if (cv === bv)      { icon = '&#8596;'; color = 'var(--text-muted)'; label = 'No change'; }
+    else                     { icon = '&#8593;'; color = 'var(--sev-critical)'; label = 'Worse'; }
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">' +
+      '<a href="#" onclick="showTab(\'' + cat.tab + '\');return false" style="color:var(--accent);text-decoration:none;font-size:0.85rem">' + cat.label + '</a>' +
+      '<span style="font-size:0.82rem;color:' + color + ';font-weight:600;white-space:nowrap;margin-left:12px">' +
+        icon + ' ' + label + ' <span style="font-weight:400;color:var(--text-muted)">(' + bv + '&#8594;' + cv + ')</span>' +
+      '</span></div>';
   });
-  container.innerHTML = html || '<p style="color:var(--text-muted)">No findings to compare.</p>';
+  container.innerHTML = html || '<p style="color:var(--text-muted);font-size:0.85rem">No findings in either report.</p>';
 }
 
 function _histEsc(s) {
