@@ -3468,17 +3468,10 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
           </table>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;align-items:start">
-        <div>
-          <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Category Comparison
-            <span style="font-size:0.8rem;font-weight:400;color:var(--text-muted);margin-left:8px">baseline vs current</span>
-          </h3>
-          <div id="history-bar-chart"></div>
-        </div>
-        <div>
-          <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Remediation Status</h3>
-          <div id="history-status-list"></div>
-        </div>
+      <div>
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 4px">Findings Before &rarr; After</h3>
+        <p style="margin:0 0 20px;font-size:0.8rem;color:var(--text-muted)">Comparing latest baseline vs current report &mdash; click a category to open its tab</p>
+        <div id="history-bar-chart"></div>
       </div>
     </div>
   </div>
@@ -4511,7 +4504,6 @@ function _histRender() {
   _histRenderSummaryCards();
   _histRenderTimeline();
   _histRenderBarChart();
-  _histRenderStatusList();
   document.getElementById('history-empty').style.display = 'none';
   document.getElementById('history-content').style.display = '';
 }
@@ -4611,7 +4603,7 @@ function _histRenderBarChart() {
     var bv = ((baseline.findings || {})[cat.key] || []).length;
     var cv = ((cur.findings || {})[cat.key] || []).length;
     if (bv === 0 && cv === 0) return;
-    data.push({ label: cat.label, tab: cat.tab, baseline: bv, current: cv });
+    data.push({ label: cat.label, tab: cat.tab, b: bv, c: cv });
   });
 
   if (!data.length) {
@@ -4619,74 +4611,46 @@ function _histRenderBarChart() {
     return;
   }
 
-  var rowH = 28, gap = 6, padLeft = 148, padRight = 60, padTop = 8, barH = 11;
-  var W = container.clientWidth || 560;
-  var iW = W - padLeft - padRight;
-  var H = data.length * (rowH + gap) + padTop * 2;
-  var maxVal = Math.max.apply(null, data.map(function(d) { return Math.max(d.baseline, d.current); })) || 1;
-  var xS = function(v) { return (v / maxVal) * iW; };
+  var maxVal = Math.max.apply(null, data.map(function(d) { return Math.max(d.b, d.c); })) || 1;
+  var rows = '';
+  data.forEach(function(d) {
+    var pctB = Math.round((d.b / maxVal) * 100);
+    var pctC = Math.round((d.c / maxVal) * 100);
 
-  var svg = d3.select(container).append('svg').attr('width', W).attr('height', H);
+    var statusIcon, statusColor, statusText;
+    if (d.c === 0 && d.b > 0) { statusIcon = '✓'; statusColor = '#4caf50'; statusText = 'Fixed'; }
+    else if (d.c < d.b)       { statusIcon = '↓'; statusColor = '#4caf50'; statusText = d.b + ' → ' + d.c; }
+    else if (d.c === d.b)     { statusIcon = '—'; statusColor = 'var(--text-muted)'; statusText = 'No change'; }
+    else                      { statusIcon = '↑'; statusColor = 'var(--sev-critical)'; statusText = d.b + ' → ' + d.c; }
 
-  data.forEach(function(d, i) {
-    var y = padTop + i * (rowH + gap);
-    var g = svg.append('g').attr('transform', 'translate(' + padLeft + ',' + y + ')');
+    var curBarColor = d.c < d.b ? '#4caf50' : d.c > d.b ? 'var(--sev-critical)' : 'var(--text-muted)';
 
-    // label (clickable)
-    svg.append('text')
-      .attr('x', padLeft - 8).attr('y', y + rowH / 2 + 4)
-      .attr('text-anchor', 'end').attr('font-size', 11).attr('fill', 'var(--accent)')
-      .style('cursor', 'pointer')
-      .text(d.label)
-      .on('click', (function(tab) { return function() { showTab(tab); }; })(d.tab));
-
-    // baseline bar
-    g.append('rect').attr('x', 0).attr('y', 0).attr('height', barH).attr('rx', 2)
-      .attr('width', Math.max(xS(d.baseline), d.baseline > 0 ? 2 : 0))
-      .attr('fill', 'rgba(255,152,0,0.7)');
-    if (d.baseline > 0)
-      g.append('text').attr('x', xS(d.baseline) + 4).attr('y', barH - 1)
-        .attr('font-size', 10).attr('fill', 'var(--text-muted)').text(d.baseline);
-
-    // current bar
-    var curColor = d.current < d.baseline ? '#4caf50' : d.current > d.baseline ? 'var(--sev-critical)' : 'var(--text-muted)';
-    g.append('rect').attr('x', 0).attr('y', barH + 4).attr('height', barH).attr('rx', 2)
-      .attr('width', Math.max(xS(d.current), d.current > 0 ? 2 : 0))
-      .attr('fill', curColor);
-    if (d.current > 0)
-      g.append('text').attr('x', xS(d.current) + 4).attr('y', barH * 2 + 4 - 1)
-        .attr('font-size', 10).attr('fill', 'var(--text-muted)').text(d.current);
+    rows += '<div style="display:grid;grid-template-columns:160px 1fr 90px;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+      '<a href="#" onclick="showTab(\'' + d.tab + '\');return false" style="color:var(--text-main);text-decoration:none;font-size:0.875rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + d.label + '">' + d.label + '</a>' +
+      '<div>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+          '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;text-align:right;flex-shrink:0">Before</div>' +
+          '<div style="flex:1;background:var(--border);border-radius:3px;height:10px;position:relative">' +
+            '<div style="width:' + pctB + '%;height:100%;background:var(--sev-high);border-radius:3px;opacity:0.5"></div>' +
+          '</div>' +
+          '<div style="font-size:0.78rem;color:var(--text-muted);width:20px;text-align:right;flex-shrink:0">' + d.b + '</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;text-align:right;flex-shrink:0">After</div>' +
+          '<div style="flex:1;background:var(--border);border-radius:3px;height:10px;position:relative">' +
+            (d.c > 0 ? '<div style="width:' + pctC + '%;height:100%;background:' + curBarColor + ';border-radius:3px"></div>' : '') +
+          '</div>' +
+          '<div style="font-size:0.78rem;color:' + curBarColor + ';width:20px;text-align:right;flex-shrink:0;font-weight:600">' + d.c + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="text-align:right">' +
+        '<span style="font-size:0.9rem;font-weight:700;color:' + statusColor + '">' + statusIcon + '</span>' +
+        '<div style="font-size:0.75rem;color:' + statusColor + ';font-weight:600;margin-top:2px">' + statusText + '</div>' +
+      '</div>' +
+    '</div>';
   });
 
-  // legend
-  var leg = svg.append('g').attr('transform', 'translate(' + padLeft + ',' + (H - 4) + ')');
-  leg.append('rect').attr('width', 10).attr('height', 8).attr('rx', 1).attr('fill', 'rgba(255,152,0,0.7)');
-  leg.append('text').attr('x', 14).attr('y', 8).attr('font-size', 10).attr('fill', 'var(--text-muted)').text('Baseline');
-  leg.append('rect').attr('x', 72).attr('width', 10).attr('height', 8).attr('rx', 1).attr('fill', '#4caf50');
-  leg.append('text').attr('x', 86).attr('y', 8).attr('font-size', 10).attr('fill', 'var(--text-muted)').text('Current');
-}
-
-function _histRenderStatusList() {
-  var container = document.getElementById('history-status-list');
-  var baseline = _histSnapshots[_histSnapshots.length - 1];
-  var cur = _histCurrentSnap;
-  var html = '';
-  _HIST_CATEGORIES.forEach(function(cat) {
-    var bv = ((baseline.findings || {})[cat.key] || []).length;
-    var cv = ((cur.findings || {})[cat.key] || []).length;
-    if (bv === 0 && cv === 0) return;
-    var icon, color, label;
-    if (cv === 0 && bv > 0) { icon = '&#9989;'; color = '#4caf50'; label = 'Fixed'; }
-    else if (cv < bv)        { icon = '&#8595;'; color = '#4caf50'; label = 'Improved'; }
-    else if (cv === bv)      { icon = '&#8596;'; color = 'var(--text-muted)'; label = 'No change'; }
-    else                     { icon = '&#8593;'; color = 'var(--sev-critical)'; label = 'Worse'; }
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">' +
-      '<a href="#" onclick="showTab(\'' + cat.tab + '\');return false" style="color:var(--accent);text-decoration:none;font-size:0.85rem">' + cat.label + '</a>' +
-      '<span style="font-size:0.82rem;color:' + color + ';font-weight:600;white-space:nowrap;margin-left:12px">' +
-        icon + ' ' + label + ' <span style="font-weight:400;color:var(--text-muted)">(' + bv + '&#8594;' + cv + ')</span>' +
-      '</span></div>';
-  });
-  container.innerHTML = html || '<p style="color:var(--text-muted);font-size:0.85rem">No findings in either report.</p>';
+  container.innerHTML = rows;
 }
 
 function _histEsc(s) {
