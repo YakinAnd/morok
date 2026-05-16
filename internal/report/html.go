@@ -4705,7 +4705,7 @@ function _histRenderTrendChart() {
     return;
   }
 
-  var W = 720, H = 160, padL = 56, padR = 16, padT = 16, padB = 32;
+  var W = 720, H = 160, padL = 56, padR = 16, padT = 28, padB = 32;
   var plotW = W - padL - padR, plotH = H - padT - padB;
   var n = points.length;
   var x = function(i) { return padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW); };
@@ -4741,7 +4741,9 @@ function _histRenderTrendChart() {
     var px = x(i), py = y(p.score);
     svg += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) +
       '" r="4" fill="var(--bg-page)" stroke="' + trendColor + '" stroke-width="2"/>';
-    svg += '<text x="' + px.toFixed(1) + '" y="' + (py - 10).toFixed(1) +
+    var labelY = py - 10;
+    if (labelY < 11) labelY = py + 16;
+    svg += '<text x="' + px.toFixed(1) + '" y="' + labelY.toFixed(1) +
       '" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text-main)">' + p.score + '</text>';
     var shortDate = (p.date || '').split(' ')[0];
     svg += '<text x="' + px.toFixed(1) + '" y="' + (H - 10) +
