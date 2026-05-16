@@ -14,4 +14,7 @@ morok
 # Internal tooling
 ui-polish/
 gendemo
+gendemo2
+cmd/gendemo2/
+cmd/spindemo/
 -o
