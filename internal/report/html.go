@@ -3448,8 +3448,8 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
       <div style="font-size:0.85rem">Select one or more previous morok HTML reports to compare findings over time.<br>Use this tab for remediation tracking or drift detection.</div>
     </div>
     <div id="history-content" style="display:none">
-      <div id="history-verdict" style="background:var(--bg-card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:20px 24px;margin-bottom:24px"></div>
-      <div id="history-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:28px"></div>
+      <div id="history-verdict" style="background:var(--bg-card);border:1px solid var(--border);border-left:4px solid var(--text-muted);border-radius:8px;padding:20px 24px;margin-bottom:24px"></div>
+      <div id="history-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:28px"></div>
       <div style="margin-bottom:32px">
         <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Timeline</h3>
         <div id="history-trend-chart" style="margin-bottom:16px"></div>
@@ -3472,7 +3472,7 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
       </div>
       <div>
         <h3 style="font-size:1rem;font-weight:600;margin:0 0 4px">Findings Before &rarr; After</h3>
-        <p style="margin:0 0 20px;font-size:0.8rem;color:var(--text-muted)">Comparing latest baseline vs current report &mdash; click a category to open its tab</p>
+        <p id="history-findings-caption" style="margin:0 0 20px;font-size:0.8rem;color:var(--text-muted)"></p>
         <div id="history-bar-chart"></div>
       </div>
     </div>
@@ -4524,31 +4524,45 @@ function _histPct(baseline, current) {
 
 function _histMetricCard(label, baseVal, curVal, unit, lowerIsBetter) {
   var pct = _histPct(baseVal, curVal);
-  var improved = lowerIsBetter ? curVal < baseVal : curVal > baseVal;
   var same = curVal === baseVal;
-  var pctColor = same ? 'var(--text-muted)' : (improved ? '#4caf50' : 'var(--sev-critical)');
-  var arrow = same ? '—' : (curVal < baseVal ? '&#8595;' : '&#8593;');
+  var improved = lowerIsBetter ? curVal < baseVal : curVal > baseVal;
+  var deltaColor = same ? 'var(--text-muted)' : (improved ? '#4caf50' : 'var(--sev-critical)');
+  var arrow = same ? '—' : (curVal < baseVal ? '↓' : '↑');
   var pctStr = pct === null ? '' : (pct > 0 ? '+' : '') + pct + '%';
-  return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px 18px">' +
-    '<div style="font-size:0.75rem;color:var(--text-muted);font-weight:500;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">' + label + '</div>' +
-    '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">' +
-      '<span style="font-size:1.6rem;font-weight:700;color:var(--text-main)">' + curVal + '</span>' +
-      (unit ? '<span style="font-size:0.8rem;color:var(--text-muted)">' + unit + '</span>' : '') +
+
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);' +
+    'border-radius:8px;padding:18px 22px;display:flex;align-items:center;' +
+    'justify-content:space-between;gap:16px;min-height:104px">' +
+
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+      '<div style="font-size:0.72rem;color:var(--text-muted);font-weight:600;' +
+        'text-transform:uppercase;letter-spacing:0.06em">' + label + '</div>' +
+      '<div style="display:flex;align-items:baseline;gap:6px">' +
+        '<span style="font-size:2.4rem;font-weight:800;line-height:1;' +
+          'color:var(--text-main)">' + curVal + '</span>' +
+        (unit ? '<span style="font-size:0.85rem;color:var(--text-muted)">' +
+          unit + '</span>' : '') +
+      '</div>' +
     '</div>' +
-    '<div style="font-size:0.85rem;color:var(--text-muted)">was ' + baseVal + '</div>' +
-    '<div style="margin-top:8px;font-size:0.9rem;font-weight:700;color:' + pctColor + '">' +
-      arrow + ' ' + pctStr +
+
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">' +
+      '<div style="display:flex;align-items:center;gap:6px;font-size:1.25rem;' +
+        'font-weight:800;color:' + deltaColor + '">' +
+        '<span style="font-size:1.1rem">' + arrow + '</span>' +
+        '<span>' + pctStr + '</span>' +
+      '</div>' +
+      '<div style="font-size:0.8rem;color:var(--text-muted)">was ' + baseVal + '</div>' +
+      (lowerIsBetter && curVal > 0 && !same
+        ? '<div style="font-size:0.72rem;color:var(--text-muted)">' +
+          curVal + ' remaining</div>'
+        : '') +
     '</div>' +
-    (lowerIsBetter && curVal > 0 && !same
-      ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">' +
-        curVal + ' still remaining</div>'
-      : '') +
   '</div>';
 }
 
 function _histRenderSummaryCards() {
   var container = document.getElementById('history-summary-cards');
-  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var baseline = _histSnapshots[0];
   var cur = _histCurrentSnap;
   var html = '';
   html += _histMetricCard('Risk Score',
@@ -4608,7 +4622,7 @@ function _histDaysBetween(d1, d2) {
 }
 
 function _histRenderVerdict() {
-  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var baseline = _histSnapshots[0];
   var cur = _histCurrentSnap;
 
   var bScore = baseline.score ? baseline.score.value : 0;
@@ -4685,7 +4699,7 @@ function _histRenderTrendChart() {
     return;
   }
 
-  var W = 720, H = 160, padL = 44, padR = 16, padT = 16, padB = 32;
+  var W = 720, H = 160, padL = 56, padR = 16, padT = 16, padB = 32;
   var plotW = W - padL - padR, plotH = H - padT - padB;
   var n = points.length;
   var x = function(i) { return padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW); };
@@ -4710,7 +4724,7 @@ function _histRenderTrendChart() {
     svg += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) +
       '" y2="' + gy.toFixed(1) + '" stroke="var(--border)" stroke-width="1"/>';
     svg += '<text x="' + (padL - 8) + '" y="' + (gy + 3).toFixed(1) +
-      '" text-anchor="end" font-size="9" fill="var(--text-muted)">' + v + '</text>';
+      '" text-anchor="end" font-size="10" fill="var(--text-muted)">' + v + '</text>';
   });
 
   svg += '<path d="' + area + '" fill="' + trendColor + '" opacity="0.12"/>';
@@ -4732,11 +4746,28 @@ function _histRenderTrendChart() {
   document.getElementById('history-trend-chart').innerHTML = svg;
 }
 
+function _histBar(value, maxVal, color) {
+  var pct = Math.round((value / maxVal) * 100);
+  return '<div style="flex:1;background:var(--bg-hover);border-radius:3px;height:12px;overflow:hidden">' +
+    (value > 0
+      ? '<div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:3px"></div>'
+      : '') +
+  '</div>';
+}
+
 function _histRenderBarChart() {
   var container = document.getElementById('history-bar-chart');
   container.innerHTML = '';
-  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var baseline = _histSnapshots[0];  // OLDEST baseline
   var cur = _histCurrentSnap;
+  var baseDate = (baseline.generated_at || '').split(' ')[0];
+  var curDate = (cur.generated_at || '').split(' ')[0];
+
+  var captionEl = document.getElementById('history-findings-caption');
+  if (captionEl) {
+    captionEl.textContent = 'Comparing oldest baseline (' + baseDate + ') vs current (' +
+      curDate + ') — intermediate reports shown in the timeline above. Click a category to open its tab.';
+  }
 
   var regressed = [], resolved = [], outstanding = [];
   _HIST_CATEGORIES.forEach(function(cat) {
@@ -4756,37 +4787,45 @@ function _histRenderBarChart() {
 
   var allRows = regressed.concat(resolved).concat(outstanding);
   var maxVal = Math.max.apply(null, allRows.map(function(d) { return Math.max(d.b, d.c); })) || 1;
+  var ctx = { maxVal: maxVal, baseDate: baseDate, curDate: curDate };
 
   var html = '';
-  html += _histRenderBarGroup('Regressions', regressed, maxVal,
-    'var(--sev-critical)', 'New or worsened findings — require immediate attention');
-  html += _histRenderBarGroup('Resolved & Improved', resolved, maxVal,
-    '#4caf50', 'Findings eliminated or reduced since baseline');
-  html += _histRenderBarGroup('Outstanding', outstanding, maxVal,
-    'var(--text-muted)', 'Unchanged since baseline — still open');
-
+  html += _histRenderBarGroup('Regressions', regressed, ctx,
+    'New or worsened findings since baseline');
+  html += _histRenderBarGroup('Resolved & Improved', resolved, ctx,
+    'Findings eliminated or reduced since baseline');
+  html += _histRenderBarGroup('Outstanding', outstanding, ctx,
+    'Unchanged since baseline');
   container.innerHTML = html;
 }
 
-function _histRenderBarGroup(title, rows, maxVal, accentColor, subtitle) {
+function _histRenderBarGroup(title, rows, ctx, subtitle) {
   if (!rows.length) return '';
 
   var body = '';
   rows.forEach(function(d) {
-    var pctB = Math.round((d.b / maxVal) * 100);
-    var pctC = Math.round((d.c / maxVal) * 100);
+    var baseColor, curColor;
+    if (d.b === d.c) {
+      baseColor = curColor = 'var(--text-muted)';
+    } else if (d.b > d.c) {
+      baseColor = 'var(--sev-critical)';
+      curColor  = '#4caf50';
+    } else {
+      baseColor = '#4caf50';
+      curColor  = 'var(--sev-critical)';
+    }
 
-    var statusIcon, statusColor, statusText;
-    if (d.c === 0 && d.b > 0) { statusIcon = '✓'; statusColor = '#4caf50'; statusText = 'Fixed'; }
-    else if (d.c < d.b)       { statusIcon = '↓'; statusColor = '#4caf50'; statusText = d.b + ' → ' + d.c; }
-    else if (d.c === d.b)     { statusIcon = '—'; statusColor = 'var(--text-muted)'; statusText = 'No change'; }
-    else                      { statusIcon = '↑'; statusColor = 'var(--sev-critical)'; statusText = d.b + ' → ' + d.c; }
-
-    var afterColor = d.c < d.b ? '#4caf50' : d.c > d.b ? 'var(--sev-critical)' : 'var(--text-muted)';
+    var fixedBadge = (d.c === 0 && d.b > 0)
+      ? '<span style="display:inline-flex;align-items:center;gap:4px;' +
+        'background:rgba(76,175,80,0.15);color:#4caf50;border:1px solid #4caf50;' +
+        'border-radius:4px;padding:3px 9px;font-size:0.75rem;font-weight:700">' +
+        '✓ Fixed</span>'
+      : '';
 
     body +=
-      '<div style="display:grid;grid-template-columns:200px 1fr 96px;align-items:center;' +
-        'gap:16px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+      '<div style="display:grid;grid-template-columns:210px 1fr 92px;' +
+        'align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border)">' +
+
         '<a href="#" onclick="showTab(\'' + d.tab + '\');return false" ' +
           'style="color:var(--text-main);text-decoration:none;font-size:0.875rem;' +
           'font-weight:500;line-height:1.3" title="' + _histEsc(d.label) + '">' +
@@ -4795,44 +4834,33 @@ function _histRenderBarGroup(title, rows, maxVal, accentColor, subtitle) {
             'color:#fff;padding:1px 5px;border-radius:3px;vertical-align:middle;' +
             'font-weight:700">NEW</span>' : '') +
         '</a>' +
+
         '<div>' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
-            '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;' +
-              'text-align:right;flex-shrink:0">Before</div>' +
-            '<div style="flex:1;background:var(--bg-hover);border-radius:3px;height:10px">' +
-              '<div style="width:' + pctB + '%;height:100%;background:var(--text-muted);' +
-                'border-radius:3px"></div>' +
-            '</div>' +
-            '<div style="font-size:0.78rem;color:var(--text-muted);width:24px;' +
-              'text-align:right;flex-shrink:0">' + d.b + '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:74px;' +
+              'text-align:right;flex-shrink:0">' + ctx.baseDate + '</div>' +
+            _histBar(d.b, ctx.maxVal, baseColor) +
+            '<div style="font-size:0.82rem;font-weight:700;color:' + baseColor +
+              ';width:22px;text-align:right;flex-shrink:0">' + d.b + '</div>' +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px">' +
-            '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;' +
-              'text-align:right;flex-shrink:0">After</div>' +
-            '<div style="flex:1;background:var(--bg-hover);border-radius:3px;height:10px">' +
-              (d.c > 0 ? '<div style="width:' + pctC + '%;height:100%;background:' +
-                afterColor + ';border-radius:3px"></div>' : '') +
-            '</div>' +
-            '<div style="font-size:0.78rem;color:' + afterColor + ';width:24px;' +
-              'text-align:right;flex-shrink:0;font-weight:600">' + d.c + '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:74px;' +
+              'text-align:right;flex-shrink:0">' + ctx.curDate +
+              ' <span style="color:var(--text-muted)">· now</span></div>' +
+            _histBar(d.c, ctx.maxVal, curColor) +
+            '<div style="font-size:0.82rem;font-weight:700;color:' + curColor +
+              ';width:22px;text-align:right;flex-shrink:0">' + d.c + '</div>' +
           '</div>' +
         '</div>' +
-        '<div style="text-align:right">' +
-          '<span style="font-size:0.9rem;font-weight:700;color:' + statusColor + '">' +
-            statusIcon + '</span>' +
-          '<div style="font-size:0.75rem;color:' + statusColor + ';font-weight:600;' +
-            'margin-top:2px">' + statusText + '</div>' +
-        '</div>' +
+
+        '<div style="text-align:right">' + fixedBadge + '</div>' +
       '</div>';
   });
 
   return '<div style="margin-bottom:24px">' +
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
-      '<span style="width:8px;height:8px;border-radius:50%;background:' + accentColor + ';flex-shrink:0"></span>' +
-      '<h4 style="margin:0;font-size:0.9rem;font-weight:600;color:var(--text-main)">' +
-        title + ' <span style="color:var(--text-muted);font-weight:400">(' + rows.length + ')</span></h4>' +
-    '</div>' +
-    '<p style="margin:0 0 8px 16px;font-size:0.75rem;color:var(--text-muted)">' + subtitle + '</p>' +
+    '<h4 style="margin:0 0 2px;font-size:0.9rem;font-weight:600;color:var(--text-main)">' +
+      title + ' <span style="color:var(--text-muted);font-weight:400">(' + rows.length + ')</span></h4>' +
+    '<p style="margin:0 0 10px;font-size:0.75rem;color:var(--text-muted)">' + subtitle + '</p>' +
     body +
   '</div>';
 }
