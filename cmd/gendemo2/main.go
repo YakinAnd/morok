@@ -1,4 +1,4 @@
-// gendemo2 generates two morok HTML reports (before/after remediation) for History tab demo.
+// gendemo2 generates three morok HTML reports (before/middle/after) for History tab demo.
 package main
 
 import (
@@ -24,14 +24,21 @@ func main() {
 	}
 	fmt.Println("Written: demo-before.html")
 
+	// Generate "middle" report (partial remediation — ~6 weeks in)
+	if err := generate("demo-middle.html", buildMiddle(), "2026-03-28 14:00:00"); err != nil {
+		fmt.Fprintln(os.Stderr, "middle:", err)
+		os.Exit(1)
+	}
+	fmt.Println("Written: demo-middle.html")
+
 	// Generate "after" report (post-remediation — today)
 	if err := generate("demo-after.html", buildAfter(), time.Now().Format("2006-01-02 15:04:05")); err != nil {
 		fmt.Fprintln(os.Stderr, "after:", err)
 		os.Exit(1)
 	}
 	fmt.Println("Written: demo-after.html")
-	fmt.Println("\nOpen demo-after.html in your browser,")
-	fmt.Println("go to the History tab, and load demo-before.html as baseline.")
+	fmt.Println("\nOpen demo-after.html in your browser, go to the History tab,")
+	fmt.Println("and load demo-before.html + demo-middle.html as baselines.")
 }
 
 type scenario struct {
@@ -127,6 +134,57 @@ func buildBefore() scenario {
 		},
 	}
 	s.g, s.paths = buildPaths(true)
+	return s
+}
+
+// ── Middle: partial remediation (~6 weeks in) ─────────────────
+
+func buildMiddle() scenario {
+	s := scenario{}
+	s.kerberos = &analysis.KerberosResult{
+		Domain: dom,
+		KerberoastableAccounts: []analysis.KerberoastableAccount{
+			// svc_backup SPN removed; svc_sql + jsnow still present
+			{SAMAccountName: "svc_sql", SPNs: []string{"MSSQLSvc/kingslanding.sevenkingdoms.local:1433"}, CVSS: 8.8, Severity: "High"},
+			{SAMAccountName: "jsnow",   SPNs: []string{"HTTP/winterfell.sevenkingdoms.local"},            CVSS: 7.5, Severity: "High"},
+		},
+		ASREPAccounts: []analysis.ASREPAccount{
+			// tyrion preauth still not enforced
+			{SAMAccountName: "tyrion", CVSS: 7.5, Severity: "High"},
+		},
+	}
+	s.acl = &analysis.ACLResult{
+		Domain: dom,
+		Findings: []analysis.ACLFinding{
+			// GenericAll removed; WriteDACL + ForceChangePassword + AddMember still open
+			{PrincipalName: "tyrion",        TargetName: "Small Council",        Right: analysis.RightWriteDACL,           Severity: "Critical", CVSS: 9.1},
+			{PrincipalName: "cersei",        TargetName: "jsnow",                Right: analysis.RightForceChangePassword, Severity: "High",     CVSS: 8.1},
+			{PrincipalName: "Small Council", TargetName: "Remote Desktop Users", Right: analysis.RightAddMember,           Severity: "High",     CVSS: 8.0},
+		},
+		DCSyncFindings: []analysis.DCSyncFinding{
+			{PrincipalName: "cersei", PrincipalType: "user", Severity: "Critical", CVSS: 10.0},
+		},
+	}
+	s.shadow = &analysis.ShadowCredentialsResult{
+		Domain: dom,
+		Findings: []analysis.ShadowCredentialFinding{
+			// Night's Watch remediated; tyrion still present
+			{PrincipalName: "tyrion", PrincipalType: "user", TargetName: "Administrator", TargetType: "user", Right: "WriteProperty(msDS-KeyCredentialLink)", Severity: "High", CVSS: 8.5},
+		},
+	}
+	s.adcs = &analysis.ADCSResult{
+		Domain: dom,
+		CAs: []analysis.CAInfo{{Name: "SEVENKINGDOMS-CA", DN: "CN=SEVENKINGDOMS-CA,CN=Enrollment Services,CN=Public Key Services,CN=Services,CN=Configuration," + base, Server: "kingslanding.sevenkingdoms.local"}},
+		TemplateFindings: []analysis.CertTemplateFinding{
+			// Both templates still vulnerable
+			{TemplateName: "UserTemplate", CAName: "SEVENKINGDOMS-CA", VulnTypes: []analysis.ADCSVulnType{analysis.ESC1}, EnrollableBy: []string{"Domain Users"}, AllowsSANInject: true, AuthEnabled: true, EKUs: []string{"Client Authentication"}, Severity: "Critical", CVSS: 9.8},
+			{TemplateName: "WebServer",    CAName: "SEVENKINGDOMS-CA", VulnTypes: []analysis.ADCSVulnType{analysis.ESC3}, EnrollableBy: []string{"Night's Watch"}, AuthEnabled: true, EKUs: []string{"Certificate Request Agent"}, Severity: "High", CVSS: 8.1},
+		},
+	}
+	// Only Backup Operators path remains (Domain Admins + Tyrion paths cleared)
+	g, paths := buildPaths(false)
+	s.g = g
+	s.paths = paths
 	return s
 }
 
