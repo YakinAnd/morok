@@ -4845,14 +4845,14 @@ function _histRenderBarGroup(title, rows, ctx, subtitle) {
 
         '<div>' +
           '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
-            '<div style="font-size:0.7rem;color:var(--text-muted);width:74px;' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:104px;' +
               'text-align:right;flex-shrink:0;white-space:nowrap">' + ctx.baseDate + '</div>' +
             _histBar(d.b, ctx.maxVal, baseColor) +
             '<div style="font-size:0.82rem;font-weight:700;color:' + baseColor +
               ';width:22px;text-align:right;flex-shrink:0">' + d.b + '</div>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:10px">' +
-            '<div style="font-size:0.7rem;color:var(--text-muted);width:74px;' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:104px;' +
               'text-align:right;flex-shrink:0;white-space:nowrap">now · ' + ctx.curDate + '</div>' +
             _histBar(d.c, ctx.maxVal, curColor) +
             '<div style="font-size:0.82rem;font-weight:700;color:' + curColor +
