@@ -1103,6 +1103,9 @@ html[data-theme="dark"] {
   --bar-sev-critical:  #e53e3e;
   --bar-sev-high:      #dd6b20;
   --bar-sev-medium:    #d69e2e;
+  --sev-critical:      #e53e3e;
+  --sev-high:          #dd6b20;
+  --sev-medium:        #d69e2e;
   --node-user:     #63b3ed;
   --node-computer: #90cdf4;
   --node-group:    #b794f4;
@@ -1138,6 +1141,9 @@ html[data-theme="light"] {
   --bar-sev-critical:  #e53e3e;
   --bar-sev-high:      #ed8936;
   --bar-sev-medium:    #d69e2e;
+  --sev-critical:      #c53030;
+  --sev-high:          #c2410c;
+  --sev-medium:        #92400e;
   --node-user:     #2b6cb0;
   --node-computer: #2c5282;
   --node-group:    #6b46c1;
