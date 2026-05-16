@@ -3440,17 +3440,19 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
         </span>
       </label>
     </div>
-    <div id="history-load-errors" style="display:none;padding:10px 14px;background:rgba(244,67,54,0.1);border:1px solid var(--sev-critical);border-radius:6px;color:var(--sev-critical);font-size:0.85rem;margin-bottom:12px"></div>
-    <div id="history-domain-warning" style="display:none;padding:10px 14px;background:rgba(255,152,0,0.12);border:1px solid var(--sev-medium);border-radius:6px;color:var(--sev-medium);font-size:0.85rem;margin-bottom:16px"></div>
+    <div id="history-load-errors" style="display:none;padding:10px 14px;background:rgba(244,67,54,0.1);border:1px solid var(--sev-critical);border-radius:6px;color:var(--text-main);font-size:0.85rem;margin-bottom:12px"></div>
+    <div id="history-domain-warning" style="display:none;padding:10px 14px;background:rgba(255,152,0,0.12);border:1px solid var(--sev-medium);border-radius:6px;color:var(--text-main);font-size:0.85rem;margin-bottom:16px"></div>
     <div id="history-empty" style="text-align:center;padding:60px 20px;color:var(--text-muted)">
       <div style="font-size:3rem;margin-bottom:12px">&#128202;</div>
       <div style="font-size:1rem;font-weight:500;margin-bottom:8px">No baseline reports loaded</div>
       <div style="font-size:0.85rem">Select one or more previous morok HTML reports to compare findings over time.<br>Use this tab for remediation tracking or drift detection.</div>
     </div>
     <div id="history-content" style="display:none">
+      <div id="history-verdict" style="background:var(--bg-card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:20px 24px;margin-bottom:24px"></div>
       <div id="history-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:28px"></div>
       <div style="margin-bottom:32px">
         <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Timeline</h3>
+        <div id="history-trend-chart" style="margin-bottom:16px"></div>
         <div style="overflow-x:auto">
           <table id="history-timeline-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
             <thead>
@@ -4501,7 +4503,9 @@ function _histRender() {
     warnEl.style.display = 'none';
   }
 
+  _histRenderVerdict();
   _histRenderSummaryCards();
+  _histRenderTrendChart();
   _histRenderTimeline();
   _histRenderBarChart();
   document.getElementById('history-empty').style.display = 'none';
@@ -4531,10 +4535,14 @@ function _histMetricCard(label, baseVal, curVal, unit, lowerIsBetter) {
       '<span style="font-size:1.6rem;font-weight:700;color:var(--text-main)">' + curVal + '</span>' +
       (unit ? '<span style="font-size:0.8rem;color:var(--text-muted)">' + unit + '</span>' : '') +
     '</div>' +
-    '<div style="font-size:0.85rem;color:var(--text-muted)">was ' + baseVal + (unit ? ' ' + unit : '') + '</div>' +
+    '<div style="font-size:0.85rem;color:var(--text-muted)">was ' + baseVal + '</div>' +
     '<div style="margin-top:8px;font-size:0.9rem;font-weight:700;color:' + pctColor + '">' +
       arrow + ' ' + pctStr +
     '</div>' +
+    (lowerIsBetter && curVal > 0 && !same
+      ? '<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">' +
+        curVal + ' still remaining</div>'
+      : '') +
   '</div>';
 }
 
@@ -4592,28 +4600,179 @@ function _histRenderTimeline() {
   });
 }
 
+function _histDaysBetween(d1, d2) {
+  var t1 = new Date(d1.replace(' ', 'T')).getTime();
+  var t2 = new Date(d2.replace(' ', 'T')).getTime();
+  if (isNaN(t1) || isNaN(t2)) return null;
+  return Math.round(Math.abs(t2 - t1) / 86400000);
+}
+
+function _histRenderVerdict() {
+  var baseline = _histSnapshots[_histSnapshots.length - 1];
+  var cur = _histCurrentSnap;
+
+  var bScore = baseline.score ? baseline.score.value : 0;
+  var cScore = cur.score ? cur.score.value : 0;
+  var bGrade = baseline.score ? baseline.score.grade : '?';
+  var cGrade = cur.score ? cur.score.grade : '?';
+  var days = _histDaysBetween(baseline.generated_at, cur.generated_at);
+
+  var resolved = 0, regressed = 0, outstanding = 0;
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var bv = ((baseline.findings || {})[cat.key] || []).length;
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (bv === 0 && cv === 0) return;
+    if (cv < bv) resolved++;
+    else if (cv > bv) regressed++;
+    else outstanding++;
+  });
+
+  var topThreat = null, topCount = 0;
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (cv > topCount) { topCount = cv; topThreat = cat.label; }
+  });
+
+  var scoreDelta = bScore - cScore;
+  var improved = scoreDelta > 0;
+
+  var headline;
+  if (improved) {
+    headline = 'Security posture improved from grade ' + bGrade + ' (' + bScore +
+      ') to ' + cGrade + ' (' + cScore + ')' +
+      (days != null ? ' over ' + days + ' days' : '') + '.';
+  } else if (scoreDelta === 0) {
+    headline = 'No change in overall risk score (' + cGrade + ', ' + cScore + '/100)' +
+      (days != null ? ' over ' + days + ' days' : '') + '.';
+  } else {
+    headline = 'Security posture regressed from grade ' + bGrade + ' (' + bScore +
+      ') to ' + cGrade + ' (' + cScore + ')' +
+      (days != null ? ' over ' + days + ' days' : '') + '.';
+  }
+
+  var parts = [];
+  if (resolved > 0) parts.push(resolved + ' categor' + (resolved === 1 ? 'y' : 'ies') + ' improved or resolved');
+  if (regressed > 0) parts.push(regressed + ' regressed');
+  if (outstanding > 0) parts.push(outstanding + ' unchanged');
+  var detail = parts.join(', ') + '.';
+
+  var threatLine = '';
+  if (topThreat && topCount > 0) {
+    threatLine = ' Largest remaining exposure: <strong>' + _histEsc(topThreat) +
+      '</strong> (' + topCount + ' finding' + (topCount === 1 ? '' : 's') + ').';
+  }
+
+  var accentColor = improved ? '#4caf50' : (scoreDelta === 0 ? 'var(--text-muted)' : 'var(--sev-critical)');
+  var el = document.getElementById('history-verdict');
+  el.style.borderLeftColor = accentColor;
+  el.innerHTML =
+    '<div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;' +
+      'letter-spacing:0.08em;font-weight:600;margin-bottom:8px">Executive Verdict</div>' +
+    '<div style="font-size:1.15rem;font-weight:600;color:var(--text-main);line-height:1.5;margin-bottom:6px">' +
+      _histEsc(headline) + '</div>' +
+    '<div style="font-size:0.9rem;color:var(--text-muted);line-height:1.5">' +
+      _histEsc(detail) + threatLine + '</div>';
+}
+
+function _histRenderTrendChart() {
+  var cur = _histCurrentSnap;
+  var points = _histSnapshots.slice().concat([cur]).map(function(s) {
+    return { date: s.generated_at, score: s.score ? s.score.value : 0, grade: s.score ? s.score.grade : '?' };
+  });
+
+  if (points.length < 2) {
+    document.getElementById('history-trend-chart').innerHTML = '';
+    return;
+  }
+
+  var W = 720, H = 160, padL = 44, padR = 16, padT = 16, padB = 32;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+  var n = points.length;
+  var x = function(i) { return padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW); };
+  var y = function(v) { return padT + (1 - v / 100) * plotH; };
+
+  var d = points.map(function(p, i) {
+    return (i === 0 ? 'M' : 'L') + x(i).toFixed(1) + ' ' + y(p.score).toFixed(1);
+  }).join(' ');
+  var area = d + ' L' + x(n - 1).toFixed(1) + ' ' + (padT + plotH) +
+    ' L' + x(0).toFixed(1) + ' ' + (padT + plotH) + ' Z';
+
+  var trendColor = points[n - 1].score < points[0].score ? '#4caf50'
+    : points[n - 1].score > points[0].score ? 'var(--sev-critical)'
+    : 'var(--text-muted)';
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" ' +
+    'style="width:100%;max-width:' + W + 'px;height:auto;font-family:inherit" ' +
+    'role="img" aria-label="Risk score trend over time">';
+
+  [0, 25, 50, 75, 100].forEach(function(v) {
+    var gy = y(v);
+    svg += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) +
+      '" y2="' + gy.toFixed(1) + '" stroke="var(--border)" stroke-width="1"/>';
+    svg += '<text x="' + (padL - 8) + '" y="' + (gy + 3).toFixed(1) +
+      '" text-anchor="end" font-size="9" fill="var(--text-muted)">' + v + '</text>';
+  });
+
+  svg += '<path d="' + area + '" fill="' + trendColor + '" opacity="0.12"/>';
+  svg += '<path d="' + d + '" fill="none" stroke="' + trendColor +
+    '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+
+  points.forEach(function(p, i) {
+    var px = x(i), py = y(p.score);
+    svg += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) +
+      '" r="4" fill="var(--bg-page)" stroke="' + trendColor + '" stroke-width="2"/>';
+    svg += '<text x="' + px.toFixed(1) + '" y="' + (py - 10).toFixed(1) +
+      '" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text-main)">' + p.score + '</text>';
+    var shortDate = (p.date || '').split(' ')[0];
+    svg += '<text x="' + px.toFixed(1) + '" y="' + (H - 10) +
+      '" text-anchor="middle" font-size="9" fill="var(--text-muted)">' + shortDate + '</text>';
+  });
+
+  svg += '</svg>';
+  document.getElementById('history-trend-chart').innerHTML = svg;
+}
+
 function _histRenderBarChart() {
   var container = document.getElementById('history-bar-chart');
   container.innerHTML = '';
   var baseline = _histSnapshots[_histSnapshots.length - 1];
   var cur = _histCurrentSnap;
 
-  var data = [];
+  var regressed = [], resolved = [], outstanding = [];
   _HIST_CATEGORIES.forEach(function(cat) {
     var bv = ((baseline.findings || {})[cat.key] || []).length;
     var cv = ((cur.findings || {})[cat.key] || []).length;
     if (bv === 0 && cv === 0) return;
-    data.push({ label: cat.label, tab: cat.tab, b: bv, c: cv });
+    var row = { label: cat.label, tab: cat.tab, b: bv, c: cv, isNew: bv === 0 && cv > 0 };
+    if (cv > bv) regressed.push(row);
+    else if (cv < bv) resolved.push(row);
+    else outstanding.push(row);
   });
 
-  if (!data.length) {
+  if (!regressed.length && !resolved.length && !outstanding.length) {
     container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem">No findings to compare.</p>';
     return;
   }
 
-  var maxVal = Math.max.apply(null, data.map(function(d) { return Math.max(d.b, d.c); })) || 1;
-  var rows = '';
-  data.forEach(function(d) {
+  var allRows = regressed.concat(resolved).concat(outstanding);
+  var maxVal = Math.max.apply(null, allRows.map(function(d) { return Math.max(d.b, d.c); })) || 1;
+
+  var html = '';
+  html += _histRenderBarGroup('Regressions', regressed, maxVal,
+    'var(--sev-critical)', 'New or worsened findings — require immediate attention');
+  html += _histRenderBarGroup('Resolved & Improved', resolved, maxVal,
+    '#4caf50', 'Findings eliminated or reduced since baseline');
+  html += _histRenderBarGroup('Outstanding', outstanding, maxVal,
+    'var(--text-muted)', 'Unchanged since baseline — still open');
+
+  container.innerHTML = html;
+}
+
+function _histRenderBarGroup(title, rows, maxVal, accentColor, subtitle) {
+  if (!rows.length) return '';
+
+  var body = '';
+  rows.forEach(function(d) {
     var pctB = Math.round((d.b / maxVal) * 100);
     var pctC = Math.round((d.c / maxVal) * 100);
 
@@ -4623,34 +4782,59 @@ function _histRenderBarChart() {
     else if (d.c === d.b)     { statusIcon = '—'; statusColor = 'var(--text-muted)'; statusText = 'No change'; }
     else                      { statusIcon = '↑'; statusColor = 'var(--sev-critical)'; statusText = d.b + ' → ' + d.c; }
 
-    var curBarColor = d.c < d.b ? '#4caf50' : d.c > d.b ? 'var(--sev-critical)' : 'var(--text-muted)';
+    var afterColor = d.c < d.b ? '#4caf50' : d.c > d.b ? 'var(--sev-critical)' : 'var(--text-muted)';
 
-    rows += '<div style="display:grid;grid-template-columns:160px 1fr 90px;align-items:center;gap:16px;padding:10px 0;border-bottom:1px solid var(--border)">' +
-      '<a href="#" onclick="showTab(\'' + d.tab + '\');return false" style="color:var(--text-main);text-decoration:none;font-size:0.875rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="' + d.label + '">' + d.label + '</a>' +
-      '<div>' +
-        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
-          '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;text-align:right;flex-shrink:0">Before</div>' +
-          '<div style="flex:1;background:var(--border);border-radius:3px;height:10px;position:relative">' +
-            '<div style="width:' + pctB + '%;height:100%;background:var(--sev-high);border-radius:3px;opacity:0.5"></div>' +
+    body +=
+      '<div style="display:grid;grid-template-columns:200px 1fr 96px;align-items:center;' +
+        'gap:16px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<a href="#" onclick="showTab(\'' + d.tab + '\');return false" ' +
+          'style="color:var(--text-main);text-decoration:none;font-size:0.875rem;' +
+          'font-weight:500;line-height:1.3" title="' + _histEsc(d.label) + '">' +
+          _histEsc(d.label) +
+          (d.isNew ? ' <span style="font-size:0.62rem;background:var(--sev-critical);' +
+            'color:#fff;padding:1px 5px;border-radius:3px;vertical-align:middle;' +
+            'font-weight:700">NEW</span>' : '') +
+        '</a>' +
+        '<div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;' +
+              'text-align:right;flex-shrink:0">Before</div>' +
+            '<div style="flex:1;background:var(--bg-hover);border-radius:3px;height:10px">' +
+              '<div style="width:' + pctB + '%;height:100%;background:var(--text-muted);' +
+                'border-radius:3px"></div>' +
+            '</div>' +
+            '<div style="font-size:0.78rem;color:var(--text-muted);width:24px;' +
+              'text-align:right;flex-shrink:0">' + d.b + '</div>' +
           '</div>' +
-          '<div style="font-size:0.78rem;color:var(--text-muted);width:20px;text-align:right;flex-shrink:0">' + d.b + '</div>' +
-        '</div>' +
-        '<div style="display:flex;align-items:center;gap:8px">' +
-          '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;text-align:right;flex-shrink:0">After</div>' +
-          '<div style="flex:1;background:var(--border);border-radius:3px;height:10px;position:relative">' +
-            (d.c > 0 ? '<div style="width:' + pctC + '%;height:100%;background:' + curBarColor + ';border-radius:3px"></div>' : '') +
+          '<div style="display:flex;align-items:center;gap:8px">' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:44px;' +
+              'text-align:right;flex-shrink:0">After</div>' +
+            '<div style="flex:1;background:var(--bg-hover);border-radius:3px;height:10px">' +
+              (d.c > 0 ? '<div style="width:' + pctC + '%;height:100%;background:' +
+                afterColor + ';border-radius:3px"></div>' : '') +
+            '</div>' +
+            '<div style="font-size:0.78rem;color:' + afterColor + ';width:24px;' +
+              'text-align:right;flex-shrink:0;font-weight:600">' + d.c + '</div>' +
           '</div>' +
-          '<div style="font-size:0.78rem;color:' + curBarColor + ';width:20px;text-align:right;flex-shrink:0;font-weight:600">' + d.c + '</div>' +
         '</div>' +
-      '</div>' +
-      '<div style="text-align:right">' +
-        '<span style="font-size:0.9rem;font-weight:700;color:' + statusColor + '">' + statusIcon + '</span>' +
-        '<div style="font-size:0.75rem;color:' + statusColor + ';font-weight:600;margin-top:2px">' + statusText + '</div>' +
-      '</div>' +
-    '</div>';
+        '<div style="text-align:right">' +
+          '<span style="font-size:0.9rem;font-weight:700;color:' + statusColor + '">' +
+            statusIcon + '</span>' +
+          '<div style="font-size:0.75rem;color:' + statusColor + ';font-weight:600;' +
+            'margin-top:2px">' + statusText + '</div>' +
+        '</div>' +
+      '</div>';
   });
 
-  container.innerHTML = rows;
+  return '<div style="margin-bottom:24px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">' +
+      '<span style="width:8px;height:8px;border-radius:50%;background:' + accentColor + ';flex-shrink:0"></span>' +
+      '<h4 style="margin:0;font-size:0.9rem;font-weight:600;color:var(--text-main)">' +
+        title + ' <span style="color:var(--text-muted);font-weight:400">(' + rows.length + ')</span></h4>' +
+    '</div>' +
+    '<p style="margin:0 0 8px 16px;font-size:0.75rem;color:var(--text-muted)">' + subtitle + '</p>' +
+    body +
+  '</div>';
 }
 
 function _histEsc(s) {
