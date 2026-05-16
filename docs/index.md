@@ -43,6 +43,7 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 - **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
 - **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
 - **Self-contained HTML report** — single file, dark/light theme, global search, D3.js attack path graph
+- **Remediation tracking** — the History tab in the HTML report compares any two (or more) morok reports side-by-side: executive verdict, risk score trend chart, and a per-category findings diff split into Regressions / Resolved / Outstanding. Runs entirely in the browser — no uploads, no server.
 - **CI mode** — `--quiet` prints a single-line verdict with no ANSI codes, safe for Jenkins/GitHub Actions/GitLab
 
 ---

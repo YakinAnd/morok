@@ -40,7 +40,7 @@ go build -o morok.exe .\cmd\morok\...
 
 ```
 $ morok version
-morok v1.0
+morok v1.1.0
 AD Attack Path Enumerator
 https://github.com/YakinAnd/morok
 ```
