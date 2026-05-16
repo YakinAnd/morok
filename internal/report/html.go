@@ -4479,7 +4479,14 @@ function loadHistoryFiles(input) {
         var errEl = document.getElementById('history-load-errors');
         if (errors.length) {
           errEl.style.display = '';
-          errEl.innerHTML = '&#10007; ' + errors.map(_histEsc).join('<br>&#10007; ');
+          errEl.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">' +
+            '<div>&#10007; ' + errors.map(_histEsc).join('<br>&#10007; ') + '</div>' +
+            '<button onclick="document.getElementById(\'history-load-errors\').style.display=\'none\'" ' +
+              'style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);' +
+              'padding:0;line-height:1;flex-shrink:0" aria-label="Dismiss">&times;</button>' +
+          '</div>';
+          clearTimeout(errEl._hideTimer);
+          errEl._hideTimer = setTimeout(function() { errEl.style.display = 'none'; }, 6000);
         } else {
           errEl.style.display = 'none';
         }
