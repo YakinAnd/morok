@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.1.0] — 2026-05-15
+
+### New: History tab — remediation tracking across reports
+
+The HTML report now includes a **History** tab that turns individual point-in-time reports into a remediation timeline. Load one or more older morok reports as baselines and compare them against the current report — entirely in the browser, no data sent anywhere.
+
+- **Executive Verdict** — auto-generated one-sentence narrative with grade, score, and delta (suitable for slide decks)
+- **Summary metric cards** — Risk Score, Attack Surface, Attack Paths, Critical Findings; each shows current value, % delta, and "was N"
+- **Risk score trend chart** — inline SVG line chart across all loaded snapshots; color encodes direction (green = improved, red = regressed)
+- **Timeline table** — one row per report, sorted oldest → newest; grade, score, critical/high/medium counts
+- **Findings Before → After** — categories split into three groups:
+  - **Regressions** — new or worsened findings (shown first)
+  - **Resolved & Improved** — findings eliminated or reduced since baseline
+  - **Outstanding** — unchanged since baseline
+  - Dual date-labeled bars, ✓ Fixed badge for zero-count categories, NEW badge for categories absent in baseline
+- Works fully offline — no server, no uploads
+- Requires morok v1.1.0+ for both the current report and any baseline (older reports are rejected with a clear error)
+
+### Other changes
+
+- Version string updated to `v1.1.0` in CLI and HTML report
+- HTML report embeds a compact JSON snapshot (`<script id="morok-data">`) used by the History tab
+
 ## [1.0.0] — 2026-05-09
 
 First public release.

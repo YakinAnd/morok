@@ -76,7 +76,7 @@ jobs:
           files: dist/*
           generate_release_notes: false
           body: |
-            See the [CHANGELOG](https://github.com/YakinAnd/morok/blob/main/README.md) for details.
+            See the [CHANGELOG](https://github.com/YakinAnd/morok/blob/main/CHANGELOG.md) for details.
 
             ## Downloads
 
