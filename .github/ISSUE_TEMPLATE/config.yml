@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or general discussion
+    url: https://github.com/YakinAnd/morok/discussions
+    about: For usage questions, ideas, or anything not a concrete bug or feature request, please open a discussion.
+  - name: Security vulnerability in morok itself
+    url: https://github.com/YakinAnd/adpath/security/advisories/new
+    about: Found a vulnerability in morok's own code? Report it privately here, not in a public issue.

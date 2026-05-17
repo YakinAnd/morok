@@ -1,0 +1,68 @@
+name: Feature request
+description: Suggest a new check, output format, or capability
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Ideas grounded in a real workflow problem
+        are the most useful — the more concrete the situation, the better.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve
+      description: >
+        Describe the situation you are in when you would need this. Focus on
+        the problem, not the solution — it helps to understand the real need.
+      placeholder: When I run morok against a multi-domain forest, I cannot ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed feature
+      description: What you would like morok to do.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New detection / check
+        - Enumeration (scale, performance, coverage)
+        - HTML report
+        - CLI output
+        - Output formats / integrations (JSON, CI, SIEM, BloodHound)
+        - History / remediation tracking
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: How do you handle this today, with morok or other tools?
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: References, similar features in other tools, examples, mockups.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true

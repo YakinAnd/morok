@@ -1,0 +1,91 @@
+name: False positive / incorrect finding
+description: morok flagged something that is not actually a risk, or rated it wrong
+title: "[False positive]: "
+labels: ["false-positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Accuracy is the most important property of a security tool. Reports of
+        false positives, wrong severity, or misclassified findings are some of
+        the most valuable feedback morok can get — thank you.
+
+        Please do not paste full reports containing real domain data. Redact
+        hostnames, SIDs, and account names where you can.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong with the finding
+      options:
+        - It is not a real issue (false positive)
+        - It is a real issue but the severity is wrong
+        - It is misclassified (wrong category / wrong attack type)
+        - The remediation advice is incorrect or misleading
+    validations:
+      required: true
+
+  - type: input
+    id: category
+    attributes:
+      label: Finding category
+      description: Which section / check produced it.
+      placeholder: Dangerous ACLs / ADCS Templates / Attack Paths / Kerberoastable / ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-flagged
+    attributes:
+      label: What morok reported
+      description: The finding as it appeared in the report or CLI output. Redact sensitive identifiers.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-wrong
+    attributes:
+      label: Why it is incorrect
+      description: >
+        Explain why this is not a risk, or why the rating is wrong. Context
+        helps — e.g. "this ACL is expected because it is set by a vendor product",
+        or "this account is a gMSA, not Kerberoastable in practice".
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the correct behaviour would be
+      description: Should it be suppressed entirely, downgraded, recategorised? To what?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: morok version
+      placeholder: v1.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Target environment
+      options:
+        - Lab (GOAD, BadBlood, or similar)
+        - Production / real domain
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: This report contains no real credentials or sensitive data
+          required: true

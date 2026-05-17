@@ -1,0 +1,100 @@
+name: Bug report
+description: Something crashed, produced wrong output, or did not work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The more detail you give,
+        the faster it can be fixed. Please do not include real credentials,
+        hostnames, or any sensitive data from a production environment.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the bug — what went wrong.
+      placeholder: morok crashed while enumerating ACLs / the HTML report showed an empty section / ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What should have happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: The full command. Redact credentials and real domain names.
+      placeholder: ./morok enum -d <domain> -u <user> -p '<redacted>' --dc <ip>
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output / error
+      description: Relevant terminal output or error message. Redact anything sensitive.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: morok version
+      description: Output of `morok --version` (or the release tag you downloaded).
+      placeholder: v1.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other (note in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Target environment
+      description: What kind of Active Directory was morok pointed at.
+      options:
+        - Lab (GOAD, BadBlood, or similar)
+        - Production / real domain
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Domain size, forest/multi-domain setup, trust configuration, or anything else that might matter.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: I am running the latest release
+          required: false
+        - label: This report contains no real credentials or sensitive data
+          required: true
