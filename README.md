@@ -42,6 +42,7 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 - **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
 - **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
 - **Self-contained HTML report** — single file, dark/light theme, global search, D3.js attack path graph
+- **Remediation tracking** — the **History** tab compares any two or more morok reports side-by-side: executive verdict, risk score trend chart, and a per-category findings diff split into Regressions / Resolved / Outstanding. Runs entirely in the browser — no uploads, no server.
 - **CI mode** — `--quiet` prints a single-line verdict with no ANSI codes, safe for Jenkins/GitHub Actions/GitLab
 
 ---
@@ -155,6 +156,17 @@ The `--report` flag generates a full interactive HTML report with:
 - **Multi-domain tabs** — separate tab per domain; domain filter on all finding tables
 - Light/dark theme toggle
 - CVSS scores with click-to-copy vectors
+
+### History tab — remediation tracking
+
+![History tab demo](docs/assets/demo-history.gif)
+
+Load any previous morok report as a baseline to compare findings over time — no server, no uploads, everything runs in the browser.
+
+- **Executive Verdict** — auto-generated sentence summarising the grade change, days elapsed, and largest remaining exposure
+- **Risk score trend** — inline SVG line chart across all loaded snapshots
+- **Findings diff** — per-category dual bars grouped into Regressions / Resolved & Improved / Outstanding; the larger bar is always red, the smaller green
+- **Summary cards** — Risk Score, Attack Surface, Attack Paths, Critical Findings with delta % vs the oldest baseline
 
 ---
 

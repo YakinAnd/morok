@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"os"
@@ -70,6 +71,8 @@ type ReportData struct {
 	// P2 features
 	RiskScore RiskScore
 	TopIssues []TopIssue
+	// History tab — embedded JSON snapshot for cross-report comparison
+	SnapshotJSON template.JS
 }
 
 // TrustedDomainEnumResult — status of an automatically-enumerated trusted domain.
@@ -171,7 +174,7 @@ func Generate(
 	data := ReportData{
 	Domain:               result.Domain,
 	GeneratedAt:          time.Now().Format("2006-01-02 15:04:05"),
-	Version:              "1.0",
+	Version:              "1.1.0",
 	AuthMethod:           authMethod,
 	Users:                result.Users,
 	Groups:               result.Groups,
@@ -208,6 +211,7 @@ func Generate(
 	data.TotalCritical, data.TotalHigh, data.TotalMedium = CountRiskTotals(&data)
 	data.RiskScore = CalculateRiskScore(&data)
 	data.TopIssues = BuildTopIssues(&data)
+	data.SnapshotJSON = buildSnapshot(&data)
 
 	// parse template
 	tmpl, err := template.New("report").Funcs(templateFuncs()).Parse(htmlTemplate)
@@ -575,6 +579,110 @@ func marshalD3(d3 D3Graph) string {
 
 	sb.WriteString(`]}`)
 	return sb.String()
+}
+
+// ============================================================
+// Snapshot builder — embedded JSON for History tab cross-report comparison
+// ============================================================
+
+// buildSnapshot serializes a compact fingerprint of all findings into JSON.
+// The resulting blob is embedded in the HTML report so that other reports can
+// load this file as a "baseline" and compute NEW / FIXED / PERSISTENT diffs.
+func buildSnapshot(d *ReportData) template.JS {
+	type snapScore struct {
+		Grade string `json:"grade"`
+		Value int    `json:"value"`
+	}
+	type snapCounts struct {
+		Critical int `json:"critical"`
+		High     int `json:"high"`
+		Medium   int `json:"medium"`
+	}
+	type snapshot struct {
+		V           int                 `json:"v"`
+		GeneratedAt string              `json:"generated_at"`
+		Domain      string              `json:"domain"`
+		Version     string              `json:"version"`
+		Score       snapScore           `json:"score"`
+		Counts      snapCounts          `json:"counts"`
+		Findings    map[string][]string `json:"findings"`
+	}
+
+	snap := snapshot{
+		V:           1,
+		GeneratedAt: d.GeneratedAt,
+		Domain:      d.Domain,
+		Version:     d.Version,
+		Score:       snapScore{Grade: d.RiskScore.Grade, Value: d.RiskScore.Total},
+		Counts:      snapCounts{Critical: d.TotalCritical, High: d.TotalHigh, Medium: d.TotalMedium},
+		Findings:    make(map[string][]string),
+	}
+	f := snap.Findings
+
+	if d.KerberosResult != nil {
+		for _, acc := range d.KerberosResult.KerberoastableAccounts {
+			f["kerberoastable"] = append(f["kerberoastable"], acc.SAMAccountName)
+		}
+		for _, acc := range d.KerberosResult.ASREPAccounts {
+			f["asrep"] = append(f["asrep"], acc.SAMAccountName)
+		}
+	}
+
+	if d.ACLResult != nil {
+		for _, af := range d.ACLResult.Findings {
+			f["acl"] = append(f["acl"], af.PrincipalName+"|"+string(af.Right)+"|"+af.TargetName)
+		}
+	}
+
+	if d.DelegationResult != nil {
+		for _, df := range d.DelegationResult.Findings {
+			switch df.DelegationType {
+			case analysis.DelegationUnconstrained:
+				f["unconstrained_deleg"] = append(f["unconstrained_deleg"], df.SAMAccountName)
+			case analysis.DelegationConstrained:
+				f["constrained_deleg"] = append(f["constrained_deleg"], df.SAMAccountName+"|"+strings.Join(df.AllowedServices, ","))
+			case analysis.DelegationRBCD:
+				f["rbcd"] = append(f["rbcd"], df.SAMAccountName+"|"+strings.Join(df.TrusteeNames, ","))
+			}
+		}
+	}
+
+	for _, path := range d.AttackPaths {
+		if len(path.Nodes) > 0 {
+			f["attack_paths"] = append(f["attack_paths"],
+				fmt.Sprintf("%s→%s(%dhops)", path.Nodes[0].SAMAccountName, path.TargetGroup, path.Depth))
+		}
+	}
+
+	if d.ADCSResult != nil {
+		for _, tf := range d.ADCSResult.TemplateFindings {
+			vulns := make([]string, len(tf.VulnTypes))
+			for i, v := range tf.VulnTypes {
+				vulns[i] = string(v)
+			}
+			f["adcs_templates"] = append(f["adcs_templates"], tf.TemplateName+"|"+strings.Join(vulns, "/"))
+		}
+	}
+
+	if d.ShadowCredentialsResult != nil {
+		for _, sf := range d.ShadowCredentialsResult.Findings {
+			f["shadow_creds"] = append(f["shadow_creds"], sf.PrincipalName+"|"+sf.TargetName)
+		}
+	}
+
+	if d.GPOResult != nil {
+		for _, af := range d.GPOResult.GPOACLFindings {
+			f["gpo_write"] = append(f["gpo_write"], af.PrincipalName+"|"+af.GPOName)
+		}
+		for _, gpo := range d.GPOResult.GPOFindings {
+			if gpo.HasCPassword {
+				f["gpp_passwords"] = append(f["gpp_passwords"], gpo.Name)
+			}
+		}
+	}
+
+	b, _ := json.Marshal(snap)
+	return template.JS(b)
 }
 
 // ============================================================
@@ -995,6 +1103,9 @@ html[data-theme="dark"] {
   --bar-sev-critical:  #e53e3e;
   --bar-sev-high:      #dd6b20;
   --bar-sev-medium:    #d69e2e;
+  --sev-critical:      #e53e3e;
+  --sev-high:          #dd6b20;
+  --sev-medium:        #d69e2e;
   --node-user:     #63b3ed;
   --node-computer: #90cdf4;
   --node-group:    #b794f4;
@@ -1030,6 +1141,9 @@ html[data-theme="light"] {
   --bar-sev-critical:  #e53e3e;
   --bar-sev-high:      #ed8936;
   --bar-sev-medium:    #d69e2e;
+  --sev-critical:      #c53030;
+  --sev-high:          #c2410c;
+  --sev-medium:        #92400e;
   --node-user:     #2b6cb0;
   --node-computer: #2c5282;
   --node-group:    #6b46c1;
@@ -1418,6 +1532,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <button role="tab" aria-selected="false" aria-controls="tab-users" id="tab-btn-users" onclick="showTab('users')">Users ({{.Summary.TotalUsers}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-groups" id="tab-btn-groups" onclick="showTab('groups')">Groups ({{.Summary.TotalGroups}})</button>
   <button role="tab" aria-selected="false" aria-controls="tab-computers" id="tab-btn-computers" onclick="showTab('computers')">Computers ({{.Summary.TotalComputers}})</button>
+  <button role="tab" aria-selected="false" aria-controls="tab-history" id="tab-btn-history" onclick="showTab('history')">History</button>
 </div>
 
 <div class="content">
@@ -3317,6 +3432,59 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
   {{end}}
 </div>
 
+<div id="tab-history" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0" aria-hidden="true">
+  <div style="padding:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">
+      <div>
+        <h2 style="margin:0 0 4px;font-size:1.2rem">Remediation History</h2>
+        <p style="margin:0;color:var(--text-muted);font-size:0.85rem">Load previous morok reports to track findings over time and measure remediation progress</p>
+      </div>
+      <label style="cursor:pointer">
+        <input type="file" id="history-file-input" accept=".html" multiple style="display:none" onchange="loadHistoryFiles(this)">
+        <span style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:var(--accent);color:#fff;border-radius:6px;font-size:0.875rem;font-weight:500;user-select:none">
+          &#128194; Load baseline reports&#8230;
+        </span>
+      </label>
+    </div>
+    <div id="history-load-errors" style="display:none;padding:10px 14px;background:rgba(244,67,54,0.1);border:1px solid var(--sev-critical);border-radius:6px;color:var(--text-main);font-size:0.85rem;margin-bottom:12px"></div>
+    <div id="history-domain-warning" style="display:none;padding:10px 14px;background:rgba(255,152,0,0.12);border:1px solid var(--sev-medium);border-radius:6px;color:var(--text-main);font-size:0.85rem;margin-bottom:16px"></div>
+    <div id="history-empty" style="text-align:center;padding:60px 20px;color:var(--text-muted)">
+      <div style="font-size:3rem;margin-bottom:12px">&#128202;</div>
+      <div style="font-size:1rem;font-weight:500;margin-bottom:8px">No baseline reports loaded</div>
+      <div style="font-size:0.85rem">Select one or more previous morok HTML reports to compare findings over time.<br>Use this tab for remediation tracking or drift detection.</div>
+    </div>
+    <div id="history-content" style="display:none">
+      <div id="history-verdict" style="background:var(--bg-card);border:1px solid var(--border);border-left:4px solid var(--text-muted);border-radius:8px;padding:20px 24px;margin-bottom:24px"></div>
+      <div id="history-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:28px"></div>
+      <div style="margin-bottom:32px">
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 12px">Timeline</h3>
+        <div id="history-trend-chart" style="margin-bottom:16px"></div>
+        <div style="overflow-x:auto">
+          <table id="history-timeline-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border)">
+                <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500">Date</th>
+                <th style="text-align:left;padding:8px 12px;color:var(--text-muted);font-weight:500">Domain</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Grade</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--text-muted);font-weight:500">Score</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--sev-critical);font-weight:500">Critical</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--sev-high);font-weight:500">High</th>
+                <th style="text-align:center;padding:8px 12px;color:var(--sev-medium);font-weight:500">Medium</th>
+              </tr>
+            </thead>
+            <tbody id="history-timeline-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:1rem;font-weight:600;margin:0 0 4px">Findings Before &rarr; After</h3>
+        <p id="history-findings-caption" style="margin:0 0 20px;font-size:0.8rem;color:var(--text-muted)"></p>
+        <div id="history-bar-chart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /content -->
 
 <script>
@@ -4247,6 +4415,473 @@ function copyCmd(btn) {
     }, 1500);
   });
 }
+
+// ============================================================
+// History tab — cross-report comparison
+// ============================================================
+
+var _histSnapshots = [];
+var _histCurrentSnap = null;
+function _histInitCurrentSnap() {
+  if (_histCurrentSnap) return;
+  try { _histCurrentSnap = JSON.parse(document.getElementById('morok-data').textContent); } catch(e) {}
+}
+
+var _HIST_CATEGORIES = [
+  { key: 'kerberoastable',    label: 'Kerberoastable',          tab: 'kerberos' },
+  { key: 'asrep',             label: 'AS-REP Roastable',        tab: 'kerberos' },
+  { key: 'acl',               label: 'Dangerous ACLs',          tab: 'acl' },
+  { key: 'unconstrained_deleg', label: 'Unconstrained Delegation', tab: 'delegation' },
+  { key: 'constrained_deleg', label: 'Constrained Delegation',  tab: 'delegation' },
+  { key: 'rbcd',              label: 'RBCD',                    tab: 'delegation' },
+  { key: 'attack_paths',      label: 'Attack Paths',            tab: 'paths' },
+  { key: 'adcs_templates',    label: 'ADCS Templates',          tab: 'adcs' },
+  { key: 'shadow_creds',      label: 'Shadow Credentials',      tab: 'shadow' },
+  { key: 'gpo_write',         label: 'GPO Write ACL',           tab: 'gpo' },
+  { key: 'gpp_passwords',     label: 'GPP Passwords',           tab: 'gpo' },
+];
+
+function loadHistoryFiles(input) {
+  _histInitCurrentSnap();
+  var files = Array.from(input.files);
+  if (!files.length) return;
+  var errors = [];
+  var pending = files.length;
+  files.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var ok = false;
+      try {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(e.target.result, 'text/html');
+        var el = doc.getElementById('morok-data');
+        if (!el) {
+          errors.push(file.name + ': not a morok report (no embedded data block — must be v1.1.0+)');
+        } else {
+          var snap = JSON.parse(el.textContent);
+          if (!snap.v || !snap.generated_at) {
+            errors.push(file.name + ': unrecognised snapshot format');
+          } else {
+            snap._filename = file.name;
+            var exists = _histSnapshots.some(function(s) { return s.generated_at === snap.generated_at; });
+            if (exists) {
+              errors.push(file.name + ': already loaded (same timestamp)');
+            } else {
+              _histSnapshots.push(snap);
+              ok = true;
+            }
+          }
+        }
+      } catch(ex) {
+        errors.push(file.name + ': failed to parse (' + ex.message + ')');
+      }
+      if (--pending === 0) {
+        var errEl = document.getElementById('history-load-errors');
+        if (errors.length) {
+          errEl.style.display = '';
+          errEl.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">' +
+            '<div>&#10007; ' + errors.map(_histEsc).join('<br>&#10007; ') + '</div>' +
+            '<button onclick="document.getElementById(\'history-load-errors\').style.display=\'none\'" ' +
+              'style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--text-muted);' +
+              'padding:0;line-height:1;flex-shrink:0" aria-label="Dismiss">&times;</button>' +
+          '</div>';
+          clearTimeout(errEl._hideTimer);
+          errEl._hideTimer = setTimeout(function() { errEl.style.display = 'none'; }, 6000);
+        } else {
+          errEl.style.display = 'none';
+        }
+        _histRender();
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+function _histRender() {
+  if (!_histCurrentSnap || !_histSnapshots.length) return;
+  _histSnapshots.sort(function(a, b) { return a.generated_at.localeCompare(b.generated_at); });
+
+  var curDomain = _histCurrentSnap.domain || '';
+  var mismatched = _histSnapshots
+    .filter(function(s) { return s.domain && s.domain !== curDomain; })
+    .map(function(s) { return s.domain; })
+    .filter(function(d, i, arr) { return arr.indexOf(d) === i; });
+  var warnEl = document.getElementById('history-domain-warning');
+  if (mismatched.length) {
+    warnEl.style.display = '';
+    warnEl.innerHTML = '&#9888;&#65039; Domain mismatch: baseline(s) are for <strong>' +
+      mismatched.map(_histEsc).join(', ') + '</strong>, current is <strong>' +
+      _histEsc(curDomain) + '</strong>. Comparison may be inaccurate.';
+  } else {
+    warnEl.style.display = 'none';
+  }
+
+  _histRenderVerdict();
+  _histRenderSummaryCards();
+  _histRenderTrendChart();
+  _histRenderTimeline();
+  _histRenderBarChart();
+  document.getElementById('history-empty').style.display = 'none';
+  document.getElementById('history-content').style.display = '';
+}
+
+function _histSurface(snap) {
+  var c = snap.counts || {};
+  return (c.critical || 0) * 3 + (c.high || 0) * 2 + (c.medium || 0);
+}
+
+function _histPct(baseline, current) {
+  if (!baseline) return null;
+  return Math.round((current - baseline) / baseline * 100);
+}
+
+function _histMetricCard(label, baseVal, curVal, unit, lowerIsBetter) {
+  var pct = _histPct(baseVal, curVal);
+  var same = curVal === baseVal;
+  var improved = lowerIsBetter ? curVal < baseVal : curVal > baseVal;
+  var deltaColor = same ? 'var(--text-muted)' : (improved ? '#4caf50' : 'var(--sev-critical)');
+  var arrow = same ? '—' : (curVal < baseVal ? '↓' : '↑');
+  var pctStr = pct === null ? '' : (pct > 0 ? '+' : '') + pct + '%';
+
+  return '<div style="background:var(--bg-card);border:1px solid var(--border);' +
+    'border-radius:8px;padding:18px 22px;display:flex;align-items:center;' +
+    'justify-content:space-between;gap:16px;min-height:104px">' +
+
+    '<div style="display:flex;flex-direction:column;gap:6px">' +
+      '<div style="font-size:0.72rem;color:var(--text-muted);font-weight:600;' +
+        'text-transform:uppercase;letter-spacing:0.06em">' + label + '</div>' +
+      '<div style="display:flex;align-items:baseline;gap:6px">' +
+        '<span style="font-size:2.4rem;font-weight:800;line-height:1;' +
+          'color:var(--text-main)">' + curVal + '</span>' +
+        (unit ? '<span style="font-size:0.85rem;color:var(--text-muted)">' +
+          unit + '</span>' : '') +
+      '</div>' +
+    '</div>' +
+
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">' +
+      '<div style="display:flex;align-items:center;gap:6px;font-size:1.25rem;' +
+        'font-weight:800;color:' + deltaColor + '">' +
+        '<span style="font-size:1.1rem">' + arrow + '</span>' +
+        '<span>' + pctStr + '</span>' +
+      '</div>' +
+      '<div style="font-size:0.8rem;color:var(--text-muted)">was ' + baseVal + '</div>' +
+      (lowerIsBetter && curVal > 0 && !same
+        ? '<div style="font-size:0.72rem;color:var(--text-muted)">' +
+          curVal + ' remaining</div>'
+        : '') +
+    '</div>' +
+  '</div>';
+}
+
+function _histRenderSummaryCards() {
+  var container = document.getElementById('history-summary-cards');
+  var baseline = _histSnapshots[0];
+  var cur = _histCurrentSnap;
+  var html = '';
+  html += _histMetricCard('Risk Score',
+    baseline.score ? baseline.score.value : 0,
+    cur.score ? cur.score.value : 0,
+    '/100', true);
+  html += _histMetricCard('Attack Surface',
+    _histSurface(baseline), _histSurface(cur), 'pts', true);
+  html += _histMetricCard('Attack Paths',
+    ((baseline.findings || {}).attack_paths || []).length,
+    ((cur.findings || {}).attack_paths || []).length,
+    'paths', true);
+  html += _histMetricCard('Critical Findings',
+    baseline.counts ? baseline.counts.critical : 0,
+    cur.counts ? cur.counts.critical : 0,
+    '', true);
+  container.innerHTML = html;
+}
+
+function _histGradeColor(grade) {
+  var m = { A: '#4caf50', B: '#8bc34a', C: 'var(--sev-medium)', D: 'var(--sev-high)', F: 'var(--sev-critical)' };
+  return m[grade] || 'var(--text-muted)';
+}
+
+function _histRenderTimeline() {
+  var cur = _histCurrentSnap;
+  var all = _histSnapshots.concat([{ _cur: true, generated_at: cur.generated_at, domain: cur.domain, score: cur.score, counts: cur.counts }]);
+  var tbody = document.getElementById('history-timeline-body');
+  tbody.innerHTML = '';
+  all.forEach(function(snap) {
+    var grade = snap.score ? snap.score.grade : '?';
+    var value = snap.score ? snap.score.value : '?';
+    var c = snap.counts || {};
+    var isCur = !!snap._cur;
+    var tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid var(--border)' + (isCur ? ';background:var(--bg-card)' : '');
+    var domainMismatch = !isCur && snap.domain && snap.domain !== (_histCurrentSnap.domain || '');
+    tr.innerHTML =
+      '<td style="padding:10px 12px">' + snap.generated_at +
+        (isCur ? ' <span style="font-size:0.7rem;background:var(--accent);color:#fff;padding:2px 6px;border-radius:3px;margin-left:6px;vertical-align:middle">CURRENT</span>' : '') + '</td>' +
+      '<td style="padding:10px 12px">' + (snap.domain || '') +
+        (domainMismatch ? ' <span style="font-size:0.7rem;background:var(--sev-medium);color:#fff;padding:2px 5px;border-radius:3px;margin-left:4px">&#8800; domain</span>' : '') + '</td>' +
+      '<td style="padding:10px 12px;text-align:center;font-weight:700;color:' + _histGradeColor(grade) + '">' + grade + '</td>' +
+      '<td style="padding:10px 12px;text-align:center">' + value + '/100</td>' +
+      '<td style="padding:10px 12px;text-align:center;color:var(--sev-critical);font-weight:600">' + (c.critical != null ? c.critical : '?') + '</td>' +
+      '<td style="padding:10px 12px;text-align:center;color:var(--sev-high);font-weight:600">' + (c.high != null ? c.high : '?') + '</td>' +
+      '<td style="padding:10px 12px;text-align:center;color:var(--sev-medium);font-weight:600">' + (c.medium != null ? c.medium : '?') + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function _histDaysBetween(d1, d2) {
+  var t1 = new Date(d1.replace(' ', 'T')).getTime();
+  var t2 = new Date(d2.replace(' ', 'T')).getTime();
+  if (isNaN(t1) || isNaN(t2)) return null;
+  return Math.round(Math.abs(t2 - t1) / 86400000);
+}
+
+function _histRenderVerdict() {
+  var baseline = _histSnapshots[0];
+  var cur = _histCurrentSnap;
+
+  var bScore = baseline.score ? baseline.score.value : 0;
+  var cScore = cur.score ? cur.score.value : 0;
+  var bGrade = baseline.score ? baseline.score.grade : '?';
+  var cGrade = cur.score ? cur.score.grade : '?';
+  var days = _histDaysBetween(baseline.generated_at, cur.generated_at);
+
+  var resolved = 0, regressed = 0, outstanding = 0;
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var bv = ((baseline.findings || {})[cat.key] || []).length;
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (bv === 0 && cv === 0) return;
+    if (cv < bv) resolved++;
+    else if (cv > bv) regressed++;
+    else outstanding++;
+  });
+
+  var topThreat = null, topCount = 0;
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (cv > topCount) { topCount = cv; topThreat = cat.label; }
+  });
+
+  var scoreDelta = bScore - cScore;
+  var improved = scoreDelta > 0;
+
+  var headline;
+  if (improved) {
+    headline = 'Security posture improved from grade ' + bGrade + ' (' + bScore +
+      ') to ' + cGrade + ' (' + cScore + ')' +
+      (days != null ? ' over ' + days + ' days' : '') + '.';
+  } else if (scoreDelta === 0) {
+    headline = 'No change in overall risk score (' + cGrade + ', ' + cScore + '/100)' +
+      (days != null ? ' over ' + days + ' days' : '') + '.';
+  } else {
+    headline = 'Security posture regressed from grade ' + bGrade + ' (' + bScore +
+      ') to ' + cGrade + ' (' + cScore + ')' +
+      (days != null ? ' over ' + days + ' days' : '') + '.';
+  }
+
+  var parts = [];
+  if (resolved > 0) parts.push(resolved + ' categor' + (resolved === 1 ? 'y' : 'ies') + ' improved or resolved');
+  if (regressed > 0) parts.push(regressed + ' regressed');
+  if (outstanding > 0) parts.push(outstanding + ' unchanged');
+  var detail = parts.join(', ') + '.';
+
+  var threatLine = '';
+  if (topThreat && topCount > 0) {
+    threatLine = ' Largest remaining exposure: <strong>' + _histEsc(topThreat) +
+      '</strong> (' + topCount + ' finding' + (topCount === 1 ? '' : 's') + ').';
+  }
+
+  var accentColor = improved ? '#4caf50' : (scoreDelta === 0 ? 'var(--text-muted)' : 'var(--sev-critical)');
+  var el = document.getElementById('history-verdict');
+  el.style.borderLeftColor = accentColor;
+  el.innerHTML =
+    '<div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;' +
+      'letter-spacing:0.08em;font-weight:600;margin-bottom:8px">Executive Verdict</div>' +
+    '<div style="font-size:1.15rem;font-weight:600;color:var(--text-main);line-height:1.5;margin-bottom:6px">' +
+      _histEsc(headline) + '</div>' +
+    '<div style="font-size:0.9rem;color:var(--text-muted);line-height:1.5">' +
+      _histEsc(detail) + threatLine + '</div>';
+}
+
+function _histRenderTrendChart() {
+  var cur = _histCurrentSnap;
+  var points = _histSnapshots.slice().concat([cur]).map(function(s) {
+    return { date: s.generated_at, score: s.score ? s.score.value : 0, grade: s.score ? s.score.grade : '?' };
+  });
+
+  if (points.length < 2) {
+    document.getElementById('history-trend-chart').innerHTML = '';
+    return;
+  }
+
+  var W = 720, H = 160, padL = 56, padR = 16, padT = 28, padB = 32;
+  var plotW = W - padL - padR, plotH = H - padT - padB;
+  var n = points.length;
+  var x = function(i) { return padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW); };
+  var y = function(v) { return padT + (1 - v / 100) * plotH; };
+
+  var d = points.map(function(p, i) {
+    return (i === 0 ? 'M' : 'L') + x(i).toFixed(1) + ' ' + y(p.score).toFixed(1);
+  }).join(' ');
+  var area = d + ' L' + x(n - 1).toFixed(1) + ' ' + (padT + plotH) +
+    ' L' + x(0).toFixed(1) + ' ' + (padT + plotH) + ' Z';
+
+  var trendColor = points[n - 1].score < points[0].score ? '#4caf50'
+    : points[n - 1].score > points[0].score ? 'var(--sev-critical)'
+    : 'var(--text-muted)';
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" ' +
+    'style="width:100%;max-width:' + W + 'px;height:auto;font-family:inherit" ' +
+    'role="img" aria-label="Risk score trend over time">';
+
+  [0, 25, 50, 75, 100].forEach(function(v) {
+    var gy = y(v);
+    svg += '<line x1="' + padL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - padR) +
+      '" y2="' + gy.toFixed(1) + '" stroke="var(--border)" stroke-width="1"/>';
+    svg += '<text x="' + (padL - 8) + '" y="' + (gy + 3).toFixed(1) +
+      '" text-anchor="end" font-size="10" fill="var(--text-muted)">' + v + '</text>';
+  });
+
+  svg += '<path d="' + area + '" fill="' + trendColor + '" opacity="0.12"/>';
+  svg += '<path d="' + d + '" fill="none" stroke="' + trendColor +
+    '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+
+  points.forEach(function(p, i) {
+    var px = x(i), py = y(p.score);
+    svg += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) +
+      '" r="4" fill="var(--bg-page)" stroke="' + trendColor + '" stroke-width="2"/>';
+    var labelY = py - 10;
+    if (labelY < 11) labelY = py + 16;
+    svg += '<text x="' + px.toFixed(1) + '" y="' + labelY.toFixed(1) +
+      '" text-anchor="middle" font-size="10" font-weight="700" fill="var(--text-main)">' + p.score + '</text>';
+    var shortDate = (p.date || '').split(' ')[0];
+    svg += '<text x="' + px.toFixed(1) + '" y="' + (H - 10) +
+      '" text-anchor="middle" font-size="9" fill="var(--text-muted)">' + shortDate + '</text>';
+  });
+
+  svg += '</svg>';
+  document.getElementById('history-trend-chart').innerHTML = svg;
+}
+
+function _histBar(value, maxVal, color) {
+  var pct = Math.round((value / maxVal) * 100);
+  return '<div style="flex:1;background:var(--bg-hover);border-radius:3px;height:12px;overflow:hidden">' +
+    (value > 0
+      ? '<div style="width:' + pct + '%;height:100%;background:' + color + ';border-radius:3px"></div>'
+      : '') +
+  '</div>';
+}
+
+function _histRenderBarChart() {
+  var container = document.getElementById('history-bar-chart');
+  container.innerHTML = '';
+  var baseline = _histSnapshots[0];  // OLDEST baseline
+  var cur = _histCurrentSnap;
+  var baseDate = (baseline.generated_at || '').split(' ')[0];
+  var curDate = (cur.generated_at || '').split(' ')[0];
+
+  var captionEl = document.getElementById('history-findings-caption');
+  if (captionEl) {
+    captionEl.textContent = 'Comparing oldest baseline (' + baseDate + ') vs current (' +
+      curDate + ') — intermediate reports shown in the timeline above. Click a category to open its tab.';
+  }
+
+  var regressed = [], resolved = [], outstanding = [];
+  _HIST_CATEGORIES.forEach(function(cat) {
+    var bv = ((baseline.findings || {})[cat.key] || []).length;
+    var cv = ((cur.findings || {})[cat.key] || []).length;
+    if (bv === 0 && cv === 0) return;
+    var row = { label: cat.label, tab: cat.tab, b: bv, c: cv, isNew: bv === 0 && cv > 0 };
+    if (cv > bv) regressed.push(row);
+    else if (cv < bv) resolved.push(row);
+    else outstanding.push(row);
+  });
+
+  if (!regressed.length && !resolved.length && !outstanding.length) {
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem">No findings to compare.</p>';
+    return;
+  }
+
+  var allRows = regressed.concat(resolved).concat(outstanding);
+  var maxVal = Math.max.apply(null, allRows.map(function(d) { return Math.max(d.b, d.c); })) || 1;
+  var ctx = { maxVal: maxVal, baseDate: baseDate, curDate: curDate };
+
+  var html = '';
+  html += _histRenderBarGroup('Regressions', regressed, ctx,
+    'New or worsened findings since baseline');
+  html += _histRenderBarGroup('Resolved & Improved', resolved, ctx,
+    'Findings eliminated or reduced since baseline');
+  html += _histRenderBarGroup('Outstanding', outstanding, ctx,
+    'Unchanged since baseline');
+  container.innerHTML = html;
+}
+
+function _histRenderBarGroup(title, rows, ctx, subtitle) {
+  if (!rows.length) return '';
+
+  var body = '';
+  rows.forEach(function(d) {
+    var baseColor, curColor;
+    if (d.b === d.c) {
+      baseColor = curColor = 'var(--text-muted)';
+    } else if (d.b > d.c) {
+      baseColor = 'var(--sev-critical)';
+      curColor  = '#4caf50';
+    } else {
+      baseColor = '#4caf50';
+      curColor  = 'var(--sev-critical)';
+    }
+
+    var fixedBadge = (d.c === 0 && d.b > 0)
+      ? '<span style="display:inline-flex;align-items:center;gap:4px;' +
+        'background:rgba(76,175,80,0.15);color:#4caf50;border:1px solid #4caf50;' +
+        'border-radius:4px;padding:3px 9px;font-size:0.75rem;font-weight:700">' +
+        '✓ Fixed</span>'
+      : '';
+
+    body +=
+      '<div style="display:grid;grid-template-columns:210px 1fr 92px;' +
+        'align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border)">' +
+
+        '<a href="#" onclick="showTab(\'' + d.tab + '\');return false" ' +
+          'style="color:var(--text-main);text-decoration:none;font-size:0.875rem;' +
+          'font-weight:500;line-height:1.3" title="' + _histEsc(d.label) + '">' +
+          _histEsc(d.label) +
+          (d.isNew ? ' <span style="font-size:0.62rem;background:var(--sev-critical);' +
+            'color:#fff;padding:1px 5px;border-radius:3px;vertical-align:middle;' +
+            'font-weight:700">NEW</span>' : '') +
+        '</a>' +
+
+        '<div>' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:104px;' +
+              'text-align:right;flex-shrink:0;white-space:nowrap">' + ctx.baseDate + '</div>' +
+            _histBar(d.b, ctx.maxVal, baseColor) +
+            '<div style="font-size:0.82rem;font-weight:700;color:' + baseColor +
+              ';width:22px;text-align:right;flex-shrink:0">' + d.b + '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<div style="font-size:0.7rem;color:var(--text-muted);width:104px;' +
+              'text-align:right;flex-shrink:0;white-space:nowrap">now · ' + ctx.curDate + '</div>' +
+            _histBar(d.c, ctx.maxVal, curColor) +
+            '<div style="font-size:0.82rem;font-weight:700;color:' + curColor +
+              ';width:22px;text-align:right;flex-shrink:0">' + d.c + '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div style="text-align:right">' + fixedBadge + '</div>' +
+      '</div>';
+  });
+
+  return '<div style="margin-bottom:24px">' +
+    '<h4 style="margin:0 0 2px;font-size:0.9rem;font-weight:600;color:var(--text-main)">' +
+      title + ' <span style="color:var(--text-muted);font-weight:400">(' + rows.length + ')</span></h4>' +
+    '<p style="margin:0 0 10px;font-size:0.75rem;color:var(--text-muted)">' + subtitle + '</p>' +
+    body +
+  '</div>';
+}
+
+function _histEsc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 </script>
 
 <footer style="text-align:center;padding:20px 40px;border-top:1px solid var(--border);
@@ -4255,6 +4890,8 @@ function copyCmd(btn) {
     style="color:var(--accent);text-decoration:none">morok v{{.Version}}</a>
   &middot; {{.GeneratedAt}} &middot; Active Directory Attack Path Analysis
 </footer>
+
+<script type="application/json" id="morok-data">{{.SnapshotJSON}}</script>
 
 </body>
 </html>`
