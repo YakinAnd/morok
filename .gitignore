@@ -5,8 +5,8 @@ dist/
 .env
 *.log
 report*.html
-adpath
-morok
+/adpath
+/morok
 *.html
 .DS_Store
 **/.DS_Store
