@@ -159,7 +159,7 @@ The `--report` flag generates a full interactive HTML report with:
 
 ### History tab — remediation tracking
 
-<!-- demo-history.gif -->
+![History tab demo](docs/assets/demo-history.gif)
 
 Load any previous morok report as a baseline to compare findings over time — no server, no uploads, everything runs in the browser.
 
