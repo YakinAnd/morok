@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ""
+          - goos: linux
+            goarch: arm64
+            suffix: ""
+          - goos: darwin
+            goarch: amd64
+            suffix: ""
+          - goos: darwin
+            goarch: arm64
+            suffix: ""
+          - goos: windows
+            goarch: amd64
+            suffix: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          BINARY="morok-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.suffix }}"
+          go build -trimpath -ldflags="-s -w" -o "$BINARY" ./cmd/morok/
+          echo "BINARY=$BINARY" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: morok-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.BINARY }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: false
+          body: |
+            See the [CHANGELOG](https://github.com/YakinAnd/morok/blob/main/README.md) for details.
+
+            ## Downloads
+
+            | Platform | Architecture | Binary |
+            |---|---|---|
+            | Linux | amd64 | `morok-linux-amd64` |
+            | Linux | arm64 | `morok-linux-arm64` |
+            | macOS | amd64 (Intel) | `morok-darwin-amd64` |
+            | macOS | arm64 (Apple Silicon) | `morok-darwin-arm64` |
+            | Windows | amd64 | `morok-windows-amd64.exe` |
+
+            ```bash
+            chmod +x morok-linux-amd64
+            ./morok-linux-amd64 version
+            ```
