@@ -157,6 +157,17 @@ The `--report` flag generates a full interactive HTML report with:
 - Light/dark theme toggle
 - CVSS scores with click-to-copy vectors
 
+### History tab — remediation tracking
+
+<!-- demo-history.gif -->
+
+Load any previous morok report as a baseline to compare findings over time — no server, no uploads, everything runs in the browser.
+
+- **Executive Verdict** — auto-generated sentence summarising the grade change, days elapsed, and largest remaining exposure
+- **Risk score trend** — inline SVG line chart across all loaded snapshots
+- **Findings diff** — per-category dual bars grouped into Regressions / Resolved & Improved / Outstanding; the larger bar is always red, the smaller green
+- **Summary cards** — Risk Score, Attack Surface, Attack Paths, Critical Findings with delta % vs the oldest baseline
+
 ---
 
 ## CI Integration
