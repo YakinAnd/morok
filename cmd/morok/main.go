@@ -1504,7 +1504,7 @@ func runEnumUsers(cmd *cobra.Command, args []string) error {
 		targetDC = domain
 	}
 
-	_, err := adkerberos.EnumUsers(domain, targetDC, wordlistPath)
+	_, err := adkerberos.EnumUsers(domain, targetDC, wordlistPath, proxyURL)
 	if err != nil {
 		return fmt.Errorf("kerb-enum: %w", err)
 	}

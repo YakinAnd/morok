@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/jcmturner/gokrb5/v8/iana/nametype"
 	"github.com/jcmturner/gokrb5/v8/messages"
 	"github.com/jcmturner/gokrb5/v8/types"
+	"golang.org/x/net/proxy"
 )
 
 // UserStatus is the result of probing a single username.
@@ -46,7 +48,8 @@ type EnumUsersResult struct {
 
 // EnumUsers probes each username in wordlistPath against the KDC.
 // It does NOT require credentials — only network access to DC:88.
-func EnumUsers(domain, dc, wordlistPath string) (*EnumUsersResult, error) {
+// proxyURL may be empty or a socks5:// URL to route traffic through a SOCKS5 proxy.
+func EnumUsers(domain, dc, wordlistPath, proxyURL string) (*EnumUsersResult, error) {
 	usernames, err := readWordlist(wordlistPath)
 	if err != nil {
 		return nil, fmt.Errorf("wordlist: %w", err)
@@ -57,17 +60,25 @@ func EnumUsers(domain, dc, wordlistPath string) (*EnumUsersResult, error) {
 
 	cfg := buildConfig(realm, addr)
 
+	dialer, err := buildDialer(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("proxy: %w", err)
+	}
+
 	result := &EnumUsersResult{Domain: domain, DC: dc}
 
 	color.Cyan("\n  ENUM-USERS")
 	color.White("  %-24s %s", "domain", domain)
 	color.White("  %-24s %s", "kdc", addr)
+	if proxyURL != "" {
+		color.White("  %-24s %s", "proxy", proxyURL)
+	}
 	color.White("  %-24s %d", "wordlist size", len(usernames))
 	fmt.Println()
 
 	found := 0
 	for _, username := range usernames {
-		r := probe(username, realm, addr, cfg)
+		r := probe(username, realm, addr, cfg, dialer)
 		result.Results = append(result.Results, r)
 
 		switch r.Status {
@@ -98,7 +109,7 @@ func EnumUsers(domain, dc, wordlistPath string) (*EnumUsersResult, error) {
 }
 
 // probe sends a single AS-REQ and classifies the response.
-func probe(username, realm, addr string, cfg *config.Config) UserResult {
+func probe(username, realm, addr string, cfg *config.Config, dialer proxy.Dialer) UserResult {
 	cname := types.NewPrincipalName(nametype.KRB_NT_PRINCIPAL, username)
 	sname := types.NewPrincipalName(nametype.KRB_NT_SRV_INST, "krbtgt/"+realm)
 
@@ -113,7 +124,7 @@ func probe(username, realm, addr string, cfg *config.Config) UserResult {
 		return UserResult{Username: username, Status: StatusError, Err: err}
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return UserResult{Username: username, Status: StatusError, Err: fmt.Errorf("connect: %w", err)}
 	}
@@ -184,6 +195,33 @@ func classifyErrorCode(username string, code int32) UserResult {
 		// Any other error means the principal exists (pre-auth failed, etc.)
 		return UserResult{Username: username, Status: StatusExists}
 	}
+}
+
+// buildDialer returns a plain TCP dialer or a SOCKS5 proxy dialer.
+func buildDialer(proxyURL string) (proxy.Dialer, error) {
+	if proxyURL == "" {
+		return &timeoutDialer{timeout: 10 * time.Second}, nil
+	}
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL %q: %w", proxyURL, err)
+	}
+	if u.Scheme != "socks5" {
+		return nil, fmt.Errorf("unsupported proxy scheme %q (only socks5 supported)", u.Scheme)
+	}
+	var auth *proxy.Auth
+	if u.User != nil {
+		pass, _ := u.User.Password()
+		auth = &proxy.Auth{User: u.User.Username(), Password: pass}
+	}
+	return proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
+}
+
+// timeoutDialer wraps net.DialTimeout so it satisfies proxy.Dialer.
+type timeoutDialer struct{ timeout time.Duration }
+
+func (d *timeoutDialer) Dial(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, d.timeout)
 }
 
 func buildConfig(realm, addr string) *config.Config {
