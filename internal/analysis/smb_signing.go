@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"time"
 
 	"github.com/fatih/color"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -17,6 +19,7 @@ const (
 
 type SMBSigningResult struct {
 	Host            string
+	ProxyURL        string
 	Reachable       bool
 	SigningEnabled  bool
 	SigningRequired bool
@@ -34,10 +37,17 @@ type SMBSigningFinding struct {
 
 // CheckSMBSigning sends an SMB2 Negotiate to host:445 and reads the SecurityMode field.
 // No credentials are required — the check is performed during protocol negotiation.
-func CheckSMBSigning(host string) *SMBSigningResult {
-	r := &SMBSigningResult{Host: host}
+// proxyURL may be empty or a socks5:// URL to route the connection through a SOCKS5 proxy.
+func CheckSMBSigning(host, proxyURL string) *SMBSigningResult {
+	r := &SMBSigningResult{Host: host, ProxyURL: proxyURL}
 
-	conn, err := net.DialTimeout("tcp", host+":445", 5*time.Second)
+	dialer, err := smbBuildDialer(proxyURL)
+	if err != nil {
+		r.Reachable = false
+		return r
+	}
+
+	conn, err := dialer.Dial("tcp", host+":445")
 	if err != nil {
 		r.Reachable = false
 		return r
@@ -122,6 +132,9 @@ func PrintSMBSigningResult(r *SMBSigningResult) {
 
 	color.Cyan("\n  SMB SIGNING")
 	color.White("  %-28s %s", "host", r.Host)
+	if r.ProxyURL != "" {
+		color.White("  %-28s %s", "proxy", r.ProxyURL)
+	}
 
 	if !r.Reachable {
 		color.White("  %-28s port 445 not reachable", "status")
@@ -166,6 +179,32 @@ func SMBSigningSummaryLine(r *SMBSigningResult) {
 		return
 	}
 	color.Red("  %-28s NOT required — NTLM relay possible (port 445)", "smb signing")
+}
+
+// smbBuildDialer returns a plain TCP dialer or a SOCKS5 proxy dialer.
+func smbBuildDialer(proxyURL string) (proxy.Dialer, error) {
+	if proxyURL == "" {
+		return &smbTimeoutDialer{timeout: 5 * time.Second}, nil
+	}
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid proxy URL %q: %w", proxyURL, err)
+	}
+	if u.Scheme != "socks5" {
+		return nil, fmt.Errorf("unsupported proxy scheme %q (only socks5 supported)", u.Scheme)
+	}
+	var auth *proxy.Auth
+	if u.User != nil {
+		pass, _ := u.User.Password()
+		auth = &proxy.Auth{User: u.User.Username(), Password: pass}
+	}
+	return proxy.SOCKS5("tcp", u.Host, auth, proxy.Direct)
+}
+
+type smbTimeoutDialer struct{ timeout time.Duration }
+
+func (d *smbTimeoutDialer) Dial(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, d.timeout)
 }
 
 // buildSMB2Negotiate constructs a minimal SMB2 Negotiate request packet.
