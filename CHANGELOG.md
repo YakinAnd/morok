@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1] — 2026-05-19
+
+### Bug fixes
+
+- **kerb-enum `--proxy` silently ignored** — the `--proxy socks5://...` flag was registered on the `kerb-enum` command but the value was never passed into the dialer; all AS-REQ connections were made directly regardless of the flag. Fixed: `proxyURL` is now forwarded to the SOCKS5 dialer.
+- **`smb` command has no proxy support** — `CheckSMBSigning` connected to port 445 via `net.DialTimeout` with no proxy path. Fixed: `--proxy` now routes SMB2 Negotiate traffic through the SOCKS5 proxy, consistent with all other commands.
+
 ## [1.1.0] — 2026-05-15
 
 ### New: History tab — remediation tracking across reports
