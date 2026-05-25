@@ -69,7 +69,7 @@ func (c *Client) Connect() error {
 		address = fmt.Sprintf("%s:%d", c.Host, c.Port)
 		conn, wrap, err = c.dialWithTimeout(address, true)
 		if err != nil {
-			return fmt.Errorf("connection failed on both 389 and 636: %w", err)
+			return friendlyLDAPError(fmt.Errorf("connection failed on both 389 and 636: %w", err))
 		}
 	}
 
@@ -181,7 +181,7 @@ func (c *Client) Bind() error {
 		nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(authDomain, ".")[0]), c.Username)
 		err2 := c.conn.Bind(nt, c.Password)
 		if err2 != nil {
-			return fmt.Errorf("bind failed (tried UPN and NT format): %w", err)
+			return friendlyLDAPError(err)
 		}
 	}
 
@@ -209,7 +209,7 @@ func (c *Client) BindNTLM() error {
 	}
 
 	if err := c.conn.NTLMBindWithHash(netbiosDomain, c.Username, c.NTHash); err != nil {
-		return fmt.Errorf("NTLM bind failed: %w", err)
+		return friendlyLDAPError(err)
 	}
 
 	if !c.Quiet {
@@ -268,7 +268,7 @@ func (c *Client) AnonymousBind() error {
 
 	err := c.conn.UnauthenticatedBind("")
 	if err != nil {
-		return fmt.Errorf("anonymous bind failed (null sessions disabled): %w", err)
+		return friendlyLDAPError(err)
 	}
 
 	c.IsAnon = true
@@ -325,7 +325,7 @@ func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, er
 	for {
 		result, err := c.conn.Search(searchReq)
 		if err != nil {
-			return nil, fmt.Errorf("search failed [filter: %s]: %w", filter, err)
+			return nil, friendlyLDAPError(fmt.Errorf("search failed [filter: %s]: %w", filter, err))
 		}
 
 		allEntries = append(allEntries, result.Entries...)
@@ -363,7 +363,7 @@ func (c *Client) SearchBase(baseDN, filter string, attributes []string) ([]*gold
 	)
 	result, err := c.conn.Search(searchReq)
 	if err != nil {
-		return nil, fmt.Errorf("search failed [base: %s, filter: %s]: %w", baseDN, filter, err)
+		return nil, friendlyLDAPError(fmt.Errorf("search failed [base: %s, filter: %s]: %w", baseDN, filter, err))
 	}
 	return result.Entries, nil
 }
@@ -388,12 +388,12 @@ func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, 
 	case c.NTHash != "":
 		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
 		if err := gcConn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
-			return nil, fmt.Errorf("GC NTLM bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	case c.Password != "" && c.Username != "":
 		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
 		if err := gcConn.Bind(upn, c.Password); err != nil {
-			return nil, fmt.Errorf("GC bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	default:
 		return nil, fmt.Errorf("GC query requires credentials (anonymous/Kerberos not supported for GC yet)")
@@ -452,12 +452,12 @@ func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([
 	case c.NTHash != "":
 		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
 		if err := conn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
-			return nil, fmt.Errorf("cross-domain NTLM bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	case c.Password != "" && c.Username != "":
 		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
 		if err := conn.Bind(upn, c.Password); err != nil {
-			return nil, fmt.Errorf("cross-domain bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	default:
 		return nil, fmt.Errorf("cross-domain query requires credentials")
