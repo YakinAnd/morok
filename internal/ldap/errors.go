@@ -110,6 +110,32 @@ func decodeCode49(msg string) string {
 	return "authentication failed — wrong username or password"
 }
 
+// friendlyKerberosError converts raw gokrb5 error strings into readable messages.
+// gokrb5 errors are plain fmt.Errorf — not *goldap.Error — so friendlyLDAPError
+// cannot handle them. Applied in BindKerberos and kerberos_auth.go.
+func friendlyKerberosError(err error) error {
+	if err == nil {
+		return nil
+	}
+	lower := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(lower, "skew") || strings.Contains(lower, "clock"):
+		return fmt.Errorf("Kerberos clock skew too large — sync system clock with DC (max ±5 min): %w", err)
+	case strings.Contains(lower, "s_principal_unknown") || strings.Contains(lower, "principal unknown") ||
+		strings.Contains(lower, "server not found"):
+		return fmt.Errorf("Kerberos SPN not found — try using DC hostname instead of IP (--dc dc01.corp.local): %w", err)
+	case strings.Contains(lower, "tkt_expired") || strings.Contains(lower, "ticket") && strings.Contains(lower, "expir"):
+		return fmt.Errorf("Kerberos ticket has expired — renew ccache (kinit or get a fresh ticket): %w", err)
+	case strings.Contains(lower, "etype_nosupp") || strings.Contains(lower, "etype") && strings.Contains(lower, "supp"):
+		return fmt.Errorf("Kerberos encryption type not supported — RC4 ccache against AES-only DC or vice versa: %w", err)
+	case strings.Contains(lower, "no such file") || strings.Contains(lower, "load ccache"):
+		return fmt.Errorf("ccache file not found or unreadable — check --ccache path: %w", err)
+	case strings.Contains(lower, "credentials"):
+		return fmt.Errorf("Kerberos credentials invalid or not found in ccache: %w", err)
+	}
+	return err
+}
+
 // windowsLogonError maps Windows logon error codes to user-friendly strings.
 // These appear in the "data" hex field of LDAP Result Code 49 responses from AD.
 func windowsLogonError(code int64) string {

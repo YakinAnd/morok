@@ -97,7 +97,7 @@ func (k *KerberosGSSAPIClient) InitSecContext(target string, token []byte) ([]by
 func (k *KerberosGSSAPIClient) InitSecContextWithOptions(target string, token []byte, options []int) ([]byte, bool, error) {
 	tkt, sessionKey, err := k.krb5Client.GetServiceTicket(k.spn)
 	if err != nil {
-		return nil, false, fmt.Errorf("kerberos: get ticket for %s: %w", k.spn, err)
+		return nil, false, friendlyKerberosError(fmt.Errorf("kerberos: get ticket for %s: %w", k.spn, err))
 	}
 	k.sessionKey = sessionKey
 

@@ -233,7 +233,7 @@ func (c *Client) BindKerberos() error {
 
 	gssClient, err := NewKerberosClientFromCCache(c.CcachePath, host, c.Domain)
 	if err != nil {
-		return fmt.Errorf("kerberos init: %w", err)
+		return friendlyKerberosError(fmt.Errorf("kerberos init: %w", err))
 	}
 
 	spn := fmt.Sprintf("ldap/%s", host)
@@ -241,7 +241,7 @@ func (c *Client) BindKerberos() error {
 		color.Blue("[*] Kerberos SPN: %s", spn)
 	}
 	if err := c.conn.GSSAPIBind(gssClient, spn, ""); err != nil {
-		return fmt.Errorf("kerberos bind failed: %w", err)
+		return friendlyKerberosError(fmt.Errorf("kerberos bind failed: %w", err))
 	}
 
 	// Activate SASL message wrapping using the Kerberos session key.
@@ -539,7 +539,7 @@ func (c *Client) SearchACL() ([]*goldap.Entry, error) {
 
     result, err := c.conn.Search(searchReq)
     if err != nil {
-        return nil, fmt.Errorf("ACL search error: %w", err)
+        return nil, friendlyLDAPError(fmt.Errorf("ACL search error: %w", err))
     }
 
     return result.Entries, nil
@@ -667,7 +667,7 @@ func (c *Client) QueryRootDSE() (*RootDSEInfo, error) {
 	)
 	sr, err := c.conn.Search(req)
 	if err != nil || len(sr.Entries) == 0 {
-		return nil, fmt.Errorf("RootDSE query failed: %w", err)
+		return nil, friendlyLDAPError(fmt.Errorf("RootDSE query failed: %w", err))
 	}
 	e := sr.Entries[0]
 	return &RootDSEInfo{
