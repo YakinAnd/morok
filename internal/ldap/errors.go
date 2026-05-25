@@ -10,15 +10,12 @@ import (
 	goldap "github.com/go-ldap/ldap/v3"
 )
 
-var reData = regexp.MustCompile(`\bdata\s+([0-9a-fA-F]+)\b`)
+// reData matches the hex "data XXXX" sub-code in Windows AD LDAP error strings.
+// (?i) for Samba 4 compat (ADP-146).
+var reData = regexp.MustCompile(`(?i)\bdata\s+([0-9a-fA-F]+)\b`)
 
 // friendlyLDAPError converts a raw go-ldap error into a human-readable message.
-// It recognises the most common Windows Active Directory LDAP error patterns:
-//   - ResultCode 49 (invalid credentials) — decodes the Windows sub-error from the "data" hex field
-//   - ResultCode 1  (operations error)    — detects null-session restriction
-//   - ResultCode 50 (insufficient rights) — access denied message
-//   - ResultCode 52 (unavailable)         — DC not ready
-//   - Network errors                      — connection refused / timeout
+// It recognises the most common Windows Active Directory LDAP error patterns.
 func friendlyLDAPError(err error) error {
 	if err == nil {
 		return nil
@@ -38,6 +35,12 @@ func friendlyLDAPError(err error) error {
 			}
 			return fmt.Errorf("LDAP operations error: %s", msg)
 
+		case 8: // LDAPResultStrongAuthRequired — ADP-139
+			return fmt.Errorf("DC requires LDAP signing — connect via LDAPS (port 636) or use Kerberos (--ccache)")
+
+		case 13: // LDAPResultConfidentialityRequired — ADP-139
+			return fmt.Errorf("DC requires channel binding / confidentiality — connect via LDAPS (port 636)")
+
 		case goldap.LDAPResultInsufficientAccessRights: // 50
 			return fmt.Errorf("insufficient LDAP read permissions — bind with a valid domain account (-u/-p)")
 
@@ -49,22 +52,41 @@ func friendlyLDAPError(err error) error {
 
 		case goldap.LDAPResultBusy: // 51
 			return fmt.Errorf("DC is busy — retry in a few seconds")
+
+		case 4: // LDAPResultSizeLimitExceeded — ADP-147
+			return fmt.Errorf("LDAP result size limit exceeded — DC page size may be restricted; try --scope to narrow the search")
+
+		case 12: // LDAPResultUnavailableCriticalExtension — ADP-147
+			return fmt.Errorf("DC rejected a required LDAP control (code 12) — this DC may be Samba/non-Windows; ACL checks may be limited")
+
+		case 32: // LDAPResultNoSuchObject — ADP-147
+			return fmt.Errorf("base DN not found — check domain spelling or use --scope with the correct OU path")
 		}
 	}
 
-	// Network-level errors (connection refused, timeout, etc.)
+	// Network-level errors — use lower-cased raw for case-insensitive matching (ADP-143, ADP-144).
 	raw := err.Error()
+	lower := strings.ToLower(raw)
 	switch {
-	case strings.Contains(raw, "connection refused"):
+	case strings.Contains(lower, "connection refused") ||
+		strings.Contains(lower, "actively refused") || // Windows: "connectex: No connection could be made..."
+		strings.Contains(lower, "connectex:"):
 		return fmt.Errorf("DC unreachable — connection refused (check DC IP and firewall on port 389/636)")
-	case strings.Contains(raw, "i/o timeout") || strings.Contains(raw, "timeout"):
+
+	case strings.Contains(lower, "i/o timeout") ||
+		strings.Contains(lower, "timed out") ||
+		strings.Contains(lower, "deadline exceeded"):
 		return fmt.Errorf("DC unreachable — connection timed out (check network path, firewall, or proxy)")
-	case strings.Contains(raw, "no such host"):
+
+	case strings.Contains(lower, "no such host") ||
+		strings.Contains(lower, "no such host is known"): // Windows DNS phrasing
 		return fmt.Errorf("DC hostname not resolved — check --dc value or DNS")
-	case strings.Contains(raw, "connection reset"):
-		return fmt.Errorf("DC reset the connection — try LDAPS (--dc with port 636) or check proxy")
-	case strings.Contains(raw, "TLS handshake"):
-		return fmt.Errorf("LDAPS TLS handshake failed — DC certificate issue (self-signed is accepted by morok)")
+
+	case strings.Contains(lower, "connection reset"):
+		return fmt.Errorf("DC reset the connection — try LDAPS (port 636) or check proxy")
+
+	case strings.Contains(lower, "tls:") || strings.Contains(lower, "tls handshake"): // ADP-143
+		return fmt.Errorf("LDAPS TLS handshake failed — check that port 636 is reachable and the DC has a valid certificate")
 	}
 
 	return err
@@ -80,9 +102,11 @@ func decodeCode49(msg string) string {
 			if reason := windowsLogonError(code); reason != "" {
 				return reason
 			}
+			// Unknown sub-code — report it instead of lying "wrong password" (ADP-142)
+			return fmt.Sprintf("authentication failed — Windows sub-error 0x%x (credentials may be correct but account/policy blocks logon)", code)
 		}
 	}
-	// no data field or unknown sub-code — generic message
+	// No data field at all — generic message
 	return "authentication failed — wrong username or password"
 }
 
@@ -90,6 +114,10 @@ func decodeCode49(msg string) string {
 // These appear in the "data" hex field of LDAP Result Code 49 responses from AD.
 func windowsLogonError(code int64) string {
 	switch code {
+	case 0x0:
+		return "authentication failed — wrong username or password"
+	case 0x52d: // 1325 — PASSWORD_RESTRICTION (ADP-142)
+		return "authentication failed — password does not meet complexity/history requirements"
 	case 0x52e: // 1326 — LOGON_FAILURE
 		return "authentication failed — wrong password"
 	case 0x52f: // 1327 — ACCOUNT_RESTRICTION
@@ -102,16 +130,22 @@ func windowsLogonError(code int64) string {
 		return "authentication failed — password has expired (change it before enumerating)"
 	case 0x533: // 1331 — ACCOUNT_DISABLED
 		return "authentication failed — account is disabled"
+	case 0x568: // 1384 — SMARTCARD_LOGON_REQUIRED
+		return "authentication failed — account requires smartcard logon"
+	case 0x569: // 1385 — LOGON_TYPE_NOT_GRANTED (ADP-142)
+		return "authentication failed — account not allowed to log on via network (check 'Access this computer from the network' GPO)"
 	case 0x701: // 1793 — ACCOUNT_EXPIRED
 		return "authentication failed — account has expired"
 	case 0x773: // 1907 — PASSWORD_MUST_CHANGE
 		return "authentication failed — user must change password before first logon"
 	case 0x775: // 1909 — ACCOUNT_LOCKED_OUT
 		return "authentication failed — account is locked out (too many failed attempts)"
-	case 0x568: // 1384 — SMARTCARD_LOGON_REQUIRED
-		return "authentication failed — account requires smartcard logon"
-	case 0x0:
-		return "authentication failed — wrong username or password"
+	case 0x6fa: // 1786 — NO_TRUST_LSA_SECRET (ADP-142)
+		return "authentication failed — no trust LSA secret found (cross-domain trust issue)"
+	case 0x6fb: // 1787 — TRUSTED_DOMAIN_FAILURE (ADP-142)
+		return "authentication failed — trusted domain operation failed (check forest trust configuration)"
+	case 0x6fd: // 1789 — TRUSTED_RELATIONSHIP_FAILURE
+		return "authentication failed — secure channel to trusted domain failed"
 	}
 	return ""
 }

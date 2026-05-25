@@ -415,7 +415,7 @@ func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, 
 	for {
 		result, err := gcConn.Search(searchReq)
 		if err != nil {
-			return nil, fmt.Errorf("GC search failed: %w", err)
+			return nil, friendlyLDAPError(fmt.Errorf("GC search failed: %w", err))
 		}
 		allEntries = append(allEntries, result.Entries...)
 
@@ -479,7 +479,7 @@ func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([
 	for {
 		result, err := conn.Search(searchReq)
 		if err != nil {
-			return nil, fmt.Errorf("cross-domain search failed: %w", err)
+			return nil, friendlyLDAPError(fmt.Errorf("cross-domain search failed: %w", err))
 		}
 		allEntries = append(allEntries, result.Entries...)
 
