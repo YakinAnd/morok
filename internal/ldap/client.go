@@ -374,7 +374,11 @@ func (c *Client) SearchBase(baseDN, filter string, attributes []string) ([]*gold
 func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, error) {
 	gcAddress := fmt.Sprintf("%s:3268", c.Host)
 
-	netConn, err := net.DialTimeout("tcp", gcAddress, 10*time.Second)
+	dialer, err := c.buildDialer(10 * time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("GC proxy setup failed: %w", err)
+	}
+	netConn, err := dialer.Dial("tcp", gcAddress)
 	if err != nil {
 		return nil, fmt.Errorf("GC connection to %s failed: %w", gcAddress, err)
 	}
