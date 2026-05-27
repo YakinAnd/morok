@@ -3497,8 +3497,7 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
   var findings = [
     { label: 'Critical', color: 'var(--bar-sev-critical)', count: {{.TotalCritical}} },
     { label: 'High',     color: 'var(--bar-sev-high)',     count: {{.TotalHigh}} },
-    { label: 'Medium',   color: 'var(--bar-sev-medium)',   count: {{.TotalMedium}} },
-    { label: 'Info',     color: 'var(--accent)',             count: {{.Summary.TotalUsers}} + {{.Summary.TotalGroups}} + {{.Summary.TotalComputers}} }
+    { label: 'Medium',   color: 'var(--bar-sev-medium)',   count: {{.TotalMedium}} }
   ];
 
   var max = Math.max.apply(null, findings.map(function(f){ return f.count; }));
