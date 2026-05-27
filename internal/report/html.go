@@ -2215,6 +2215,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
           <th>Domain</th>
           <th>SPNs</th>
           <th>Admin</th>
+          <th>Etype</th>
           <th>CVSS</th>
           <th>Last Logon</th>
           <th>Password Last Set</th>
@@ -2227,6 +2228,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
         <td class="mono" style="font-size:0.75rem">{{joinSPNs .SPNs}}</td>
         <td>{{if .AdminCount}}<span class="badge badge-critical">✓</span>{{else}}—{{end}}</td>
+        <td>{{if .SupportsRC4}}<span class="badge badge-critical" title="RC4 supported — cracks ~100x faster than AES">RC4</span>{{else}}<span class="badge badge-medium" title="AES only">AES</span>{{end}}</td>
         <td><span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span></td>
         <td class="mono">{{.LastLogon}}</td>
         <td class="mono">{{.PasswordLastSet}}</td>

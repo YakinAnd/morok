@@ -535,18 +535,31 @@ func (c *Client) SearchACL() ([]*goldap.Entry, error) {
         c.BaseDN,
         goldap.ScopeWholeSubtree,
         goldap.NeverDerefAliases,
-        0, 30, false,
+        0, 0, false,
         filter,
         []string{"distinguishedName", "sAMAccountName", "objectClass", "nTSecurityDescriptor"},
         []goldap.Control{sdControl},
     )
 
-    result, err := c.conn.Search(searchReq)
-    if err != nil {
-        return nil, friendlyLDAPError(fmt.Errorf("ACL search error: %w", err))
+    pagingControl := goldap.NewControlPaging(500)
+    searchReq.Controls = append(searchReq.Controls, pagingControl)
+
+    var allEntries []*goldap.Entry
+    for {
+        result, err := c.conn.Search(searchReq)
+        if err != nil {
+            return nil, friendlyLDAPError(fmt.Errorf("ACL search error: %w", err))
+        }
+        allEntries = append(allEntries, result.Entries...)
+        updatedControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
+        if ctrl, ok := updatedControl.(*goldap.ControlPaging); ok && len(ctrl.Cookie) > 0 {
+            pagingControl.SetCookie(ctrl.Cookie)
+        } else {
+            break
+        }
     }
 
-    return result.Entries, nil
+    return allEntries, nil
 }
 
 // kerberosHost returns the FQDN for building the LDAP SPN.

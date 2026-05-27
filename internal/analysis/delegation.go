@@ -211,6 +211,14 @@ func assessConstrainedRisk(allowedServices []string) (bool, string) {
 		"rpcss/", "wsman/", "gss-http/", "mssql/", "termsrv/", "dns/",
 		"dc", "domain controller",
 	}
+
+	// Hyper-V Live Migration uses "Microsoft Virtual System Migration Service/" and "cifs/"
+	// between hypervisor pairs — this is expected and should not be flagged as high risk.
+	// Only apply the exception when ALL services match this pattern (no other critical services).
+	if isHyperVLiveMigrationOnly(allowedServices) {
+		return false, "Hyper-V Live Migration pattern (Microsoft Virtual System Migration Service + cifs) — verify this is intentional"
+	}
+
 	for _, svc := range allowedServices {
 		svcLower := strings.ToLower(svc)
 		for _, critical := range criticalServices {
@@ -220,6 +228,22 @@ func assessConstrainedRisk(allowedServices []string) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+// isHyperVLiveMigrationOnly returns true when all allowed services are exclusively
+// the Hyper-V Live Migration SPNs (Microsoft Virtual System Migration Service/ and cifs/).
+func isHyperVLiveMigrationOnly(services []string) bool {
+	if len(services) == 0 {
+		return false
+	}
+	for _, svc := range services {
+		svcLower := strings.ToLower(svc)
+		if !strings.HasPrefix(svcLower, "microsoft virtual system migration service/") &&
+			!strings.HasPrefix(svcLower, "cifs/") {
+			return false
+		}
+	}
+	return true
 }
 
 // ============================================================

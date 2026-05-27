@@ -27,6 +27,7 @@ type KerberoastableAccount struct {
 	CVSSVector      string
 	Severity        string
 	IsMSA           bool   // gMSA/MSA — 240-char random password, cracking is infeasible
+	SupportsRC4     bool   // RC4 etype supported — hash cracks ~100x faster than AES
 	SourceDomain    string // set for accounts from trusted domains
 }
 
@@ -89,6 +90,11 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			ac := CVSSForKerberoastable(u.AdminCount)
 			score, vec, sev = ac.Score, ac.Vector, ac.Severity
 		}
+		// RC4 (etype 23) = bit 0x04 in msDS-SupportedEncryptionTypes.
+		// If the attribute is 0/unset, Windows defaults to RC4 support.
+		encTypes := u.SupportedEncryptionTypes
+		supportsRC4 := encTypes == 0 || (encTypes&0x04 != 0)
+
 		kr.KerberoastableAccounts = append(kr.KerberoastableAccounts, KerberoastableAccount{
 			SAMAccountName:  u.SAMAccountName,
 			DN:              u.DN,
@@ -101,6 +107,7 @@ func AnalyzeKerberos(result *adldap.EnumerationResult) *KerberosResult {
 			CVSSVector:      vec,
 			Severity:        sev,
 			IsMSA:           isMSA,
+			SupportsRC4:     supportsRC4,
 		})
 	}
 
