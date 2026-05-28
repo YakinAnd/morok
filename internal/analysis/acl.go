@@ -144,7 +144,15 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 
 
 
+	// Only flag dangerous ACLs on high-value targets — privileged groups and
+	// adminCount=1 users. Permissions on regular users/workstations represent
+	// normal IT delegation and produce thousands of false positives at scale.
+	privTargets := buildPrivilegedTargetDNs(result)
+
 	for _, entry := range entries {
+		if !privTargets[strings.ToLower(entry.DN)] {
+			continue
+		}
 		findings := parseACLEntry(entry, nameMap, result)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
@@ -766,6 +774,46 @@ func getSIDForDN(dn string, result *adldap.EnumerationResult) string {
 	return ""
 }
 
+
+// buildPrivilegedTargetDNs returns the lower-case DNs of objects worth flagging
+// dangerous ACLs on: adminCount=1 users and well-known privileged groups.
+func buildPrivilegedTargetDNs(result *adldap.EnumerationResult) map[string]bool {
+	privDNs := make(map[string]bool)
+
+	for _, u := range result.Users {
+		if u.AdminCount {
+			privDNs[strings.ToLower(u.DN)] = true
+		}
+	}
+
+	privGroupNames := map[string]bool{
+		"domain admins":                true,
+		"enterprise admins":            true,
+		"schema admins":                true,
+		"administrators":               true,
+		"account operators":            true,
+		"backup operators":             true,
+		"print operators":              true,
+		"server operators":             true,
+		"group policy creator owners":  true,
+		"domain controllers":           true,
+		"read-only domain controllers": true,
+		"key admins":                   true,
+		"enterprise key admins":        true,
+		"protected users":              true,
+		"dnsadmins":                    true,
+		// Exchange groups are intentionally excluded: Exchange installs broad ACEs
+		// on OM/ETS by design. The dangerous end of that chain (EWP WriteDACL on
+		// the domain object) is already caught by the DCSync check.
+	}
+	for _, g := range result.Groups {
+		if privGroupNames[strings.ToLower(g.SAMAccountName)] {
+			privDNs[strings.ToLower(g.DN)] = true
+		}
+	}
+
+	return privDNs
+}
 
 // filterSystemACL removes standard built-in system principals from ACL findings
 func filterSystemACL(findings []ACLFinding) []ACLFinding {

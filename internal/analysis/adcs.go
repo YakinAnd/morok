@@ -370,9 +370,14 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 
 	// CVSS 3.1 vector selection:
 	// ESC1/ESC2 + auth EKU + low-priv enrollable → direct domain escalation: AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
-	// ESC1/ESC2 + auth EKU + priv-only enrollment → exploitable but needs priv cred: AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H
+	// ESC1/ESC2 + auth EKU + priv-only enrollment → not directly exploitable by low-priv: AV:N/AC:L/PR:H/UI:N/S:C/C:H/I:H/A:H (Info)
 	// ESC9 alone (requires GenericWrite over account): AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H
 	// Default (other ESC variants): AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H
+	onlyPrivEnroll := len(enrollableBy) == 0
+	onlyESC12or3 := !containsVuln(vulns, ESC4) && !containsVuln(vulns, ESC6) &&
+		!containsVuln(vulns, ESC7) && !containsVuln(vulns, ESC8) &&
+		(containsVuln(vulns, ESC1) || containsVuln(vulns, ESC2) || containsVuln(vulns, ESC3))
+
 	var cvssVector string
 	if (containsVuln(vulns, ESC1) || containsVuln(vulns, ESC2)) && authEnabled {
 		if len(enrollableBy) > 0 {
@@ -386,6 +391,24 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 		cvssVector = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
 	}
 	cvssScore := CVSSScore(cvssVector)
+
+	// Downgrade to Info when only ESC1/ESC2/ESC3 and enrollment is restricted to
+	// privileged accounts (DA/EA only) — not directly exploitable by a low-priv user.
+	if onlyPrivEnroll && onlyESC12or3 {
+		return &CertTemplateFinding{
+			TemplateName:    name,
+			TemplateOID:     e.GetAttributeValue("msPKI-Cert-Template-OID"),
+			VulnTypes:       vulns,
+			AllowsSANInject: allowsSAN,
+			AuthEnabled:     authEnabled,
+			NoSecurityExt:   noSecurityExt,
+			EKUs:            ekuDisplay,
+			EnrollableBy:    enrollableBy,
+			Severity:        "Info",
+			CVSS:            cvssScore,
+			CVSSVector:      cvssVector,
+		}
+	}
 
 	return &CertTemplateFinding{
 		TemplateName:    name,

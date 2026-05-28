@@ -3,7 +3,6 @@ package analysis
 import (
 	"fmt"
 	"io/fs"
-	"net"
 	"path"
 	"strings"
 	"time"
@@ -52,15 +51,26 @@ type SYSVOLResult struct {
 
 // ScanSYSVOL connects to \\<DC>\SYSVOL via SMB2/NTLM and walks the share,
 // flagging non-standard files without reading their content.
-func ScanSYSVOL(client *adldap.Client) *SYSVOLResult {
+// proxyURL may be empty or a socks5:// URL; the connection is routed through
+// the proxy when set (same as CheckSMBSigning).
+func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 	r := &SYSVOLResult{Domain: client.GetDomain()}
 
-	conn, err := net.DialTimeout("tcp", client.GetHost()+":445", 8*time.Second)
+	color.White("  %-28s connecting to %s:445...", "sysvol", client.GetHost())
+
+	dialer, err := smbBuildDialer(proxyURL)
+	if err != nil {
+		r.Error = fmt.Sprintf("proxy error: %v", err)
+		return r
+	}
+	conn, err := dialer.Dial("tcp", client.GetHost()+":445")
 	if err != nil {
 		r.Error = fmt.Sprintf("port 445 not reachable on %s: %v", client.GetHost(), err)
 		return r
 	}
 	defer conn.Close()
+	// Short deadline covers only the auth phase (SMB negotiate + NTLM + mount).
+	conn.SetDeadline(time.Now().Add(15 * time.Second))
 
 	d := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
@@ -83,6 +93,11 @@ func ScanSYSVOL(client *adldap.Client) *SYSVOLResult {
 		return r
 	}
 	defer share.Umount()
+
+	// Auth complete — remove deadline. The user explicitly opted in with
+	// --sysvol and accepted that the walk may be slow over a proxy.
+	conn.SetDeadline(time.Time{})
+	color.White("  %-28s walking share...", "sysvol")
 
 	r.Scanned = true
 

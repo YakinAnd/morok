@@ -23,6 +23,7 @@ morok enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | `--report` | | HTML report output path | `<domain>_<timestamp>.html` |
 | `--json` | | Export AD objects as JSON to directory (e.g. `json_out/`) | |
 | `--max-depth` | | BFS depth for attack path search | `10` |
+| `--sysvol` | | Scan SYSVOL share for GPP cPassword XML, executables, archives, scripts outside `Scripts\` — off by default (slow over proxy/tunnels) | |
 | `--stealth` | | Stealth mode — minimal LDAP queries, no GC, no ACL/ADCS/GPO/delegation | |
 | `--verbose` | | Show all findings without truncation (disables 5-item limit per section) | |
 | `--quiet` | | Quiet mode — print only risk verdict line (for CI/scripting) | |
@@ -51,6 +52,7 @@ morok enum -d <domain> -u <user> -p <pass> --dc <dc> [flags]
 | **Trusts** | Trust direction/type, SID filtering, FSPs in privileged groups |
 | **Shadow Credentials** | Write access to msDS-KeyCredentialLink on DA/EA/DC objects |
 | **SMB Signing** | SMB signing status on the DC (port 445) — NTLM relay risk |
+| **SYSVOL** | GPP Preferences XML (cPassword/MS14-025), executables, archives, scripts outside `Scripts\` — only with `--sysvol` |
 
 ## Multi-domain / trust following
 
@@ -112,4 +114,7 @@ morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --quiet
 
 # Verbose — show all findings without 5-item truncation
 morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --verbose
+
+# SYSVOL scan (opt-in — slow over proxy/tunnels)
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --sysvol
 ```

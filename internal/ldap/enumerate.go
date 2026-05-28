@@ -36,8 +36,9 @@ type LDAPUser struct {
 	CN               string
 	CreatedOn        string
 	ChangedOn        string
-	PrimaryGroup     string // resolved name, e.g. "Domain Users"
-	SourceDomain     string // set for objects from trusted domains
+	PrimaryGroup              string // resolved name, e.g. "Domain Users"
+	SupportedEncryptionTypes  int    // msDS-SupportedEncryptionTypes bitmask; 0 = not set (RC4 default)
+	SourceDomain              string // set for objects from trusted domains
 }
 
 // LDAPGroup represents an AD group object.
@@ -122,6 +123,7 @@ var userAttributes = []string{
 	"whenCreated",
 	"whenChanged",
 	"primaryGroupID",
+	"msDS-SupportedEncryptionTypes",
 }
 
 var groupAttributes = []string{
@@ -285,10 +287,11 @@ func parseUser(entry *goldap.Entry) LDAPUser {
 		LastLogon:            parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		PasswordLastSet:      parseFileTime(entry.GetAttributeValue("pwdLastSet")),
 		ObjectSid:            parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
-		CN:           entry.GetAttributeValue("cn"),
-		CreatedOn:    parseADDateTime(entry.GetAttributeValue("whenCreated")),
-		ChangedOn:    parseADDateTime(entry.GetAttributeValue("whenChanged")),
-		PrimaryGroup: entry.GetAttributeValue("primaryGroupID"), // raw RID; resolved in EnumerateAll
+		CN:                       entry.GetAttributeValue("cn"),
+		CreatedOn:                parseADDateTime(entry.GetAttributeValue("whenCreated")),
+		ChangedOn:                parseADDateTime(entry.GetAttributeValue("whenChanged")),
+		PrimaryGroup:             entry.GetAttributeValue("primaryGroupID"), // raw RID; resolved in EnumerateAll
+		SupportedEncryptionTypes: parseIntAttr(entry.GetAttributeValue("msDS-SupportedEncryptionTypes")),
 	}
 }
 
@@ -352,6 +355,18 @@ func parseUAC(val string) uint64 {
 // isBitSet reports whether the given bit is set in val.
 func isBitSet(uac uint64, bit uint64) bool {
 	return uac&bit != 0
+}
+
+// parseIntAttr parses a decimal integer LDAP attribute; returns 0 on empty/error.
+func parseIntAttr(val string) int {
+	if val == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // parseFileTime converts a Windows FILETIME string to a human-readable date.

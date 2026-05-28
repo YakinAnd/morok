@@ -38,6 +38,7 @@ var (
 	quietMode      bool   // --quiet: suppress detailed output, print only risk verdict (CI mode)
 	wordlistPath   string // --wordlist: path to username wordlist for kerb-enum
 	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
+	scanSYSVOL     bool   // --sysvol: scan SYSVOL share (slow over proxy — opt-in)
 )
 
 // ============================================================
@@ -66,7 +67,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		color.New(color.FgYellow).Println("morok v1.1.1")
+		color.New(color.FgYellow).Println("morok v1.2.0")
 		color.New(color.FgHiBlack).Println("AD attack path enumerator  ·  see through the fog")
 		color.White("https://github.com/YakinAnd/morok")
 	},
@@ -169,6 +170,7 @@ var smbCmd = &cobra.Command{
 
 func init() {
 	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd, enumUsersCmd, smbCmd} {
+		cmd.SilenceUsage = true // don't dump usage on runtime errors (auth fail, connection error)
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -186,6 +188,7 @@ func init() {
 	enumCmd.Flags().StringVar(&jsonExportPath, "json", "", "Export AD objects as JSON to directory (e.g. json_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
 	enumCmd.Flags().BoolVar(&stealth, "stealth", false, "Stealth mode — minimal LDAP queries, no GC, no ACL/GPO/ADCS/delegation analysis")
+	enumCmd.Flags().BoolVar(&scanSYSVOL, "sysvol", false, "Scan SYSVOL share for GPP cPassword, scripts, and executables (slow over proxy — run separately when needed)")
 	enumCmd.Flags().BoolVar(&quietMode, "quiet", false, "Quiet mode — print only risk verdict line (for CI/scripting)")
 
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
@@ -423,7 +426,9 @@ func runEnum(cmd *cobra.Command, args []string) error {
 				shadowResult.Findings[i].SourceDomain = domain
 			}
 		}
-		sysvolResult = analysis.ScanSYSVOL(client)
+		if scanSYSVOL {
+			sysvolResult = analysis.ScanSYSVOL(client, proxyURL)
+		}
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
@@ -1720,7 +1725,7 @@ func trunc(s string, maxLen int) string {
 func printBanner() {
 	color.New(color.FgHiWhite).Println(`  MOROK`)
 	color.New(color.FgHiBlack).Println(`  SEE · THROUGH · THE · FOG`)
-	color.New(color.FgHiBlack).Println(`  v1.1.1  ·  AD Attack Path Analysis`)
+	color.New(color.FgHiBlack).Println(`  v1.2.0  ·  AD Attack Path Analysis`)
 	color.New(color.FgHiBlack).Println(`  ` + strings.Repeat("─", 40))
 }
 
@@ -1746,8 +1751,9 @@ func runSMB(cmd *cobra.Command, args []string) error {
 // ============================================================
 
 func main() {
+	rootCmd.SilenceErrors = true // we print errors ourselves below
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		color.New(color.FgRed).Fprintf(os.Stderr, "  error: %v\n", err)
 		os.Exit(1)
 	}
 }

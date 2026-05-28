@@ -138,6 +138,8 @@ morok smb -d corp.local --dc 10.0.0.1
       --verbose     Show all findings without truncation
       --quiet       Print only risk verdict line (for CI/scripting)
       --stealth     Minimal queries — no ACL/GPO/ADCS/delegation
+      --sysvol      Scan SYSVOL share for GPP cPassword, scripts, executables
+                    (not included by default — slow over proxy/tunnels, run separately)
       --max-depth   BFS depth for attack path search (default 10)
 ```
 
@@ -151,7 +153,7 @@ The `--report` flag generates a full interactive HTML report with:
 - **Executive** tab — risk score (A–F grade), risk contribution bars by category
 - **Summary** tab — findings overview chart, attack surface metrics
 - **Attack Paths** — directed graph visualization (D3.js)
-- **Kerberos**, **ACL**, **Delegation**, **ADCS**, **Trusts**, **Shadow Creds**, **GPO**, **LDAP Security**, **Audit**, **SYSVOL**
+- **Kerberos**, **ACL**, **Delegation**, **ADCS**, **Trusts**, **Shadow Creds**, **GPO**, **LDAP Security**, **Audit**, **SYSVOL** (requires `--sysvol`)
 - **Users**, **Groups**, **Computers** — searchable/sortable tables with per-column filters (including primary group)
 - **Multi-domain tabs** — separate tab per domain; domain filter on all finding tables
 - Light/dark theme toggle

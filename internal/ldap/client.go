@@ -69,7 +69,7 @@ func (c *Client) Connect() error {
 		address = fmt.Sprintf("%s:%d", c.Host, c.Port)
 		conn, wrap, err = c.dialWithTimeout(address, true)
 		if err != nil {
-			return fmt.Errorf("connection failed on both 389 and 636: %w", err)
+			return friendlyLDAPError(fmt.Errorf("connection failed on both 389 and 636: %w", err))
 		}
 	}
 
@@ -181,7 +181,7 @@ func (c *Client) Bind() error {
 		nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(authDomain, ".")[0]), c.Username)
 		err2 := c.conn.Bind(nt, c.Password)
 		if err2 != nil {
-			return fmt.Errorf("bind failed (tried UPN and NT format): %w", err)
+			return friendlyLDAPError(err)
 		}
 	}
 
@@ -209,7 +209,7 @@ func (c *Client) BindNTLM() error {
 	}
 
 	if err := c.conn.NTLMBindWithHash(netbiosDomain, c.Username, c.NTHash); err != nil {
-		return fmt.Errorf("NTLM bind failed: %w", err)
+		return friendlyLDAPError(err)
 	}
 
 	if !c.Quiet {
@@ -233,7 +233,7 @@ func (c *Client) BindKerberos() error {
 
 	gssClient, err := NewKerberosClientFromCCache(c.CcachePath, host, c.Domain)
 	if err != nil {
-		return fmt.Errorf("kerberos init: %w", err)
+		return friendlyKerberosError(fmt.Errorf("kerberos init: %w", err))
 	}
 
 	spn := fmt.Sprintf("ldap/%s", host)
@@ -241,7 +241,7 @@ func (c *Client) BindKerberos() error {
 		color.Blue("[*] Kerberos SPN: %s", spn)
 	}
 	if err := c.conn.GSSAPIBind(gssClient, spn, ""); err != nil {
-		return fmt.Errorf("kerberos bind failed: %w", err)
+		return friendlyKerberosError(fmt.Errorf("kerberos bind failed: %w", err))
 	}
 
 	// Activate SASL message wrapping using the Kerberos session key.
@@ -268,7 +268,7 @@ func (c *Client) AnonymousBind() error {
 
 	err := c.conn.UnauthenticatedBind("")
 	if err != nil {
-		return fmt.Errorf("anonymous bind failed (null sessions disabled): %w", err)
+		return friendlyLDAPError(err)
 	}
 
 	c.IsAnon = true
@@ -325,7 +325,7 @@ func (c *Client) Search(filter string, attributes []string) ([]*goldap.Entry, er
 	for {
 		result, err := c.conn.Search(searchReq)
 		if err != nil {
-			return nil, fmt.Errorf("search failed [filter: %s]: %w", filter, err)
+			return nil, friendlyLDAPError(fmt.Errorf("search failed [filter: %s]: %w", filter, err))
 		}
 
 		allEntries = append(allEntries, result.Entries...)
@@ -363,7 +363,7 @@ func (c *Client) SearchBase(baseDN, filter string, attributes []string) ([]*gold
 	)
 	result, err := c.conn.Search(searchReq)
 	if err != nil {
-		return nil, fmt.Errorf("search failed [base: %s, filter: %s]: %w", baseDN, filter, err)
+		return nil, friendlyLDAPError(fmt.Errorf("search failed [base: %s, filter: %s]: %w", baseDN, filter, err))
 	}
 	return result.Entries, nil
 }
@@ -374,7 +374,11 @@ func (c *Client) SearchBase(baseDN, filter string, attributes []string) ([]*gold
 func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, error) {
 	gcAddress := fmt.Sprintf("%s:3268", c.Host)
 
-	netConn, err := net.DialTimeout("tcp", gcAddress, 10*time.Second)
+	dialer, err := c.buildDialer(10 * time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("GC proxy setup failed: %w", err)
+	}
+	netConn, err := dialer.Dial("tcp", gcAddress)
 	if err != nil {
 		return nil, fmt.Errorf("GC connection to %s failed: %w", gcAddress, err)
 	}
@@ -388,12 +392,12 @@ func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, 
 	case c.NTHash != "":
 		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
 		if err := gcConn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
-			return nil, fmt.Errorf("GC NTLM bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	case c.Password != "" && c.Username != "":
 		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
 		if err := gcConn.Bind(upn, c.Password); err != nil {
-			return nil, fmt.Errorf("GC bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	default:
 		return nil, fmt.Errorf("GC query requires credentials (anonymous/Kerberos not supported for GC yet)")
@@ -415,7 +419,7 @@ func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, 
 	for {
 		result, err := gcConn.Search(searchReq)
 		if err != nil {
-			return nil, fmt.Errorf("GC search failed: %w", err)
+			return nil, friendlyLDAPError(fmt.Errorf("GC search failed: %w", err))
 		}
 		allEntries = append(allEntries, result.Entries...)
 
@@ -452,12 +456,12 @@ func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([
 	case c.NTHash != "":
 		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
 		if err := conn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
-			return nil, fmt.Errorf("cross-domain NTLM bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	case c.Password != "" && c.Username != "":
 		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
 		if err := conn.Bind(upn, c.Password); err != nil {
-			return nil, fmt.Errorf("cross-domain bind: %w", err)
+			return nil, friendlyLDAPError(err)
 		}
 	default:
 		return nil, fmt.Errorf("cross-domain query requires credentials")
@@ -479,7 +483,7 @@ func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([
 	for {
 		result, err := conn.Search(searchReq)
 		if err != nil {
-			return nil, fmt.Errorf("cross-domain search failed: %w", err)
+			return nil, friendlyLDAPError(fmt.Errorf("cross-domain search failed: %w", err))
 		}
 		allEntries = append(allEntries, result.Entries...)
 
@@ -531,18 +535,31 @@ func (c *Client) SearchACL() ([]*goldap.Entry, error) {
         c.BaseDN,
         goldap.ScopeWholeSubtree,
         goldap.NeverDerefAliases,
-        0, 30, false,
+        0, 0, false,
         filter,
         []string{"distinguishedName", "sAMAccountName", "objectClass", "nTSecurityDescriptor"},
         []goldap.Control{sdControl},
     )
 
-    result, err := c.conn.Search(searchReq)
-    if err != nil {
-        return nil, fmt.Errorf("ACL search error: %w", err)
+    pagingControl := goldap.NewControlPaging(500)
+    searchReq.Controls = append(searchReq.Controls, pagingControl)
+
+    var allEntries []*goldap.Entry
+    for {
+        result, err := c.conn.Search(searchReq)
+        if err != nil {
+            return nil, friendlyLDAPError(fmt.Errorf("ACL search error: %w", err))
+        }
+        allEntries = append(allEntries, result.Entries...)
+        updatedControl := goldap.FindControl(result.Controls, goldap.ControlTypePaging)
+        if ctrl, ok := updatedControl.(*goldap.ControlPaging); ok && len(ctrl.Cookie) > 0 {
+            pagingControl.SetCookie(ctrl.Cookie)
+        } else {
+            break
+        }
     }
 
-    return result.Entries, nil
+    return allEntries, nil
 }
 
 // kerberosHost returns the FQDN for building the LDAP SPN.
@@ -667,7 +684,7 @@ func (c *Client) QueryRootDSE() (*RootDSEInfo, error) {
 	)
 	sr, err := c.conn.Search(req)
 	if err != nil || len(sr.Entries) == 0 {
-		return nil, fmt.Errorf("RootDSE query failed: %w", err)
+		return nil, friendlyLDAPError(fmt.Errorf("RootDSE query failed: %w", err))
 	}
 	e := sr.Entries[0]
 	return &RootDSEInfo{

@@ -98,19 +98,21 @@ func newAssessment(vector string) CVSSAssessment {
 }
 
 // CVSSForKerberoastable returns a CVSS 3.1 assessment for a Kerberoastable account.
+// AC:L — modern GPU hashcat cracks RC4 Kerberos tickets trivially; complexity is low.
 // adminCount=true (privileged SPN) raises scope to Changed.
 func CVSSForKerberoastable(adminCount bool) CVSSAssessment {
 	if adminCount {
-		return newAssessment("AV:N/AC:H/PR:L/UI:N/S:C/C:H/I:H/A:H")
+		return newAssessment("AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H")
 	}
-	return newAssessment("AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:N/A:N")
+	return newAssessment("AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N")
 }
 
 // CVSSForASREP returns a CVSS 3.1 assessment for an AS-REP Roastable account.
+// AC:L — no pre-auth needed; offline cracking with hashcat is straightforward.
 // adminCount=true raises scope to Changed (privileged account).
 func CVSSForASREP(adminCount bool) CVSSAssessment {
 	if adminCount {
-		return newAssessment("AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H")
+		return newAssessment("AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H")
 	}
-	return newAssessment("AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N")
+	return newAssessment("AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N")
 }
