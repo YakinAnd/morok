@@ -174,7 +174,7 @@ func Generate(
 	data := ReportData{
 	Domain:               result.Domain,
 	GeneratedAt:          time.Now().Format("2006-01-02 15:04:05"),
-	Version:              "1.1.1",
+	Version:              "1.2.0",
 	AuthMethod:           authMethod,
 	Users:                result.Users,
 	Groups:               result.Groups,

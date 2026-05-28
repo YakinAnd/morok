@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.2.0] — 2026-05-28
+
+### New features
+
+- **`--sysvol` flag** — opt-in SYSVOL share scan (GPP cPassword XML, executables, archives, scripts outside `Scripts\`). Off by default — slow over SOCKS5 tunnels, run separately when needed. HTML report shows an opt-in hint when the scan was not performed.
+
+### Bug fixes
+
+- **ACL false positives** — `AnalyzeACL` now scopes analysis to high-value targets only: `adminCount=1` users and 15 privileged groups (Domain Admins, Enterprise Admins, Schema Admins, Administrators, DNSAdmins, Account Operators, Backup Operators, Print Operators, Server Operators, GPCO, Domain Controllers, RODC, Key Admins, Enterprise Key Admins, Protected Users). Exchange groups (Organization Management, Exchange Trusted Subsystem) are explicitly excluded — Exchange RBAC installs broad ACEs on them by design; DCSync check already covers the dangerous end.
+- **SYSVOL SMB bypassing SOCKS5 proxy** — `ScanSYSVOL` was using `net.DialTimeout` instead of the shared `smbBuildDialer(proxyURL)` helper. Fixed: same dialer as `CheckSMBSigning`.
+- **GC (port 3268) bypassing SOCKS5 proxy** — Global Catalog connections were made directly regardless of `--proxy`. Fixed: routed through the SOCKS5 dialer.
+- **Double error output** — when a command failed, cobra printed `Error: <msg>` and `main()` also printed the same error. Fixed: `rootCmd.SilenceErrors = true`; `main()` now prints the error once in red.
+- **Usage shown on runtime errors** — cobra printed the full usage block on auth/connection failures. Fixed: `SilenceUsage = true` on all `RunE` commands — usage is not shown for runtime errors (wrong password, DC unreachable).
+- **Auth error reveals too much** — `authentication failed — wrong password` and `authentication failed — wrong username or password` simplified to `authentication failed`.
+- **ADCS Vulnerable Templates section expanded on load** — `exp-body` was missing `display:none`; section now starts collapsed.
+- **ACL paging** — ACL search was limited to the default LDAP page size. Fixed: paging enabled, all entries retrieved.
+- **ADCS ESC1 accuracy** — ESC1 detection improved to reduce false positives.
+
+### Human-readable LDAP error messages
+
+All LDAP and connection errors are now translated into actionable messages instead of raw codes:
+
+| Condition | Message |
+|---|---|
+| Wrong credentials | `authentication failed` |
+| Account locked | `authentication failed — account is locked out` |
+| Account disabled | `authentication failed — account is disabled` |
+| Password expired | `authentication failed — password has expired` |
+| LDAP signing required | `DC requires LDAP signing — connect via LDAPS (port 636) or use Kerberos` |
+| Channel binding required | `DC requires channel binding / confidentiality — connect via LDAPS (port 636)` |
+| Null session disabled | `null sessions are disabled on this DC — provide credentials` |
+| DC unreachable (refused) | `DC unreachable — connection refused (check DC IP and firewall on port 389/636)` |
+| DC unreachable (timeout) | `DC unreachable — connection timed out (check network path, firewall, or proxy)` |
+| DNS resolution failure | `DC hostname not resolved — check --dc value or DNS` |
+| TLS handshake failure | `LDAPS TLS handshake failed — check that port 636 is reachable` |
+| Base DN not found | `base DN not found — check domain spelling or use --scope` |
+| Size limit exceeded | `LDAP result size limit exceeded — try --scope to narrow the search` |
+
+### HTML report — UI improvements
+
+- **Collapsible sections** — all expandable sections (`exp-section`, Kerberos, delegation cards, ACL groups) start **collapsed** by default (`▶`). Click to expand.
+- **Delegation cards** — chevron moved to left side (consistent with all other tabs); risk reason always on the second line.
+- **Delegation tab** — Expand all / Collapse all buttons added.
+- **ACL tab** — `?` tooltip icons on each right-type group header (DCSync, WriteDACL, WriteOwner, GenericAll, ForceChangePassword, AddMember) explaining what the right allows.
+- **Shadow Credentials table** — removed unintended left red border on table rows.
+- **Audit findings** — CVSS scores shown on Medium/High findings.
+- **GPO tab** — removed unused Expand all / Collapse all buttons from the section header.
+- **Findings overview chart** — removed the `Info` bar (misleading in severity distribution).
+- **SYSVOL tab** — shows opt-in hint with `--sysvol` instructions when scan was not run; shows error details when SMB is unreachable.
+
 ## [1.1.1] — 2026-05-19
 
 ### Bug fixes
