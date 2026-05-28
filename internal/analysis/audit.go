@@ -16,9 +16,11 @@ import (
 
 // AuditFinding is a single blue-team / audit visibility finding.
 type AuditFinding struct {
-	Title    string
-	Detail   string
-	Severity string
+	Title      string
+	Detail     string
+	Severity   string
+	CVSS       float64
+	CVSSVector string
 }
 
 // AuditResult contains all audit-related findings.
@@ -133,18 +135,24 @@ func AnalyzeAuditPolicy(client *adldap.Client, rds *adldap.RootDSEInfo) *AuditRe
 
 	// ── Build findings ────────────────────────────────────────
 	if r.RecycleBinSupported && !r.RecycleBinEnabled {
+		vec := "AV:N/AC:L/PR:H/UI:N/S:U/C:N/I:L/A:H"
 		r.Findings = append(r.Findings, AuditFinding{
-			Title:    "AD Recycle Bin disabled",
-			Detail:   "AD Recycle Bin is not enabled. Accidentally or maliciously deleted objects (users, computers, GPOs) cannot be restored without an authoritative restore. Enable via: Enable-ADOptionalFeature 'Recycle Bin Feature' -Scope ForestOrConfigurationSet -Target <domain>",
-			Severity: "Medium",
+			Title:      "AD Recycle Bin disabled",
+			Detail:     "AD Recycle Bin is not enabled. Accidentally or maliciously deleted objects (users, computers, GPOs) cannot be restored without an authoritative restore. Enable via: Enable-ADOptionalFeature 'Recycle Bin Feature' -Scope ForestOrConfigurationSet -Target <domain>",
+			Severity:   "Medium",
+			CVSS:       CVSSScore(vec),
+			CVSSVector: vec,
 		})
 	}
 
 	if !r.AuditingEnabled {
+		vec := "AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
 		r.Findings = append(r.Findings, AuditFinding{
-			Title:    "Legacy audit policy not configured",
-			Detail:   "The domain auditingPolicy attribute is empty — no basic audit categories are enabled. Attacker activity (pass-the-hash, lateral movement, privilege escalation) will not generate Event Log entries. Configure via Default Domain Policy → Computer Configuration → Windows Settings → Security Settings → Local Policies → Audit Policy.",
-			Severity: "High",
+			Title:      "Legacy audit policy not configured",
+			Detail:     "The domain auditingPolicy attribute is empty — no basic audit categories are enabled. Attacker activity (pass-the-hash, lateral movement, privilege escalation) will not generate Event Log entries. Configure via Default Domain Policy → Computer Configuration → Windows Settings → Security Settings → Local Policies → Audit Policy.",
+			Severity:   "High",
+			CVSS:       CVSSScore(vec),
+			CVSSVector: vec,
 		})
 	} else {
 		// Check if critical categories are missing
@@ -155,19 +163,25 @@ func AnalyzeAuditPolicy(client *adldap.Client, rds *adldap.RootDSEInfo) *AuditRe
 			}
 		}
 		if len(missing) > 0 {
+			vec := "AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:N/A:N"
 			r.Findings = append(r.Findings, AuditFinding{
-				Title:    "Critical audit categories not enabled",
-				Detail:   fmt.Sprintf("The following audit categories are disabled, reducing visibility into attacker actions: %s. Enable at minimum 'Success' auditing for Account Logon, Account Management, Logon/Logoff, and Directory Service Access.", strings.Join(missing, ", ")),
-				Severity: "Medium",
+				Title:      "Critical audit categories not enabled",
+				Detail:     fmt.Sprintf("The following audit categories are disabled, reducing visibility into attacker actions: %s. Enable at minimum 'Success' auditing for Account Logon, Account Management, Logon/Logoff, and Directory Service Access.", strings.Join(missing, ", ")),
+				Severity:   "Medium",
+				CVSS:       CVSSScore(vec),
+				CVSSVector: vec,
 			})
 		}
 	}
 
 	if r.MachineAccountQuota > 0 {
+		vec := "AV:N/AC:L/PR:L/UI:N/S:U/C:L/I:L/A:N"
 		r.Findings = append(r.Findings, AuditFinding{
-			Title:    fmt.Sprintf("Machine account quota = %d (any user can add computers)", r.MachineAccountQuota),
-			Detail:   fmt.Sprintf("ms-DS-MachineAccountQuota is %d. Any authenticated domain user can add up to %d computer accounts to the domain. This is a common RBCD/resource-based constrained delegation abuse vector. Set to 0 via: Set-ADDomain -Identity <domain> -Replace @{\"ms-DS-MachineAccountQuota\"=\"0\"}", r.MachineAccountQuota, r.MachineAccountQuota),
-			Severity: "Medium",
+			Title:      fmt.Sprintf("Machine account quota = %d (any user can add computers)", r.MachineAccountQuota),
+			Detail:     fmt.Sprintf("ms-DS-MachineAccountQuota is %d. Any authenticated domain user can add up to %d computer accounts to the domain. This is a common RBCD/resource-based constrained delegation abuse vector. Set to 0 via: Set-ADDomain -Identity <domain> -Replace @{\"ms-DS-MachineAccountQuota\"=\"0\"}", r.MachineAccountQuota, r.MachineAccountQuota),
+			Severity:   "Medium",
+			CVSS:       CVSSScore(vec),
+			CVSSVector: vec,
 		})
 	}
 

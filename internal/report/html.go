@@ -788,6 +788,24 @@ func templateFuncs() template.FuncMap {
 				return "Review and remove unnecessary privilege delegation for this principal"
 			}
 		},
+		"aclRightTip": func(right string) string {
+			switch right {
+			case "GenericAll":
+				return "Full control over the target object — can modify any attribute, reset passwords, change group membership, or write the DACL."
+			case "WriteDACL":
+				return "Can rewrite the object's access control list — effectively grants any right including GenericAll."
+			case "WriteOwner":
+				return "Can take ownership of the object, which implicitly grants WriteDACL."
+			case "ForceChangePassword":
+				return "Can reset the account's password without knowing the current one — immediate account takeover."
+			case "AddMember":
+				return "Can add arbitrary accounts to this group — escalate to the group's privileges."
+			case "GenericWrite":
+				return "Can write to non-protected attributes — often used to set SPN (Kerberoasting) or msDS-KeyCredentialLink (Shadow Credentials)."
+			default:
+				return "Dangerous permission that enables privilege escalation or lateral movement."
+			}
+		},
 		"delegExploit": func(delegType string) string {
 			switch delegType {
 			case "Unconstrained":
@@ -2350,6 +2368,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span style="color:var(--text-subtle)">─▶</span>
       <span class="mono" style="color:var(--text-sev-high)">{{$f.TargetName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{$f.PrincipalType}} → {{$f.TargetType}}</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="{{aclRightTip (print $f.Right)}}">?</span>
     </div>
     <div style="padding:0 16px 16px">
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
@@ -2389,12 +2408,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .ACLResult}}{{if .ACLResult.OwnerFindings}}
   <div class="exp-section" style="margin-top:16px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Non-Default Owners</span>
       <span class="help-icon" role="tooltip" tabindex="0" data-tip="The owner of an AD object always has implicit WriteDACL — they can grant themselves any right. A non-default owner on a privileged object (DA group, GPO, DC) is an effective privilege escalation path.">?</span>
       <span class="badge badge-high" style="margin-left:auto">{{len .ACLResult.OwnerFindings}} finding(s)</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
       <table class="report-table">
         <thead><tr><th>Severity</th><th>Target Object</th><th>Owner</th><th>CVSS</th></tr></thead>
         <tbody>
@@ -2436,13 +2455,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div class="path-card" style="margin-bottom:10px">
     <div class="path-header" style="flex-wrap:wrap;gap:8px;cursor:pointer"
       onclick="var b=this.nextElementSibling;var o=b.style.display!=='none';b.style.display=o?'none':'';this.querySelector('.dchev').textContent=o?'▶':'▼'">
+      <span class="dchev" style="font-size:11px;color:var(--text-secondary);user-select:none">▶</span>
       {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>{{else if eq .Severity "High"}}<span class="badge badge-high">High</span>{{else}}<span class="badge badge-medium">{{.Severity}}</span>{{end}}
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.DelegationType}}</span>
       <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this);event.stopPropagation()" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.SAMAccountName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">{{.ObjectType}}</span>
       {{mitreForDeleg (print .DelegationType)}}
-      <span class="dchev" style="margin-left:auto;font-size:11px;color:var(--text-secondary);user-select:none">▶</span>
       {{if .RiskReason}}<div style="width:100%;color:var(--text-sev-high);font-size:0.8rem;margin-top:2px">⚠ {{.RiskReason}}</div>{{end}}
     </div>
     <div class="deleg-body" style="display:none;padding:4px 16px 16px">
@@ -2476,7 +2495,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- krbtgt -->
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">krbtgt Password Age</span>
       <span class="help-icon" role="tooltip" tabindex="0" data-tip="The krbtgt account password hash signs all Kerberos tickets. If stolen (DCSync), attackers forge Golden Tickets valid for any user. Rotate every 180 days — must rotate TWICE to fully invalidate old tickets.">?</span>
       {{if .HygieneResult}}{{if .HygieneResult.KrbtgtAtRisk}}
@@ -2487,7 +2506,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       {{else}}<span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">No data</span>
       {{end}}{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .HygieneResult}}
     {{if .HygieneResult.KrbtgtAtRisk}}
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -2511,13 +2530,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Description Notes</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="AD objects whose description field contains keywords like 'password', 'pass', 'pwd', or 'secret'. Administrators often store credentials in descriptions — readable by any authenticated user.">?</span>
       {{if .HygieneResult.PasswordInDesc}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.PasswordInDesc}} objects</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <p style="color:var(--text-muted);font-size:0.8rem;margin-bottom:10px">All AD objects with a non-empty description. Admins often leave credentials, IP addresses, or other sensitive data here.</p>
     {{if .HygieneResult.PasswordInDesc}}
     <div class="table-wrap">
@@ -2543,13 +2562,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Stale User Accounts <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(90+ days no logon)</span></span>
       {{if .HygieneResult.StaleUsers}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.StaleUsers}} accounts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .HygieneResult.StaleUsers}}
     <div class="table-wrap">
     <table id="tbl-stale-users">
@@ -2576,13 +2595,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Stale Computers <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(45+ days no logon)</span></span>
       {{if .HygieneResult.StaleComputers}}
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.StaleComputers}} hosts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .HygieneResult.StaleComputers}}
     <div class="table-wrap">
     <table id="tbl-stale-comp">
@@ -2608,13 +2627,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Computers Without LAPS</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Local Administrator Password Solution (LAPS) rotates local admin passwords per machine. Without it, the same local admin password often exists across all hosts — one compromise leads to mass lateral movement (pass-the-hash).">?</span>
       {{if gt .Summary.NoLAPSCount 0}}
       <span class="badge badge-medium" style="margin-left:auto">{{.Summary.NoLAPSCount}} / {{.Summary.TotalComputers}} hosts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All managed</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if gt .Summary.NoLAPSCount 0}}
     <div style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">Local Administrator Password Solution not deployed — local admin passwords may be identical across machines, enabling lateral movement.</div>
     <div class="table-wrap">
@@ -2641,7 +2660,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .LAPSACLResult}}{{if .LAPSACLResult.LAPSFound}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">LAPS Password Read Access</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Checks who has ReadProperty rights on ms-Mcs-AdmPwd (LAPS local admin password attribute) on each LAPS-enabled computer. Any non-privileged principal with this right can retrieve the local administrator password — equivalent to local admin access on that machine.">?</span>
       {{if .LAPSACLResult.Findings}}
       <span class="badge badge-high" style="margin-left:auto">{{len .LAPSACLResult.Findings}} finding(s)</span>
@@ -2649,7 +2668,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge badge-ok" style="margin-left:auto">&#10003; No unexpected access</span>
       {{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .LAPSACLResult.Findings}}
     <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">Non-privileged principals with read access to LAPS passwords. Each finding means the principal can retrieve the local Administrator password of that computer — use <code style="font-size:0.8rem;background:var(--bg-card);padding:1px 4px;border-radius:3px">Get-AdmPwdPassword</code> or <code style="font-size:0.8rem;background:var(--bg-card);padding:1px 4px;border-radius:3px">crackmapexec --laps</code>.</p>
     <div class="table-wrap">
@@ -2679,11 +2698,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .LAPSACLResult}}{{if .LAPSACLResult.GMSAFindings}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">gMSA Password Readers</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Principals listed in msDS-GroupMSAMembership can retrieve the gMSA managed password via GetPassword(). If the gMSA is in a privileged group, this is a direct privilege escalation path.">?</span>
       <span class="badge badge-high" style="margin-left:auto">{{len .LAPSACLResult.GMSAFindings}} finding(s)</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap">
     <table>
       <thead><tr><th>Principal</th><th>Type</th><th>gMSA Account</th><th>Severity</th><th>CVSS</th></tr></thead>
@@ -2708,11 +2727,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}{{if .HygieneResult.PasswordNotRequired}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Accounts with Password Not Required</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="UAC flag PASSWD_NOTREQD (0x20) — enabled accounts that can authenticate with an empty password. This is a critical misconfiguration allowing trivial takeover.">?</span>
       <span class="badge badge-critical" style="margin-left:auto">{{len .HygieneResult.PasswordNotRequired}} account(s)</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap">
     <table>
       <thead><tr><th>Account</th><th>Last Logon</th></tr></thead>
@@ -2734,11 +2753,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}{{if .HygieneResult.SmartcardRequired}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Smartcard-Required Admin Accounts</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with SMARTCARD_REQUIRED and adminCount=1: their password hash is set to a random value at smartcard-enforcement and never rotates. The hash remains valid indefinitely for Pass-the-Hash attacks if extracted from LSASS or NTDS.dit.">?</span>
       <span class="badge badge-medium" style="margin-left:auto">{{len .HygieneResult.SmartcardRequired}} account(s)</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap">
     <table>
       <thead><tr><th>Account</th><th>Last Logon</th></tr></thead>
@@ -2760,11 +2779,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}{{if .HygieneResult.DnsAdminsMembers}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">DnsAdmins Members</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="DnsAdmins members can set ServerLevelPluginDll via dnscmd, causing the DNS service (running as SYSTEM on DCs) to load an arbitrary DLL on next restart — DC SYSTEM escalation.">?</span>
       <span class="badge badge-high" style="margin-left:auto">{{len .HygieneResult.DnsAdminsMembers}} member(s)</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap">
     <table>
       <thead><tr><th>Member</th></tr></thead>
@@ -2783,11 +2802,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .HygieneResult}}{{if .HygieneResult.PreWin2000AccessEnabled}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Pre-Windows 2000 Compatible Access Enabled</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Everyone or Authenticated Users is a member of the Pre-Windows 2000 Compatible Access group. This grants anonymous/unauthenticated LDAP read access to sensitive attributes — a legacy compatibility setting left from pre-AD environments.">?</span>
       <span class="badge badge-high" style="margin-left:auto">Enabled</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
       <p style="color:var(--text-sev-high);font-size:0.85rem">Everyone or Authenticated Users is a member of Pre-Windows 2000 Compatible Access. Anonymous sessions can enumerate AD objects including user accounts, groups, and computer accounts. Remove Everyone/Authenticated Users from this group.</p>
     </div>
   </div>
@@ -2797,11 +2816,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .PSOResult}}{{if .PSOResult.PSOs}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Fine-Grained Password Policy (PSO)</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Password Settings Objects (PSOs) override the default domain password policy for specific users or groups. Weaker PSOs applied to service accounts are a common misconfiguration — lower complexity or longer max age increases offline cracking risk.">?</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .PSOResult.PSOs}} PSO(s)</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap">
     <table>
       <thead><tr><th>PSO Name</th><th>Precedence</th><th>Min Length</th><th>Complexity</th><th>Lockout</th><th>Max Age</th><th>Applies To</th><th>Status</th></tr></thead>
@@ -2829,7 +2848,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .ProtectedUsersResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Protected Users Group</span>
       <span class="help-icon" role="tooltip" tabindex="0" data-tip="Members of Protected Users cannot authenticate with NTLM, use RC4 encryption, or be subject to unconstrained delegation. DA/EA accounts outside this group are higher-risk credentials.">?</span>
       {{if not .ProtectedUsersResult.ProtectedUsersExists}}
@@ -2838,7 +2857,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge badge-medium" style="margin-left:auto">{{len .ProtectedUsersResult.PrivilegedNotProtected}} privileged not protected</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; All protected</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if not .ProtectedUsersResult.ProtectedUsersExists}}
     <p style="color:var(--text-sev-critical);font-size:0.85rem">&#9888; Protected Users group not found — may not exist in this domain.</p>
     {{else if .ProtectedUsersResult.PrivilegedNotProtected}}
@@ -2868,7 +2887,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .AdminSDHolderResult}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">AdminSDHolder</span>
       <span class="help-icon" role="tooltip" tabindex="0" data-tip="AdminSDHolder ACL is copied to all protected objects every 60 minutes. A custom ACE here is a persistence backdoor. Orphaned adminCount=1 means the object is no longer monitored but still has hardened ACLs.">?</span>
       {{if .AdminSDHolderResult.CustomACEs}}
@@ -2877,7 +2896,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{len .AdminSDHolderResult.OrphanedAdminCount}} orphaned adminCount</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; Clean</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .AdminSDHolderResult.CustomACEs}}
     <div style="color:var(--text-sev-critical);font-size:0.8rem;margin-bottom:10px">&#9888; These ACEs are replicated to ALL protected objects every 60 min. Remove immediately.</div>
     <div class="table-wrap" style="margin-bottom:12px">
@@ -2923,28 +2942,22 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- GPO TAB -->
 <div id="tab-gpo" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-gpo" tabindex="0" aria-hidden="true">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">Group Policy Analysis
-      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
-    </h2>
-    <div class="xp-btns">
-      <button onclick="expandAllIn('#tab-gpo')">Expand all</button>
-      <button onclick="collapseAllIn('#tab-gpo')">Collapse all</button>
-    </div>
-  </div>
+  <h2 class="section-title">Group Policy Analysis
+    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Group Policy controls security settings across the domain: password complexity, lockout thresholds, audit logging. Weak password policy (min length &lt;8, no complexity, no lockout) makes brute-force and spray attacks viable. GPP Preferences may contain encrypted passwords (MS14-025) decryptable with a public AES key.">?</span>
+  </h2>
   {{if .GPOResult}}
 
   {{if .GPOResult.DefaultPolicy}}
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Default Domain Password Policy</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="The domain-wide password policy applied to all accounts without a PSO. Minimum length &lt; 8, no complexity requirement, or no lockout threshold are critical weaknesses enabling password spraying or brute-force attacks.">?</span>
       {{$pp := .GPOResult.DefaultPolicy}}
       {{if or (lt $pp.MinLength 8) (not $pp.Complexity) (eq $pp.LockoutThreshold 0)}}
       <span class="badge badge-critical" style="margin-left:auto">Weak</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; OK</span>{{end}}
     </div>
-    <div class="exp-body" style="padding:16px">
+    <div class="exp-body" style="display:none;padding:16px">
   {{$pp := .GPOResult.DefaultPolicy}}
   <div class="cards" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))">
     <div class="card {{if lt $pp.MinLength 8}}critical{{else if lt $pp.MinLength 12}}warning{{else}}ok{{end}}">
@@ -2975,11 +2988,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult.GPOFindings}}
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Dangerous GPO Findings {{mitreBadges "gpo_abuse"}}</span>
       <span class="badge badge-high" style="margin-left:auto">{{len .GPOResult.GPOFindings}} findings</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap" style="margin-bottom:0">
     <table>
       <thead>
@@ -3005,13 +3018,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .GPOResult}}{{if .GPOResult.GPOACLFindings}}
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">GPO Write ACL Findings
         <span class="help-icon" role="tooltip" tabindex="0" data-tip="Low-privileged principals with WriteDACL, WriteOwner, GenericAll, or GenericWrite on GPO objects can modify them to add malicious startup scripts, logon tasks, or local admin accounts. GPOs linked to Domain Controllers OU are Critical — compromise affects all DCs.">?</span>
       </span>
       <span class="badge badge-high" style="margin-left:auto">{{len .GPOResult.GPOACLFindings}} findings</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     <div class="table-wrap" style="margin-bottom:0">
     <table>
       <thead><tr><th>GPO</th><th>Severity</th><th>CVSS</th><th>Principal</th><th>Rights</th><th>Linked To</th></tr></thead>
@@ -3054,11 +3067,11 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- CAs -->
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Certificate Authorities</span> <span class="help-icon" role="tooltip" tabindex="0" data-tip="Active Directory Certificate Services (ADCS) — Enterprise CAs issue certificates used for authentication. Columns show ESC6 (EDITF_ATTRIBUTESUBJECTALTNAME2 flag) and ESC8 (HTTP enrollment endpoint) — both allow privilege escalation to Domain Admin.">?</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary);margin-left:auto">{{if .ADCSResult.CAs}}{{len .ADCSResult.CAs}} CA(s){{else}}No CAs{{end}}</span>
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .ADCSResult.CAs}}
     <div class="table-wrap" style="margin-bottom:0">
     <table>
@@ -3106,7 +3119,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <!-- Template Findings -->
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Vulnerable Templates {{mitreBadges "adcs"}}</span>
       {{if .ADCSResult.TemplateFindings}}
       <span class="badge badge-critical" style="margin-left:auto">{{.Summary.ADCSTemplateCount}} {{plural .Summary.ADCSTemplateCount "template" "templates"}}</span>
@@ -3174,7 +3187,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       </tr></thead>
       <tbody>
       {{range .ShadowCredentialsResult.Findings}}
-      <tr class="{{if eq .Severity "Critical"}}row-critical{{else}}row-high{{end}}">
+      <tr>
         <td class="mono">{{.PrincipalName}}</td>
         <td>{{.PrincipalType}}</td>
         <td class="mono" style="font-size:0.78rem;color:var(--text-muted)">{{.SourceDomain}}</td>
@@ -3367,9 +3380,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Findings</div>
   {{range .AuditResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
-    <div class="path-header">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px">
       <span class="badge {{if eq .Severity "High"}}badge-high{{else if eq .Severity "Medium"}}badge-medium{{else}}badge-critical{{end}}">{{.Severity}}</span>
-      <span style="margin-left:8px">{{.Title}}</span>
+      {{if .CVSS}}<span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>{{end}}
+      <span style="color:var(--text-main)">{{.Title}}</span>
     </div>
     <div style="padding:8px 16px;color:var(--text-secondary);font-size:0.85rem">{{.Detail}}</div>
   </div>
@@ -3428,10 +3442,10 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
   <div class="exp-section" style="margin-top:20px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Remediation</span>
     </div>
-    <div class="exp-body" style="padding:16px">
+    <div class="exp-body" style="display:none;padding:16px">
       <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:8px">Check GPP Preferences XML files for cPassword:</p>
       <pre style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px;font-size:0.78rem;color:var(--text-main);overflow-x:auto">Get-GPPPassword  # PowerSploit
 python3 gpp-decrypt.py &lt;cpassword&gt;
@@ -4135,7 +4149,7 @@ function buildGroupedACL() {
     header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-grouped);border-bottom:1px solid var(--border);cursor:pointer;user-select:none';
     header.dataset.right = right;
     header.innerHTML =
-      '<span class="chevron">▼</span>' +
+      '<span class="chevron">▶</span>' +
       '<span class="badge badge-critical" style="font-family:monospace">' + right + '</span>' +
       mitreBadges +
       '<span class="badge ' + sevClass + '" style="margin-left:auto">' + g.severity + '</span>';
