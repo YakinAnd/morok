@@ -2186,14 +2186,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
   <div class="exp-section">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">Kerberoastable Accounts {{mitreBadges "kerberoasting"}}</span>
       <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with a Service Principal Name (SPN) set. Any authenticated user can request a Kerberos ticket (TGS) for them and crack the hash offline. Severity rises sharply if the account has AdminCount=1 or is in a privileged group.">?</span>
       {{if .KerberosResult.KerberoastableAccounts}}
       <span class="badge badge-high" style="margin-left:auto">{{len .KerberosResult.KerberoastableAccounts}} accounts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .KerberosResult.KerberoastableAccounts}}
     <div style="padding:8px 0 16px">
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
@@ -2243,14 +2243,14 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
   <div class="exp-section" style="margin-top:10px">
     <div class="exp-header" onclick="toggleExpSection(this)">
-      <span class="chevron">▼</span>
+      <span class="chevron">▶</span>
       <span class="exp-title">AS-REP Roastable Accounts {{mitreBadges "asrep"}}</span>
       <span class="help-icon" role="tooltip" tabindex="0" data-tip="Accounts with 'Do not require Kerberos preauthentication' enabled. An attacker can request an AS-REP blob for these accounts without any credentials and crack the hash offline. No authentication required — works from outside the domain.">?</span>
       {{if .KerberosResult.ASREPAccounts}}
       <span class="badge badge-high" style="margin-left:auto">{{len .KerberosResult.ASREPAccounts}} accounts</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
-    <div class="exp-body">
+    <div class="exp-body" style="display:none">
     {{if .KerberosResult.ASREPAccounts}}
     <div style="padding:8px 0 16px">
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false">
@@ -2428,17 +2428,19 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
   {{if .DelegationResult.Findings}}
   {{range .DelegationResult.Findings}}
   <div class="path-card" style="margin-bottom:10px">
-    <div class="path-header" style="flex-wrap:wrap;gap:8px">
+    <div class="path-header" style="flex-wrap:wrap;gap:8px;cursor:pointer"
+      onclick="var b=this.nextElementSibling;var o=b.style.display!=='none';b.style.display=o?'none':'';this.querySelector('.dchev').textContent=o?'▶':'▼'">
       {{if eq .Severity "Critical"}}<span class="badge badge-critical">Critical</span>{{else if eq .Severity "High"}}<span class="badge badge-high">High</span>{{else}}<span class="badge badge-medium">{{.Severity}}</span>{{end}}
       <span class="badge" style="background:var(--bg-hover);color:var(--text-secondary)">{{.DelegationType}}</span>
-      <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this)" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
+      <span class="cvss-score" data-vector="{{.CVSSVector}}" onclick="copyCVSS(this);event.stopPropagation()" data-tip="CVSS:3.1 — click to copy">{{printf "%.1f" .CVSS}}</span>
       <span class="mono" style="color:var(--text-main)">{{.SAMAccountName}}</span>
       <span class="badge" style="background:var(--bg-hover);color:var(--text-muted)">{{.ObjectType}}</span>
       {{mitreForDeleg (print .DelegationType)}}
-      {{if .AllowedServices}}<span style="color:var(--text-muted);font-size:0.78rem">→ {{joinSPNs .AllowedServices}}</span>{{end}}
+      <span class="dchev" style="margin-left:auto;font-size:11px;color:var(--text-secondary);user-select:none">▶</span>
+      {{if .RiskReason}}<div style="width:100%;color:var(--text-sev-high);font-size:0.8rem;margin-top:2px">⚠ {{.RiskReason}}</div>{{end}}
     </div>
-    <div style="padding:4px 16px 16px">
-      <div style="color:var(--text-sev-high);font-size:0.8rem;padding-bottom:4px">⚠ {{.RiskReason}}</div>
+    <div style="display:none;padding:4px 16px 16px">
+      {{if .AllowedServices}}<div style="color:var(--text-muted);font-size:0.78rem;margin-bottom:8px">→ {{joinSPNs .AllowedServices}}</div>{{end}}
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
         <div class="acc-label">Exploit ({{.DelegationType}})</div>
