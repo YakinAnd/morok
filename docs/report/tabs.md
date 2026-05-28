@@ -62,10 +62,12 @@ Dangerous ACL findings grouped by right type (GenericAll, WriteDACL, DCSync, etc
 
 - Source principal → right → target object
 - MITRE ATT&CK badges shown once per group header (not repeated per finding row)
+- **`?` tooltip** on each group header — hover to see what the right allows and why it's dangerous
 - Severity: Critical if target is DA/EA or right is GenericAll/WriteDACL/WriteOwner; High for ForceChangePassword/AddMember/GenericWrite
 - Exploit commands (bloodyAD, secretsdump) in accordion
 - **Expand All / Collapse All** buttons in the section header
 - Filter bar to narrow by principal, target, or right type
+- Scoped to high-value targets: `adminCount=1` users and 15 privileged groups
 
 ## Delegation
 
@@ -125,6 +127,19 @@ Collapsible sections — each shows a count badge and severity badge in the head
 - Legacy audit policy — per-category Success/Failure flags
 - Machine Account Quota (ms-DS-MachineAccountQuota)
 - Findings with remediation PowerShell commands
+
+## SYSVOL
+
+Requires `--sysvol` flag — not run by default (slow over SOCKS5 tunnels or low-bandwidth links).
+
+Walks `\\<DC>\SYSVOL\<domain>\` without reading file content and flags:
+
+- **GPP Preferences XML** (`groups.xml`, `services.xml`, `scheduledtasks.xml`, etc.) — may contain `cPassword` (MS14-025); AES-256 key is public
+- **Executables** (`.exe`, `.dll`, `.msi`, `.scr`, `.cpl`) — unexpected in SYSVOL; investigate for persistence or unauthorized deployment
+- **Archives** (`.zip`, `.7z`, `.tar`, `.gz`, `.rar`) — may contain tools, scripts, or credentials
+- **Scripts outside `Scripts\`** (`.ps1`, `.bat`, `.cmd`, `.vbs`, `.js`, `.hta`) — may contain hardcoded credentials or unauthorized automation
+
+If the scan was not run, the tab shows an opt-in hint with the `--sysvol` flag.
 
 ---
 
