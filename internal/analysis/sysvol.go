@@ -3,7 +3,6 @@ package analysis
 import (
 	"fmt"
 	"io/fs"
-	"net"
 	"path"
 	"strings"
 	"time"
@@ -52,10 +51,17 @@ type SYSVOLResult struct {
 
 // ScanSYSVOL connects to \\<DC>\SYSVOL via SMB2/NTLM and walks the share,
 // flagging non-standard files without reading their content.
-func ScanSYSVOL(client *adldap.Client) *SYSVOLResult {
+// proxyURL may be empty or a socks5:// URL; the connection is routed through
+// the proxy when set (same as CheckSMBSigning).
+func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 	r := &SYSVOLResult{Domain: client.GetDomain()}
 
-	conn, err := net.DialTimeout("tcp", client.GetHost()+":445", 8*time.Second)
+	dialer, err := smbBuildDialer(proxyURL)
+	if err != nil {
+		r.Error = fmt.Sprintf("proxy error: %v", err)
+		return r
+	}
+	conn, err := dialer.Dial("tcp", client.GetHost()+":445")
 	if err != nil {
 		r.Error = fmt.Sprintf("port 445 not reachable on %s: %v", client.GetHost(), err)
 		return r

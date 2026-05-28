@@ -423,7 +423,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 				shadowResult.Findings[i].SourceDomain = domain
 			}
 		}
-		sysvolResult = analysis.ScanSYSVOL(client)
+		sysvolResult = analysis.ScanSYSVOL(client, proxyURL)
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
