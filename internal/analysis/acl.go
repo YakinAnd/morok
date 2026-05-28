@@ -802,8 +802,9 @@ func buildPrivilegedTargetDNs(result *adldap.EnumerationResult) map[string]bool 
 		"enterprise key admins":        true,
 		"protected users":              true,
 		"dnsadmins":                    true,
-		"exchange windows permissions": true,
-		"organization management":      true,
+		// Exchange groups are intentionally excluded: Exchange installs broad ACEs
+		// on OM/ETS by design. The dangerous end of that chain (EWP WriteDACL on
+		// the domain object) is already caught by the DCSync check.
 	}
 	for _, g := range result.Groups {
 		if privGroupNames[strings.ToLower(g.SAMAccountName)] {
