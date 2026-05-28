@@ -38,6 +38,7 @@ var (
 	quietMode      bool   // --quiet: suppress detailed output, print only risk verdict (CI mode)
 	wordlistPath   string // --wordlist: path to username wordlist for kerb-enum
 	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
+	scanSYSVOL     bool   // --sysvol: scan SYSVOL share (slow over proxy — opt-in)
 )
 
 // ============================================================
@@ -186,6 +187,7 @@ func init() {
 	enumCmd.Flags().StringVar(&jsonExportPath, "json", "", "Export AD objects as JSON to directory (e.g. json_out/)")
 	enumCmd.Flags().IntVar(&maxDepth, "max-depth", 10, "Maximum BFS depth for attack path search")
 	enumCmd.Flags().BoolVar(&stealth, "stealth", false, "Stealth mode — minimal LDAP queries, no GC, no ACL/GPO/ADCS/delegation analysis")
+	enumCmd.Flags().BoolVar(&scanSYSVOL, "sysvol", false, "Scan SYSVOL share for GPP cPassword, scripts, and executables (slow over proxy — run separately when needed)")
 	enumCmd.Flags().BoolVar(&quietMode, "quiet", false, "Quiet mode — print only risk verdict line (for CI/scripting)")
 
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
@@ -423,7 +425,9 @@ func runEnum(cmd *cobra.Command, args []string) error {
 				shadowResult.Findings[i].SourceDomain = domain
 			}
 		}
-		sysvolResult = analysis.ScanSYSVOL(client, proxyURL)
+		if scanSYSVOL {
+			sysvolResult = analysis.ScanSYSVOL(client, proxyURL)
+		}
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
