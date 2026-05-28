@@ -94,11 +94,10 @@ func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 	}
 	defer share.Umount()
 
-	// Auth complete — set a generous deadline for the file walk.
-	// SYSVOL over a slow proxy can be very slow (100+ GPOs × multiple SMB
-	// round-trips per directory). 120 seconds is enough for large domains.
-	conn.SetDeadline(time.Now().Add(120 * time.Second))
-	color.White("  %-28s walking share (up to 120s)...", "sysvol")
+	// Auth complete — remove deadline. The user explicitly opted in with
+	// --sysvol and accepted that the walk may be slow over a proxy.
+	conn.SetDeadline(time.Time{})
+	color.White("  %-28s walking share...", "sysvol")
 
 	r.Scanned = true
 

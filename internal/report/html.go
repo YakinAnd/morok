@@ -3386,8 +3386,12 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 <div id="tab-sysvol" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-sysvol" tabindex="0" aria-hidden="true">
   <h2 class="section-title">SYSVOL Audit <span class="help-icon" role="tooltip" tabindex="0" data-tip="Scans the SYSVOL share for non-standard files without reading their content. Flags: GPP Preferences XML (potential cPassword, MS14-025), executables, archives, and script files outside standard Scripts\\ directories.">?</span></h2>
 
-  {{if .SYSVOLResult}}
-  {{if .SYSVOLResult.Error}}
+  {{if not .SYSVOLResult}}
+  <div style="padding:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:0.88rem">
+    SYSVOL scan was not performed — add <code style="background:var(--bg-code);padding:1px 5px;border-radius:3px">--sysvol</code> to include it.<br>
+    <span style="font-size:0.8rem;color:var(--text-subtle);margin-top:6px;display:block">Note: SYSVOL scanning requires direct SMB access and can be slow over proxies or tunnels (100+ GPO directories × SMB round-trips). Run it separately when you have a stable, fast connection.</span>
+  </div>
+  {{else if .SYSVOLResult.Error}}
   <p style="color:var(--text-muted)">SYSVOL not accessible — {{.SYSVOLResult.Error}}</p>
   {{else if not .SYSVOLResult.Scanned}}
   <p style="color:var(--text-muted)">SYSVOL scan was not performed.</p>
@@ -3436,9 +3440,6 @@ findstr /S /I cpassword \\{{.SYSVOLResult.Domain}}\SYSVOL\*.xml</pre>
       <pre style="background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px;font-size:0.78rem;color:var(--text-main);overflow-x:auto">findstr /S /I "password pass pwd secret" \\{{.SYSVOLResult.Domain}}\SYSVOL\*.ps1 *.bat *.cmd *.vbs</pre>
     </div>
   </div>
-  {{end}}
-  {{else}}
-  <p style="color:var(--text-muted)">SYSVOL scan not available.</p>
   {{end}}
 </div>
 
