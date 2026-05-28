@@ -2419,11 +2419,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
 
 <!-- DELEGATION TAB -->
 <div id="tab-delegation" class="tab-pane" role="tabpanel" aria-labelledby="tab-btn-delegation" tabindex="0" aria-hidden="true">
-  <h2 class="section-title">
-    Delegation Configurations
-    <span>{{.Summary.DelegationCount}} finding(s)</span>
-    <span class="help-icon" role="tooltip" tabindex="0" data-tip="Delegation allows a service to impersonate a user when accessing other services. Unconstrained delegation is the most dangerous — any account authenticating to that machine gives up their Kerberos ticket, which the attacker can reuse. Constrained and RBCD are less severe but still abusable.">?</span>
-  </h2>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+    <h2 class="section-title" style="margin-bottom:0;border:none;flex:1;padding-bottom:0">
+      Delegation Configurations
+      <span>{{.Summary.DelegationCount}} finding(s)</span>
+      <span class="help-icon" role="tooltip" tabindex="0" data-tip="Delegation allows a service to impersonate a user when accessing other services. Unconstrained delegation is the most dangerous — any account authenticating to that machine gives up their Kerberos ticket, which the attacker can reuse. Constrained and RBCD are less severe but still abusable.">?</span>
+    </h2>
+    <div class="xp-btns">
+      <button onclick="expandAllIn('#tab-delegation')">Expand all</button>
+      <button onclick="collapseAllIn('#tab-delegation')">Collapse all</button>
+    </div>
+  </div>
   {{if .DelegationResult}}
   {{if .DelegationResult.Findings}}
   {{range .DelegationResult.Findings}}
@@ -2439,7 +2445,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="dchev" style="margin-left:auto;font-size:11px;color:var(--text-secondary);user-select:none">▶</span>
       {{if .RiskReason}}<div style="width:100%;color:var(--text-sev-high);font-size:0.8rem;margin-top:2px">⚠ {{.RiskReason}}</div>{{end}}
     </div>
-    <div style="display:none;padding:4px 16px 16px">
+    <div class="deleg-body" style="display:none;padding:4px 16px 16px">
       {{if .AllowedServices}}<div style="color:var(--text-muted);font-size:0.78rem;margin-bottom:8px">→ {{joinSPNs .AllowedServices}}</div>{{end}}
       <button class="acc-toggle" onclick="toggleAcc(this)" aria-expanded="false"><span class="acc-chevron">▶</span> <span style="color:var(--text-sev-critical);font-weight:600">Exploit</span> <span style="color:var(--text-muted)">/</span> <span style="color:var(--color-ok);font-weight:600">Remediation</span></button>
       <div class="acc-body">
@@ -4200,6 +4206,8 @@ function expandAllIn(sel) {
   document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.textContent = '▼'; });
   document.querySelectorAll(sel + ' .group-body').forEach(function(b) { b.style.display = ''; });
   document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.textContent = '▼'; });
+  document.querySelectorAll(sel + ' .deleg-body').forEach(function(b) { b.style.display = ''; });
+  document.querySelectorAll(sel + ' .dchev').forEach(function(c) { c.textContent = '▼'; });
 }
 
 function collapseAllIn(sel) {
@@ -4207,6 +4215,8 @@ function collapseAllIn(sel) {
   document.querySelectorAll(sel + ' .exp-header .chevron').forEach(function(c) { c.textContent = '▶'; });
   document.querySelectorAll(sel + ' .group-body').forEach(function(b) { b.style.display = 'none'; });
   document.querySelectorAll(sel + ' .group-chevron').forEach(function(c) { c.textContent = '▶'; });
+  document.querySelectorAll(sel + ' .deleg-body').forEach(function(b) { b.style.display = 'none'; });
+  document.querySelectorAll(sel + ' .dchev').forEach(function(c) { c.textContent = '▶'; });
 }
 
 // ── Row limit (large tables) ──────────────────────────────────
