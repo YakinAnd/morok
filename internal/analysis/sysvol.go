@@ -56,6 +56,8 @@ type SYSVOLResult struct {
 func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 	r := &SYSVOLResult{Domain: client.GetDomain()}
 
+	color.White("  %-28s connecting to %s:445...", "sysvol", client.GetHost())
+
 	dialer, err := smbBuildDialer(proxyURL)
 	if err != nil {
 		r.Error = fmt.Sprintf("proxy error: %v", err)
@@ -94,6 +96,7 @@ func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 
 	// Auth complete — remove deadline so the file walk is not time-bounded.
 	conn.SetDeadline(time.Time{})
+	color.White("  %-28s walking share...", "sysvol")
 
 	r.Scanned = true
 
