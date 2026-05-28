@@ -170,6 +170,7 @@ var smbCmd = &cobra.Command{
 
 func init() {
 	for _, cmd := range []*cobra.Command{enumCmd, kerberosCmd, aclCmd, delegationCmd, gpoCmd, adcsCmd, trustCmd, shadowCmd, auditCmd, usersCmd, computersCmd, enumUsersCmd, smbCmd} {
+		cmd.SilenceUsage = true // don't dump usage on runtime errors (auth fail, connection error)
 		cmd.Flags().SortFlags = false
 		cmd.Flags().StringVarP(&domain, "domain", "d", "", "Target domain (required)")
 		cmd.Flags().StringVarP(&username, "username", "u", "", "Username")
@@ -1750,8 +1751,9 @@ func runSMB(cmd *cobra.Command, args []string) error {
 // ============================================================
 
 func main() {
+	rootCmd.SilenceErrors = true // we print errors ourselves below
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		color.New(color.FgRed).Fprintf(os.Stderr, "  error: %v\n", err)
 		os.Exit(1)
 	}
 }
