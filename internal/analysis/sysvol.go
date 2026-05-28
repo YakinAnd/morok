@@ -67,7 +67,8 @@ func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 		return r
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(30 * time.Second))
+	// Short deadline covers only the auth phase (SMB negotiate + NTLM + mount).
+	conn.SetDeadline(time.Now().Add(15 * time.Second))
 
 	d := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
@@ -90,6 +91,9 @@ func ScanSYSVOL(client *adldap.Client, proxyURL string) *SYSVOLResult {
 		return r
 	}
 	defer share.Umount()
+
+	// Auth complete — remove deadline so the file walk is not time-bounded.
+	conn.SetDeadline(time.Time{})
 
 	r.Scanned = true
 
