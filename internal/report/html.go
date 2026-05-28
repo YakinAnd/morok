@@ -4106,6 +4106,16 @@ const _aclMitre = {
   'AddMember':           '<a class="mitre-badge" href="https://attack.mitre.org/techniques/T1098/" target="_blank" title="Account Manipulation">T1098</a>',
 };
 
+const _aclTips = {
+  'DCSync':              'Replication rights on the domain root — allows dumping all password hashes (NTDS) without touching the DC disk. Used by domain controllers; any non-DC account with this right is a critical backdoor.',
+  'GenericAll':          'Full control over the target object — can modify any attribute, reset passwords, change group membership, or write the DACL.',
+  'WriteDACL':           'Can rewrite the object\'s access control list — effectively grants any right including GenericAll.',
+  'WriteOwner':          'Can take ownership of the object, which implicitly grants WriteDACL.',
+  'GenericWrite':        'Can write to non-protected attributes — often used to set SPN (Kerberoasting) or msDS-KeyCredentialLink (Shadow Credentials).',
+  'ForceChangePassword': 'Can reset the account\'s password without knowing the current one — immediate account takeover.',
+  'AddMember':           'Can add arbitrary accounts to this group — escalate to the group\'s privileges.',
+};
+
 const _ACL_GROUP_LIMIT = 50;
 
 function buildGroupedACL() {
@@ -4148,10 +4158,12 @@ function buildGroupedACL() {
     const header = document.createElement('div');
     header.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg-grouped);border-bottom:1px solid var(--border);cursor:pointer;user-select:none';
     header.dataset.right = right;
+    const tipText = _aclTips[right] || 'Dangerous permission that enables privilege escalation or lateral movement.';
     header.innerHTML =
       '<span class="chevron">▶</span>' +
       '<span class="badge badge-critical" style="font-family:monospace">' + right + '</span>' +
       mitreBadges +
+      '<span class="help-icon" role="tooltip" tabindex="0" data-tip="' + tipText.replace(/"/g, '&quot;') + '" onclick="event.stopPropagation()">?</span>' +
       '<span class="badge ' + sevClass + '" style="margin-left:auto">' + g.severity + '</span>';
 
     const body = document.createElement('div');
