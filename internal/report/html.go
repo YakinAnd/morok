@@ -3125,7 +3125,7 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <span class="badge badge-critical" style="margin-left:auto">{{.Summary.ADCSTemplateCount}} {{plural .Summary.ADCSTemplateCount "template" "templates"}}</span>
       {{else}}<span class="badge badge-ok" style="margin-left:auto">&#10003; None</span>{{end}}
     </div>
-    <div class="exp-body" style="padding:12px">
+    <div class="exp-body" style="display:none;padding:12px">
     {{if .ADCSResult.TemplateFindings}}
     {{range .ADCSResult.TemplateFindings}}
     {{$tmplSev := .Severity}}
