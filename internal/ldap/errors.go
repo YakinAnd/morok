@@ -107,7 +107,7 @@ func decodeCode49(msg string) string {
 		}
 	}
 	// No data field at all — generic message
-	return "authentication failed — wrong username or password"
+	return "authentication failed"
 }
 
 // friendlyKerberosError converts raw gokrb5 error strings into readable messages.
@@ -141,11 +141,11 @@ func friendlyKerberosError(err error) error {
 func windowsLogonError(code int64) string {
 	switch code {
 	case 0x0:
-		return "authentication failed — wrong username or password"
+		return "authentication failed"
 	case 0x52d: // 1325 — PASSWORD_RESTRICTION (ADP-142)
 		return "authentication failed — password does not meet complexity/history requirements"
 	case 0x52e: // 1326 — LOGON_FAILURE
-		return "authentication failed — wrong password"
+		return "authentication failed"
 	case 0x52f: // 1327 — ACCOUNT_RESTRICTION
 		return "authentication failed — account restriction (check logon hours or workstation restrictions)"
 	case 0x530: // 1328 — INVALID_LOGON_HOURS
