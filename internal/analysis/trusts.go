@@ -173,11 +173,23 @@ func AnalyzeTrusts(client *adldap.Client, result *adldap.EnumerationResult) (*Tr
 		// ── risk assessment ───────────────────────────────────
 		sev := "Info"
 
-		// SID filtering OFF on non-internal trust = High risk
+		// SID filtering OFF — risk severity depends on direction.
+		// Outbound/Bidirectional: their users authenticate to us; with SID filtering
+		// off they can forge our DA SIDs → direct risk to THIS domain (High).
+		// Inbound-only: our users authenticate to them; SID filtering off lets us
+		// forge SIDs in the remote domain — risk is to THEM, not us (Medium).
 		if !t.SIDFilteringOn && !t.IsWithinForest {
-			t.Risks = append(t.Risks,
-				"SID filtering disabled — SID history abuse possible: attacker in trusted domain can forge SIDs to escalate in this domain")
-			sev = "High"
+			if t.Direction == TrustDirectionOutbound || t.Direction == TrustDirectionBidirectional {
+				t.Risks = append(t.Risks,
+					"SID filtering disabled on outbound trust — attacker in trusted domain can forge SIDs to escalate in this domain")
+				sev = "High"
+			} else if t.Direction == TrustDirectionInbound {
+				t.Risks = append(t.Risks,
+					"SID filtering disabled on inbound trust — principals in this domain could forge SIDs in the remote domain")
+				if sev == "Info" {
+					sev = "Medium"
+				}
+			}
 		}
 
 		// Bidirectional forest trust = higher exposure
