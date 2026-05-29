@@ -498,7 +498,11 @@ func parseACL(data []byte, offset int) ([]ACE, error) {
 
 		ace, size, err := parseACE(data, aceOffset)
 		if err != nil {
-			aceOffset += 4
+			if size > 0 {
+				aceOffset += size // skip malformed ACE but stay aligned
+			} else {
+				break // can't read ACE header at all, abort
+			}
 			continue
 		}
 
@@ -653,31 +657,34 @@ func detectDangerousRights(ace ACE) []ACLRight {
 
 	var rights []ACLRight
 
-	if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 {
-		rights = append(rights, RightGenericAll)
-	}
-	if ace.AccessMask&ADS_RIGHT_WRITE_DACL != 0 {
-		rights = append(rights, RightWriteDACL)
-	}
-	if ace.AccessMask&ADS_RIGHT_WRITE_OWNER != 0 {
-		rights = append(rights, RightWriteOwner)
-	}
-	if ace.AccessMask&ADS_RIGHT_GENERIC_WRITE != 0 {
-		rights = append(rights, RightGenericWrite)
+	// Object ACEs (0x05/0x06) with a non-null ObjectType scope the access to a
+	// specific attribute, property set, or extended right. Standard security rights
+	// (WRITE_DACL, WRITE_OWNER) are NOT restricted by ObjectType, but GENERIC_ALL
+	// and GENERIC_WRITE are ambiguous in this context. To avoid false positives, for
+	// object ACEs we only check the broad rights when ObjectType is absent, and rely
+	// on GUID-based detection for extended-right ACEs (H-2).
+	isObjectACE := ace.ACEType == 0x05 || ace.ACEType == 0x06 ||
+		ace.ACEType == 0x0B || ace.ACEType == 0x0C
+	scopedByObjectType := isObjectACE && ace.ObjectType != ""
+
+	if !scopedByObjectType {
+		if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 {
+			rights = append(rights, RightGenericAll)
+		}
+		if ace.AccessMask&ADS_RIGHT_GENERIC_WRITE != 0 {
+			rights = append(rights, RightGenericWrite)
+		}
+		if ace.AccessMask&0x000F01FF == 0x000F01FF {
+			rights = append(rights, RightGenericAll)
+		}
 	}
 
-	if ace.AccessMask&0x000F01FF == 0x000F01FF {
-		rights = append(rights, RightGenericAll)
+	// Standard DACL/owner rights are not restricted by ObjectType — flag always.
+	if ace.AccessMask&ADS_RIGHT_WRITE_DACL != 0 || ace.AccessMask&0x00040000 != 0 {
+		rights = append(rights, RightWriteDACL)
 	}
-	if ace.AccessMask&0x00040000 != 0 {
-		if !containsRight(rights, RightWriteDACL) {
-			rights = append(rights, RightWriteDACL)
-		}
-	}
-	if ace.AccessMask&0x00080000 != 0 {
-		if !containsRight(rights, RightWriteOwner) {
-			rights = append(rights, RightWriteOwner)
-		}
+	if ace.AccessMask&ADS_RIGHT_WRITE_OWNER != 0 || ace.AccessMask&0x00080000 != 0 {
+		rights = append(rights, RightWriteOwner)
 	}
 
 	// Extended rights via GUID — must also verify the correct access-mask bit.
@@ -696,7 +703,17 @@ func detectDangerousRights(ace ACE) []ACLRight {
 		}
 	}
 
-	return rights
+	// Deduplicate (WriteDACL may appear from both bit paths).
+	seen := make(map[ACLRight]bool)
+	deduped := rights[:0]
+	for _, r := range rights {
+		if !seen[r] {
+			seen[r] = true
+			deduped = append(deduped, r)
+		}
+	}
+
+	return deduped
 }
 
 // containsRight reports whether right is already in the list.
