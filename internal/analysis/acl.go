@@ -171,7 +171,8 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 	}
 
 	// Owner check: non-default owner on privileged objects has implicit WriteDACL.
-	aclResult.OwnerFindings = checkPrivilegedOwners(entries, nameMap, result)
+	// Also check the domain root — its owner can grant themselves DCSync rights.
+	aclResult.OwnerFindings = checkPrivilegedOwners(entries, nameMap, result, client.GetBaseDN())
 
 	return aclResult, nil
 }
@@ -290,12 +291,13 @@ func isBuiltinDCSyncSID(sid string) bool {
 	return false
 }
 
-// checkPrivilegedOwners scans the SD of privileged objects (DA/EA/DC members)
-// for non-default owners. The owner of any AD object has implicit WriteDACL rights
-// regardless of the DACL, making non-default ownership a backdoor primitive.
-func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo, result *adldap.EnumerationResult) []OwnerFinding {
+// checkPrivilegedOwners scans the SD of privileged objects (DA/EA/DC members and
+// the domain root) for non-default owners. The owner of any AD object has implicit
+// WriteDACL rights regardless of the DACL, making non-default ownership a backdoor
+// primitive. Domain root owner can trivially grant themselves DCSync rights (H-6).
+func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo, result *adldap.EnumerationResult, baseDN string) []OwnerFinding {
 	// Build set of privileged user DNs (members of DA/EA/SA/Administrators)
-	privDNs := make(map[string]string) // lower(DN) → SAMAccountName
+	privDNs := make(map[string]string) // lower(DN) → display name
 	for _, g := range result.Groups {
 		switch strings.ToLower(g.SAMAccountName) {
 		case "domain admins", "enterprise admins", "schema admins", "administrators":
@@ -308,6 +310,10 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 		if u.AdminCount {
 			privDNs[strings.ToLower(u.DN)] = u.SAMAccountName
 		}
+	}
+	// Domain root: owner can WriteDACL → grant DCSync rights.
+	if baseDN != "" {
+		privDNs[strings.ToLower(baseDN)] = "domain root"
 	}
 
 	const ownerVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"

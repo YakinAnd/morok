@@ -298,19 +298,20 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	authEnabled    := false
 	noSecurityExt  := enrollmentFlag&ctFlagNoSecurityExtension != 0
 
-	// ── ESC1: ENROLLEE_SUPPLIES_SUBJECT bit set ───────────────
-	// Correct bitmask check — value can be e.g. 65536 (0x10000) with bit 0 set
-	// when combined flags are present, so we mask properly.
-	if nameFlag&ctFlagEnrolleeSuppliesSubject != 0 {
-		allowsSAN = true
-		vulns = append(vulns, ESC1)
-	}
-
 	// ── Check if template enables authentication ──────────────
+	// Must be computed before ESC1 so the EKU gate can be applied (M-15).
 	for _, eku := range ekus {
 		if authEKUs[eku] {
 			authEnabled = true
 		}
+	}
+
+	// ── ESC1: ENROLLEE_SUPPLIES_SUBJECT bit set + auth EKU ───────────────
+	// Without an authentication EKU (Client Auth, Smart Card Logon) the cert
+	// cannot be used for Kerberos/PKINIT, so it is not an ESC1 primitive.
+	if nameFlag&ctFlagEnrolleeSuppliesSubject != 0 && authEnabled {
+		allowsSAN = true
+		vulns = append(vulns, ESC1)
 	}
 
 	// ── ESC2: Any Purpose EKU or no EKUs at all ──────────────
