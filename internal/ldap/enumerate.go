@@ -542,7 +542,12 @@ func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 }
 
 // queryChildDomainComputers resolves the child domain's DC via DNS and queries it.
+// When a proxy is configured the DNS lookup is skipped and the hostname is passed
+// directly to SearchDomain so the proxy handles resolution (C-1).
 func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Entry, error) {
+	if c.ProxyURL != "" {
+		return c.SearchDomain(domain, baseDN, FilterAllComputers, computerAttributes)
+	}
 	addrs, err := net.LookupHost(domain)
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)

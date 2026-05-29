@@ -151,11 +151,23 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 	// Domain root DN is a privileged target: WriteDACL/GenericAll on it enables DCSync and GPO abuse.
 	privTargets[strings.ToLower(client.GetBaseDN())] = true
 
+	// Build DN→SID reverse map once so parseACLEntry lookups are O(1) not O(N) (H-4).
+	dnSIDMap := buildDNSIDMap(result)
+	for _, extra := range extraResults {
+		if extra != nil {
+			for k, v := range buildDNSIDMap(extra) {
+				if _, exists := dnSIDMap[k]; !exists {
+					dnSIDMap[k] = v
+				}
+			}
+		}
+	}
+
 	for _, entry := range entries {
 		if !privTargets[strings.ToLower(entry.DN)] {
 			continue
 		}
-		findings := parseACLEntry(entry, nameMap, result)
+		findings := parseACLEntry(entry, nameMap, dnSIDMap)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
 	aclResult.Findings = filterSystemACL(aclResult.Findings)
@@ -361,7 +373,7 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 func parseACLEntry(
 	entry *goldap.Entry,
 	nameMap map[string]nameInfo,
-	result *adldap.EnumerationResult,
+	dnSIDMap map[string]string,
 ) []ACLFinding {
 	var findings []ACLFinding
 
@@ -390,7 +402,7 @@ func parseACLEntry(
 		}
 
 
-		if strings.EqualFold(ace.SID, getSIDForDN(targetDN, result)) {
+		if ace.SID != "" && ace.SID == dnSIDMap[strings.ToLower(targetDN)] {
 			continue
 		}
 
@@ -774,24 +786,26 @@ func getObjectType(entry *goldap.Entry) string {
 	return "object"
 }
 
-// getSIDForDN returns the ObjectSID for the given DN.
-func getSIDForDN(dn string, result *adldap.EnumerationResult) string {
+// buildDNSIDMap builds a lowercase-DN → ObjectSID lookup from all enumerated objects.
+// This replaces the O(N) per-ACE getSIDForDN scan with an O(1) map lookup (H-4).
+func buildDNSIDMap(result *adldap.EnumerationResult) map[string]string {
+	m := make(map[string]string, len(result.Users)+len(result.Groups)+len(result.Computers))
 	for _, u := range result.Users {
-		if strings.EqualFold(u.DN, dn) {
-			return u.ObjectSid
+		if u.ObjectSid != "" {
+			m[strings.ToLower(u.DN)] = u.ObjectSid
 		}
 	}
 	for _, g := range result.Groups {
-		if strings.EqualFold(g.DN, dn) {
-			return g.ObjectSid
+		if g.ObjectSid != "" {
+			m[strings.ToLower(g.DN)] = g.ObjectSid
 		}
 	}
 	for _, c := range result.Computers {
-		if strings.EqualFold(c.DN, dn) {
-			return c.ObjectSid
+		if c.ObjectSid != "" {
+			m[strings.ToLower(c.DN)] = c.ObjectSid
 		}
 	}
-	return ""
+	return m
 }
 
 
