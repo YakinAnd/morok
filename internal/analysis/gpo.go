@@ -116,8 +116,9 @@ var domainAttributes = []string{
 // Core analysis function
 // ============================================================
 
-// AnalyzeGPO finds dangerous GPO configurations
-func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
+// AnalyzeGPO finds dangerous GPO configurations. Pass an EnumerationResult to
+// enable SID→name resolution for non-builtin principals in GPO ACLs.
+func AnalyzeGPO(client *adldap.Client, optResult ...*adldap.EnumerationResult) (*GPOResult, error) {
 	result := &GPOResult{
 		Domain: client.GetDomain(),
 	}
@@ -143,9 +144,12 @@ func AnalyzeGPO(client *adldap.Client) (*GPOResult, error) {
 		}
 	}
 
-	emptyNameMap := make(map[string]nameInfo)
+	nameMap := make(map[string]nameInfo)
+	if len(optResult) > 0 && optResult[0] != nil {
+		nameMap = buildNameMap(optResult[0])
+	}
 	for i := range gpos {
-		analyzeGPOPermissions(client, &gpos[i], emptyNameMap)
+		analyzeGPOPermissions(client, &gpos[i], nameMap)
 	}
 
 	for _, gpo := range gpos {

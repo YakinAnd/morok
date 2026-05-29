@@ -53,7 +53,8 @@ const (
 
 	FilterUnconstrainedComputers = "(&(objectClass=computer)" +
 		"(userAccountControl:1.2.840.113556.1.4.803:=524288)" +
-		"(!(userAccountControl:1.2.840.113556.1.4.803:=8192)))"
+		"(!(userAccountControl:1.2.840.113556.1.4.803:=8192))" +
+		"(!(userAccountControl:1.2.840.113556.1.4.803:=67108864)))" // exclude RODCs (PARTIAL_SECRETS_ACCOUNT)
 
 	FilterConstrainedDelegation = "(&(|(objectClass=user)(objectClass=computer))" +
 		"(msDS-AllowedToDelegateTo=*))"

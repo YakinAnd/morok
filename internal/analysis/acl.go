@@ -148,6 +148,8 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 	// adminCount=1 users. Permissions on regular users/workstations represent
 	// normal IT delegation and produce thousands of false positives at scale.
 	privTargets := buildPrivilegedTargetDNs(result)
+	// Domain root DN is a privileged target: WriteDACL/GenericAll on it enables DCSync and GPO abuse.
+	privTargets[strings.ToLower(client.GetBaseDN())] = true
 
 	for _, entry := range entries {
 		if !privTargets[strings.ToLower(entry.DN)] {

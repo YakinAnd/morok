@@ -409,7 +409,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 			}
 		}
 		dr, _ = analysis.AnalyzeDelegation(client, result)
-		gr, _ = analysis.AnalyzeGPO(client)
+		gr, _ = analysis.AnalyzeGPO(client, result)
 		hr = analysis.AnalyzeHygiene(result)
 		puResult = analysis.AnalyzeProtectedUsers(result)
 		adminSDResult, _ = analysis.AnalyzeAdminSDHolder(client, result)

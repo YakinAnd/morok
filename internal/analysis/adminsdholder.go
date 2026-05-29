@@ -48,19 +48,19 @@ type AdminSDHolderACEFinding struct {
 
 // known privileged group SAMAccountNames (same list used for Protected Users check)
 var sdprotectedGroups = map[string]bool{
-	"Domain Admins":             true,
-	"Enterprise Admins":         true,
-	"Schema Admins":             true,
-	"Administrators":            true,
-	"Account Operators":         true,
-	"Backup Operators":          true,
-	"Print Operators":           true,
-	"Server Operators":          true,
-	"Group Policy Creator Owners": true,
-	"Replicator":                true,
-	"RAS and IAS Servers":       false, // not SDProp-managed, skip
-	"Domain Controllers":        true,
-	"Read-only Domain Controllers": true,
+	"domain admins":             true,
+	"enterprise admins":         true,
+	"schema admins":             true,
+	"administrators":            true,
+	"account operators":         true,
+	"backup operators":          true,
+	"print operators":           true,
+	"server operators":          true,
+	"group policy creator owners": true,
+	"replicator":                true,
+	"ras and ias servers":       false, // not SDProp-managed, skip
+	"domain controllers":        true,
+	"read-only domain controllers": true,
 }
 
 // ============================================================
@@ -77,7 +77,7 @@ func AnalyzeAdminSDHolder(client *adldap.Client, result *adldap.EnumerationResul
 	// build set of DNs that are members of privileged groups
 	privMemberDNs := make(map[string]bool)
 	for _, g := range result.Groups {
-		if !sdprotectedGroups[g.SAMAccountName] {
+		if !sdprotectedGroups[strings.ToLower(g.SAMAccountName)] {
 			continue
 		}
 		for _, m := range g.Members {

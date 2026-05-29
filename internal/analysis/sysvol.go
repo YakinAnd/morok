@@ -189,9 +189,8 @@ func checkSYSVOLFile(p string, info fs.FileInfo, r *SYSVOLResult) {
 	//           scripts\ (NETLOGON-style)
 	switch ext {
 	case ".ps1", ".bat", ".cmd", ".vbs", ".js", ".wsf", ".hta":
-		inScriptsDir := strings.Contains(lower, "\\scripts\\") ||
-			strings.HasPrefix(lower, "scripts/") ||
-			strings.HasPrefix(lower, "scripts\\")
+		inScriptsDir := strings.Contains(lower, "/scripts/") ||
+			strings.HasPrefix(lower, "scripts/")
 		if !inScriptsDir {
 			r.Findings = append(r.Findings, SYSVOLFinding{
 				Path:     p,
