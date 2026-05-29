@@ -196,8 +196,9 @@ func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []Admi
 
 	var findings []AdminSDHolderACEFinding
 	for _, ace := range aces {
-		if ace.ACEType == 0x01 || ace.ACEType == 0x06 {
-			continue // Deny ACE — not a backdoor
+		if ace.ACEType == 0x01 || ace.ACEType == 0x06 ||
+			ace.ACEType == 0x0A || ace.ACEType == 0x0C {
+			continue // Deny ACE (including callback deny) — not a backdoor
 		}
 		sid := ace.SID
 		if builtinSIDs[sid] {
@@ -218,7 +219,8 @@ func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []Admi
 		// are scoped to that attribute/extended-right — not a full dangerous right (H-10).
 		// WRITE_DACL and WRITE_OWNER are standard security rights, not restricted by ObjectType.
 		mask := ace.AccessMask
-		isObjectACE := ace.ACEType == 0x05 || ace.ACEType == 0x06
+		isObjectACE := ace.ACEType == 0x05 || ace.ACEType == 0x06 ||
+			ace.ACEType == 0x0B || ace.ACEType == 0x0C
 		scopedByObjType := isObjectACE && ace.ObjectType != ""
 		dangerous := (mask&ADS_RIGHT_WRITE_DACL != 0 || mask&ADS_RIGHT_WRITE_OWNER != 0) ||
 			(!scopedByObjType && (mask&ADS_RIGHT_GENERIC_ALL != 0 || mask&ADS_RIGHT_GENERIC_WRITE != 0))

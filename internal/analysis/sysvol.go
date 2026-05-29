@@ -184,9 +184,9 @@ func checkSYSVOLFile(p string, info fs.FileInfo, r *SYSVOLResult) {
 	}
 
 	// ── Scripts outside expected script directories ───────────
-	// Expected: Policies\{GUID}\Machine\Scripts\{Startup|Shutdown}\
-	//           Policies\{GUID}\User\Scripts\{Logon|Logoff}\
-	//           scripts\ (NETLOGON-style)
+	// Expected: Policies/{GUID}/Machine/Scripts/{Startup|Shutdown}/
+	//           Policies/{GUID}/User/Scripts/{Logon|Logoff}/
+	//           scripts/ (NETLOGON-style)
 	switch ext {
 	case ".ps1", ".bat", ".cmd", ".vbs", ".js", ".wsf", ".hta":
 		inScriptsDir := strings.Contains(lower, "/scripts/") ||

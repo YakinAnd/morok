@@ -152,10 +152,11 @@ var ekuNameMap = map[string]string{
 	"1.3.6.1.4.1.311.10.3.4":   "EFS",
 }
 
-// EKUs that enable authentication (needed for ESC1 to be Critical)
+// EKUs that enable authentication (needed for ESC1/ESC9 gating)
 var authEKUs = map[string]bool{
 	"1.3.6.1.5.5.7.3.2":      true, // Client Authentication
 	"1.3.6.1.4.1.311.20.2.2": true, // Smart Card Logon
+	"1.3.6.1.5.2.3.4":        true, // PKINIT Client Authentication (RFC 4556)
 	"2.5.29.37.0":             true, // Any Purpose
 }
 
@@ -299,25 +300,17 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 	noSecurityExt  := enrollmentFlag&ctFlagNoSecurityExtension != 0
 
 	// ── Check if template enables authentication ──────────────
-	// Must be computed before ESC1 so the EKU gate can be applied (M-15).
+	// Computed before ESC1/ESC2 so both gates see a consistent authEnabled.
 	for _, eku := range ekus {
 		if authEKUs[eku] {
 			authEnabled = true
 		}
 	}
 
-	// ── ESC1: ENROLLEE_SUPPLIES_SUBJECT bit set + auth EKU ───────────────
-	// Without an authentication EKU (Client Auth, Smart Card Logon) the cert
-	// cannot be used for Kerberos/PKINIT, so it is not an ESC1 primitive.
-	if nameFlag&ctFlagEnrolleeSuppliesSubject != 0 && authEnabled {
-		allowsSAN = true
-		vulns = append(vulns, ESC1)
-	}
-
 	// ── ESC2: Any Purpose EKU or no EKUs at all ──────────────
-	// If msPKI-RA-Signature > 0, a Certificate Request Agent must countersign
-	// the request before the CA issues the certificate — ESC2 is not directly
-	// exploitable without a valid RA credential.
+	// Evaluated before ESC1: a template with no EKUs can be used for any purpose
+	// including authentication, so authEnabled must be set before the ESC1 gate.
+	// If msPKI-RA-Signature > 0, a Certificate Request Agent must countersign.
 	raSigVal, _ := strconv.Atoi(raSig)
 	if raSigVal == 0 {
 		if len(ekus) == 0 {
@@ -330,6 +323,13 @@ func analyzeTemplate(e ldapEntry) *CertTemplateFinding {
 				authEnabled = true
 			}
 		}
+	}
+
+	// ── ESC1: ENROLLEE_SUPPLIES_SUBJECT bit set + auth EKU ───────────────
+	// Without an authentication EKU the cert cannot be used for Kerberos PKINIT.
+	if nameFlag&ctFlagEnrolleeSuppliesSubject != 0 && authEnabled {
+		allowsSAN = true
+		vulns = append(vulns, ESC1)
 	}
 
 	// ── ESC3: Certificate Request Agent EKU ──────────────────

@@ -536,8 +536,9 @@ func parseACE(data []byte, offset int) (ACE, int, error) {
 	aceType := data[offset]
 	aceSize := int(readUint16LE(data, offset+2))
 
-	// Per-type minimum: standard ACEs need at least header(8)+mask(4)+min-SID(8)=20;
-	// object ACEs need at least header(8)+mask(4)+flags(4)=16 (M-6).
+	// Per-type minimum: ACE header is 4 bytes (type+flags+size), so:
+	// standard ACEs: header(4)+mask(4)+min-SID(8)=16; we use 20 for safety margin.
+	// object ACEs: header(4)+mask(4)+flags(4)=12 minimum; we use 16 (M-6).
 	var minSize int
 	switch aceType {
 	case 0x05, 0x06, 0x0B, 0x0C:
@@ -725,15 +726,6 @@ func detectDangerousRights(ace ACE) []ACLRight {
 	return deduped
 }
 
-// containsRight reports whether right is already in the list.
-func containsRight(rights []ACLRight, right ACLRight) bool {
-	for _, r := range rights {
-		if r == right {
-			return true
-		}
-	}
-	return false
-}
 
 // ============================================================
 // Helper structures and functions
