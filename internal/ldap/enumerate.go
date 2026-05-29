@@ -434,6 +434,11 @@ func parseGroupType(val string) string {
 func (c *Client) printQuickFindings(result *EnumerationResult) {
 	kerberoastable, asrep, adminUsers, pwdNeverExpires := 0, 0, 0, 0
 	for _, u := range result.Users {
+		// adminCount=1 is significant even for disabled accounts (SDProp still protects them,
+		// and they can be re-enabled). Count all adminCount regardless of Enabled state (M-11).
+		if u.AdminCount {
+			adminUsers++
+		}
 		if !u.Enabled {
 			continue
 		}
@@ -442,9 +447,6 @@ func (c *Client) printQuickFindings(result *EnumerationResult) {
 		}
 		if u.DontReqPreauth {
 			asrep++
-		}
-		if u.AdminCount {
-			adminUsers++
 		}
 		if u.PasswordNeverExpires {
 			pwdNeverExpires++

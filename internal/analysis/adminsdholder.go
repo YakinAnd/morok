@@ -214,12 +214,14 @@ func findCustomAdminSDHolderACEs(aces []ACE, nameMap map[string]nameInfo) []Admi
 			continue
 		}
 
-		// check if dangerous rights
+		// For Object ACEs with a non-null ObjectType, GENERIC_ALL and GENERIC_WRITE
+		// are scoped to that attribute/extended-right — not a full dangerous right (H-10).
+		// WRITE_DACL and WRITE_OWNER are standard security rights, not restricted by ObjectType.
 		mask := ace.AccessMask
-		dangerous := mask&ADS_RIGHT_GENERIC_ALL != 0 ||
-			mask&ADS_RIGHT_WRITE_DACL != 0 ||
-			mask&ADS_RIGHT_WRITE_OWNER != 0 ||
-			mask&ADS_RIGHT_GENERIC_WRITE != 0
+		isObjectACE := ace.ACEType == 0x05 || ace.ACEType == 0x06
+		scopedByObjType := isObjectACE && ace.ObjectType != ""
+		dangerous := (mask&ADS_RIGHT_WRITE_DACL != 0 || mask&ADS_RIGHT_WRITE_OWNER != 0) ||
+			(!scopedByObjType && (mask&ADS_RIGHT_GENERIC_ALL != 0 || mask&ADS_RIGHT_GENERIC_WRITE != 0))
 
 		if !dangerous {
 			continue

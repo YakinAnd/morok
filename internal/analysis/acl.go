@@ -270,20 +270,18 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 }
 
 // isBuiltinDCSyncSID returns true for well-known SIDs that legitimately hold
-// DCSync rights (Domain Controllers, Administrators, Domain/Enterprise Admins).
-// SID suffix matching is used instead of name matching so that custom groups
-// named "Administrators" or "Enterprise Admins" are not silently skipped.
+// broad rights over privileged AD objects. SID-based (not name-based) to prevent
+// bypass via custom groups named after built-in groups (H-7).
 func isBuiltinDCSyncSID(sid string) bool {
-	// S-1-5-9 — Enterprise Domain Controllers (forest-wide)
-	if sid == "S-1-5-9" {
+	switch sid {
+	case "S-1-5-9",      // Enterprise Domain Controllers
+		"S-1-5-18",     // SYSTEM
+		"S-1-5-32-544": // BUILTIN\Administrators
 		return true
 	}
-	// S-1-5-32-544 — BUILTIN\Administrators
-	if sid == "S-1-5-32-544" {
-		return true
-	}
-	// Domain-relative well-known RIDs: -512 DA, -516 DCs, -519 EA, -521 RODC
-	for _, suffix := range []string{"-512", "-516", "-519", "-521"} {
+	// Domain-relative well-known RIDs:
+	// -500 Administrator, -512 DA, -516 DCs, -518 Schema Admins, -519 EA, -521 RODC
+	for _, suffix := range []string{"-500", "-512", "-516", "-518", "-519", "-521"} {
 		if strings.HasSuffix(sid, suffix) {
 			return true
 		}
@@ -335,13 +333,9 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 			continue
 		}
 		if isBuiltinDCSyncSID(ownerSID) {
-			continue // expected privileged owner
+			continue // expected privileged owner (SID-based, not name-based — H-7)
 		}
-		// check if it's another privileged-group member by SID
 		info, inMap := nameMap[ownerSID]
-		if inMap && isPrivilegedPrincipal(info.Name) {
-			continue
-		}
 		ownerName := ownerSID
 		if inMap {
 			ownerName = info.Name
@@ -542,8 +536,17 @@ func parseACE(data []byte, offset int) (ACE, int, error) {
 	aceType := data[offset]
 	aceSize := int(readUint16LE(data, offset+2))
 
-	if aceSize < 8 || offset+aceSize > len(data) {
-		return ACE{}, aceSize, fmt.Errorf("invalid ACE size")
+	// Per-type minimum: standard ACEs need at least header(8)+mask(4)+min-SID(8)=20;
+	// object ACEs need at least header(8)+mask(4)+flags(4)=16 (M-6).
+	var minSize int
+	switch aceType {
+	case 0x05, 0x06, 0x0B, 0x0C:
+		minSize = 16
+	default:
+		minSize = 20
+	}
+	if aceSize < minSize || offset+aceSize > len(data) {
+		return ACE{}, aceSize, fmt.Errorf("invalid ACE size %d (min %d for type 0x%02x)", aceSize, minSize, aceType)
 	}
 
 	ace := ACE{ACEType: aceType}
