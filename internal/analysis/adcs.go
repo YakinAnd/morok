@@ -152,8 +152,12 @@ var ekuNameMap = map[string]string{
 	"1.3.6.1.4.1.311.10.3.4":   "EFS",
 }
 
-// EKUs that enable authentication (needed for ESC1/ESC9 gating)
+// EKUs that enable authentication (needed for ESC1/ESC9 gating).
+// Matches certipy's AUTHENTICATION_EKUS: Server Auth is included because a
+// cert with enrollee-supplied SAN + Server Auth can be used in S4U2Self/PKINIT
+// attack chains even without Client Auth (confirmed by certipy and Certify).
 var authEKUs = map[string]bool{
+	"1.3.6.1.5.5.7.3.1":      true, // Server Authentication
 	"1.3.6.1.5.5.7.3.2":      true, // Client Authentication
 	"1.3.6.1.4.1.311.20.2.2": true, // Smart Card Logon
 	"1.3.6.1.5.2.3.4":        true, // PKINIT Client Authentication (RFC 4556)
