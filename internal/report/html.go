@@ -4261,6 +4261,9 @@ function limitTableRows(tableId) {
   btn.onclick = function() {
     rows.forEach(function(r) { if (r.dataset.limited) r.style.display = ''; });
     btn.remove();
+    // Re-apply any active filter — clicking "Show all" must not bypass current filters.
+    const countId = tableId.replace('tbl-', 'cnt-');
+    if (document.getElementById(countId)) filterTable(tableId, countId);
   };
   (wrap || tbody).after(btn);
 }
