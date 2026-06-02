@@ -3919,6 +3919,15 @@ function filterTable(tableId, countId) {
     const el = document.getElementById(countId);
     if (el) el.textContent = visible + ' / ' + rows.length;
   }
+
+  // Hide "Show all" button while any filter is active; restore it when cleared.
+  if (wrap) {
+    const showAllBtn = wrap.nextElementSibling;
+    if (showAllBtn && showAllBtn.classList.contains('show-all-btn')) {
+      const anyActive = queryLow || Array.from(selects).some(s => s.value);
+      showAllBtn.style.display = anyActive ? 'none' : '';
+    }
+  }
 }
 
 function clearFilters(tableId, countId) {
@@ -3930,13 +3939,7 @@ function clearFilters(tableId, countId) {
     bar.querySelectorAll('input[type=text]').forEach(i => i.value = '');
     bar.querySelectorAll('select').forEach(s => s.value = '');
   }
-  filterTable(tableId, countId);
-  // filterTable already shows all rows when no filters are active — remove the
-  // stale "Show all" button so it doesn't reappear as a confusing orphan.
-  if (wrap) {
-    const btn = wrap.nextElementSibling;
-    if (btn && btn.classList.contains('show-all-btn')) btn.remove();
-  }
+  filterTable(tableId, countId); // also re-shows "Show all" button when no filter active
 }
 
 function filterACL() {
