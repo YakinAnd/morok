@@ -3931,6 +3931,12 @@ function clearFilters(tableId, countId) {
     bar.querySelectorAll('select').forEach(s => s.value = '');
   }
   filterTable(tableId, countId);
+  // filterTable already shows all rows when no filters are active — remove the
+  // stale "Show all" button so it doesn't reappear as a confusing orphan.
+  if (wrap) {
+    const btn = wrap.nextElementSibling;
+    if (btn && btn.classList.contains('show-all-btn')) btn.remove();
+  }
 }
 
 function filterACL() {
