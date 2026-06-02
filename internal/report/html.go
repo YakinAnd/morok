@@ -436,6 +436,10 @@ func buildUserPrivGroups(result *adldap.EnumerationResult) map[string]string {
 				found = append(found, name)
 			}
 		}
+		// Primary group is not included in memberOf by AD — check it separately.
+		if u.PrimaryGroup != "" && privNames[strings.ToLower(u.PrimaryGroup)] {
+			found = append(found, u.PrimaryGroup)
+		}
 		if len(found) > 0 {
 			out[u.DN] = strings.Join(found, ", ")
 		}
