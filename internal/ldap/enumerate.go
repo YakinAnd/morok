@@ -434,6 +434,11 @@ func parseGroupType(val string) string {
 func (c *Client) printQuickFindings(result *EnumerationResult) {
 	kerberoastable, asrep, adminUsers, pwdNeverExpires := 0, 0, 0, 0
 	for _, u := range result.Users {
+		// adminCount=1 is significant even for disabled accounts (SDProp still protects them,
+		// and they can be re-enabled). Count all adminCount regardless of Enabled state (M-11).
+		if u.AdminCount {
+			adminUsers++
+		}
 		if !u.Enabled {
 			continue
 		}
@@ -442,9 +447,6 @@ func (c *Client) printQuickFindings(result *EnumerationResult) {
 		}
 		if u.DontReqPreauth {
 			asrep++
-		}
-		if u.AdminCount {
-			adminUsers++
 		}
 		if u.PasswordNeverExpires {
 			pwdNeverExpires++
@@ -540,7 +542,12 @@ func (c *Client) enumerateComputersForest() ([]LDAPComputer, bool, error) {
 }
 
 // queryChildDomainComputers resolves the child domain's DC via DNS and queries it.
+// When a proxy is configured the DNS lookup is skipped and the hostname is passed
+// directly to SearchDomain so the proxy handles resolution (C-1).
 func (c *Client) queryChildDomainComputers(domain, baseDN string) ([]*goldap.Entry, error) {
+	if c.ProxyURL != "" {
+		return c.SearchDomain(domain, baseDN, FilterAllComputers, computerAttributes)
+	}
 	addrs, err := net.LookupHost(domain)
 	if err != nil || len(addrs) == 0 {
 		return nil, fmt.Errorf("DNS lookup for %s: %w", domain, err)

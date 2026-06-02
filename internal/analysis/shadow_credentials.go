@@ -73,7 +73,8 @@ func AnalyzeShadowCredentials(client *adldap.Client, result *adldap.EnumerationR
 		}
 
 		for _, ace := range aces {
-			if ace.ACEType == 0x01 || ace.ACEType == 0x06 { // deny
+			if ace.ACEType == 0x01 || ace.ACEType == 0x06 ||
+				ace.ACEType == 0x0A || ace.ACEType == 0x0C { // deny (incl. callback)
 				continue
 			}
 
@@ -122,8 +123,13 @@ func AnalyzeShadowCredentials(client *adldap.Client, result *adldap.EnumerationR
 func shadowCredRight(ace ACE) string {
 	mask := ace.AccessMask
 
-	// GenericAll or WriteDACL/WriteOwner — full control implies attribute write
-	if mask&ADS_RIGHT_GENERIC_ALL != 0 {
+	// Object ACEs with a non-null ObjectType scope GenericAll/GenericWrite to
+	// that specific attribute or extended-right — not a full object takeover (H-5).
+	// WRITE_DACL/WRITE_OWNER are standard security rights, not limited by ObjectType.
+	isObjectACE := ace.ACEType == 0x05 || ace.ACEType == 0x0B
+	scopedByObjType := isObjectACE && ace.ObjectType != ""
+
+	if !scopedByObjType && mask&ADS_RIGHT_GENERIC_ALL != 0 {
 		return "GenericAll"
 	}
 	if mask&ADS_RIGHT_WRITE_DACL != 0 {
@@ -132,7 +138,7 @@ func shadowCredRight(ace ACE) string {
 	if mask&ADS_RIGHT_WRITE_OWNER != 0 {
 		return "WriteOwner"
 	}
-	if mask&ADS_RIGHT_GENERIC_WRITE != 0 {
+	if !scopedByObjType && mask&ADS_RIGHT_GENERIC_WRITE != 0 {
 		return "GenericWrite"
 	}
 

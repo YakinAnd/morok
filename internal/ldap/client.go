@@ -442,7 +442,11 @@ func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, 
 func (c *Client) SearchDomain(dc, baseDN, filter string, attributes []string) ([]*goldap.Entry, error) {
 	address := fmt.Sprintf("%s:389", dc)
 
-	netConn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	dialer, err := c.buildDialer(5 * time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("cross-domain dialer error: %w", err)
+	}
+	netConn, err := dialer.Dial("tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("cross-domain connection to %s failed: %w", address, err)
 	}

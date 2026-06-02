@@ -174,7 +174,7 @@ func Generate(
 	data := ReportData{
 	Domain:               result.Domain,
 	GeneratedAt:          time.Now().Format("2006-01-02 15:04:05"),
-	Version:              "1.2.0",
+	Version:              "1.2.1",
 	AuthMethod:           authMethod,
 	Users:                result.Users,
 	Groups:               result.Groups,
@@ -435,6 +435,10 @@ func buildUserPrivGroups(result *adldap.EnumerationResult) map[string]string {
 			if name, ok := groupByDN[strings.ToLower(dn)]; ok {
 				found = append(found, name)
 			}
+		}
+		// Primary group is not included in memberOf by AD — check it separately.
+		if u.PrimaryGroup != "" && privNames[strings.ToLower(u.PrimaryGroup)] {
+			found = append(found, u.PrimaryGroup)
 		}
 		if len(found) > 0 {
 			out[u.DN] = strings.Join(found, ", ")
@@ -3919,6 +3923,15 @@ function filterTable(tableId, countId) {
     const el = document.getElementById(countId);
     if (el) el.textContent = visible + ' / ' + rows.length;
   }
+
+  // Hide "Show all" button while any filter is active; restore it when cleared.
+  if (wrap) {
+    const showAllBtn = wrap.nextElementSibling;
+    if (showAllBtn && showAllBtn.classList.contains('show-all-btn')) {
+      const anyActive = queryLow || Array.from(selects).some(s => s.value);
+      showAllBtn.style.display = anyActive ? 'none' : '';
+    }
+  }
 }
 
 function clearFilters(tableId, countId) {
@@ -3930,7 +3943,7 @@ function clearFilters(tableId, countId) {
     bar.querySelectorAll('input[type=text]').forEach(i => i.value = '');
     bar.querySelectorAll('select').forEach(s => s.value = '');
   }
-  filterTable(tableId, countId);
+  filterTable(tableId, countId); // also re-shows "Show all" button when no filter active
 }
 
 function filterACL() {
@@ -4261,6 +4274,9 @@ function limitTableRows(tableId) {
   btn.onclick = function() {
     rows.forEach(function(r) { if (r.dataset.limited) r.style.display = ''; });
     btn.remove();
+    // Re-apply any active filter — clicking "Show all" must not bypass current filters.
+    const countId = tableId.replace('tbl-', 'cnt-');
+    if (document.getElementById(countId)) filterTable(tableId, countId);
   };
   (wrap || tbody).after(btn);
 }

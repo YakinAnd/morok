@@ -148,12 +148,26 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 	// adminCount=1 users. Permissions on regular users/workstations represent
 	// normal IT delegation and produce thousands of false positives at scale.
 	privTargets := buildPrivilegedTargetDNs(result)
+	// Domain root DN is a privileged target: WriteDACL/GenericAll on it enables DCSync and GPO abuse.
+	privTargets[strings.ToLower(client.GetBaseDN())] = true
+
+	// Build DN→SID reverse map once so parseACLEntry lookups are O(1) not O(N) (H-4).
+	dnSIDMap := buildDNSIDMap(result)
+	for _, extra := range extraResults {
+		if extra != nil {
+			for k, v := range buildDNSIDMap(extra) {
+				if _, exists := dnSIDMap[k]; !exists {
+					dnSIDMap[k] = v
+				}
+			}
+		}
+	}
 
 	for _, entry := range entries {
 		if !privTargets[strings.ToLower(entry.DN)] {
 			continue
 		}
-		findings := parseACLEntry(entry, nameMap, result)
+		findings := parseACLEntry(entry, nameMap, dnSIDMap)
 		aclResult.Findings = append(aclResult.Findings, findings...)
 	}
 	aclResult.Findings = filterSystemACL(aclResult.Findings)
@@ -169,7 +183,8 @@ func AnalyzeACL(client *adldap.Client, result *adldap.EnumerationResult, extraRe
 	}
 
 	// Owner check: non-default owner on privileged objects has implicit WriteDACL.
-	aclResult.OwnerFindings = checkPrivilegedOwners(entries, nameMap, result)
+	// Also check the domain root — its owner can grant themselves DCSync rights.
+	aclResult.OwnerFindings = checkPrivilegedOwners(entries, nameMap, result, client.GetBaseDN())
 
 	return aclResult, nil
 }
@@ -267,20 +282,18 @@ func checkDCSync(entries []*goldap.Entry, nameMap map[string]nameInfo, baseDN st
 }
 
 // isBuiltinDCSyncSID returns true for well-known SIDs that legitimately hold
-// DCSync rights (Domain Controllers, Administrators, Domain/Enterprise Admins).
-// SID suffix matching is used instead of name matching so that custom groups
-// named "Administrators" or "Enterprise Admins" are not silently skipped.
+// broad rights over privileged AD objects. SID-based (not name-based) to prevent
+// bypass via custom groups named after built-in groups (H-7).
 func isBuiltinDCSyncSID(sid string) bool {
-	// S-1-5-9 — Enterprise Domain Controllers (forest-wide)
-	if sid == "S-1-5-9" {
+	switch sid {
+	case "S-1-5-9",      // Enterprise Domain Controllers
+		"S-1-5-18",     // SYSTEM
+		"S-1-5-32-544": // BUILTIN\Administrators
 		return true
 	}
-	// S-1-5-32-544 — BUILTIN\Administrators
-	if sid == "S-1-5-32-544" {
-		return true
-	}
-	// Domain-relative well-known RIDs: -512 DA, -516 DCs, -519 EA, -521 RODC
-	for _, suffix := range []string{"-512", "-516", "-519", "-521"} {
+	// Domain-relative well-known RIDs:
+	// -500 Administrator, -512 DA, -516 DCs, -518 Schema Admins, -519 EA, -521 RODC
+	for _, suffix := range []string{"-500", "-512", "-516", "-518", "-519", "-521"} {
 		if strings.HasSuffix(sid, suffix) {
 			return true
 		}
@@ -288,12 +301,13 @@ func isBuiltinDCSyncSID(sid string) bool {
 	return false
 }
 
-// checkPrivilegedOwners scans the SD of privileged objects (DA/EA/DC members)
-// for non-default owners. The owner of any AD object has implicit WriteDACL rights
-// regardless of the DACL, making non-default ownership a backdoor primitive.
-func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo, result *adldap.EnumerationResult) []OwnerFinding {
+// checkPrivilegedOwners scans the SD of privileged objects (DA/EA/DC members and
+// the domain root) for non-default owners. The owner of any AD object has implicit
+// WriteDACL rights regardless of the DACL, making non-default ownership a backdoor
+// primitive. Domain root owner can trivially grant themselves DCSync rights (H-6).
+func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo, result *adldap.EnumerationResult, baseDN string) []OwnerFinding {
 	// Build set of privileged user DNs (members of DA/EA/SA/Administrators)
-	privDNs := make(map[string]string) // lower(DN) → SAMAccountName
+	privDNs := make(map[string]string) // lower(DN) → display name
 	for _, g := range result.Groups {
 		switch strings.ToLower(g.SAMAccountName) {
 		case "domain admins", "enterprise admins", "schema admins", "administrators":
@@ -306,6 +320,10 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 		if u.AdminCount {
 			privDNs[strings.ToLower(u.DN)] = u.SAMAccountName
 		}
+	}
+	// Domain root: owner can WriteDACL → grant DCSync rights.
+	if baseDN != "" {
+		privDNs[strings.ToLower(baseDN)] = "domain root"
 	}
 
 	const ownerVec = "AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H"
@@ -327,13 +345,9 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 			continue
 		}
 		if isBuiltinDCSyncSID(ownerSID) {
-			continue // expected privileged owner
+			continue // expected privileged owner (SID-based, not name-based — H-7)
 		}
-		// check if it's another privileged-group member by SID
 		info, inMap := nameMap[ownerSID]
-		if inMap && isPrivilegedPrincipal(info.Name) {
-			continue
-		}
 		ownerName := ownerSID
 		if inMap {
 			ownerName = info.Name
@@ -359,7 +373,7 @@ func checkPrivilegedOwners(entries []*goldap.Entry, nameMap map[string]nameInfo,
 func parseACLEntry(
 	entry *goldap.Entry,
 	nameMap map[string]nameInfo,
-	result *adldap.EnumerationResult,
+	dnSIDMap map[string]string,
 ) []ACLFinding {
 	var findings []ACLFinding
 
@@ -388,7 +402,7 @@ func parseACLEntry(
 		}
 
 
-		if strings.EqualFold(ace.SID, getSIDForDN(targetDN, result)) {
+		if ace.SID != "" && ace.SID == dnSIDMap[strings.ToLower(targetDN)] {
 			continue
 		}
 
@@ -496,7 +510,11 @@ func parseACL(data []byte, offset int) ([]ACE, error) {
 
 		ace, size, err := parseACE(data, aceOffset)
 		if err != nil {
-			aceOffset += 4
+			if size > 0 {
+				aceOffset += size // skip malformed ACE but stay aligned
+			} else {
+				break // can't read ACE header at all, abort
+			}
 			continue
 		}
 
@@ -530,8 +548,18 @@ func parseACE(data []byte, offset int) (ACE, int, error) {
 	aceType := data[offset]
 	aceSize := int(readUint16LE(data, offset+2))
 
-	if aceSize < 8 || offset+aceSize > len(data) {
-		return ACE{}, aceSize, fmt.Errorf("invalid ACE size")
+	// Per-type minimum: ACE header is 4 bytes (type+flags+size), so:
+	// standard ACEs: header(4)+mask(4)+min-SID(8)=16; we use 20 for safety margin.
+	// object ACEs: header(4)+mask(4)+flags(4)=12 minimum; we use 16 (M-6).
+	var minSize int
+	switch aceType {
+	case 0x05, 0x06, 0x0B, 0x0C:
+		minSize = 16
+	default:
+		minSize = 20
+	}
+	if aceSize < minSize || offset+aceSize > len(data) {
+		return ACE{}, aceSize, fmt.Errorf("invalid ACE size %d (min %d for type 0x%02x)", aceSize, minSize, aceType)
 	}
 
 	ace := ACE{ACEType: aceType}
@@ -651,31 +679,34 @@ func detectDangerousRights(ace ACE) []ACLRight {
 
 	var rights []ACLRight
 
-	if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 {
-		rights = append(rights, RightGenericAll)
-	}
-	if ace.AccessMask&ADS_RIGHT_WRITE_DACL != 0 {
-		rights = append(rights, RightWriteDACL)
-	}
-	if ace.AccessMask&ADS_RIGHT_WRITE_OWNER != 0 {
-		rights = append(rights, RightWriteOwner)
-	}
-	if ace.AccessMask&ADS_RIGHT_GENERIC_WRITE != 0 {
-		rights = append(rights, RightGenericWrite)
+	// Object ACEs (0x05/0x06) with a non-null ObjectType scope the access to a
+	// specific attribute, property set, or extended right. Standard security rights
+	// (WRITE_DACL, WRITE_OWNER) are NOT restricted by ObjectType, but GENERIC_ALL
+	// and GENERIC_WRITE are ambiguous in this context. To avoid false positives, for
+	// object ACEs we only check the broad rights when ObjectType is absent, and rely
+	// on GUID-based detection for extended-right ACEs (H-2).
+	isObjectACE := ace.ACEType == 0x05 || ace.ACEType == 0x06 ||
+		ace.ACEType == 0x0B || ace.ACEType == 0x0C
+	scopedByObjectType := isObjectACE && ace.ObjectType != ""
+
+	if !scopedByObjectType {
+		if ace.AccessMask&ADS_RIGHT_GENERIC_ALL != 0 {
+			rights = append(rights, RightGenericAll)
+		}
+		if ace.AccessMask&ADS_RIGHT_GENERIC_WRITE != 0 {
+			rights = append(rights, RightGenericWrite)
+		}
+		if ace.AccessMask&0x000F01FF == 0x000F01FF {
+			rights = append(rights, RightGenericAll)
+		}
 	}
 
-	if ace.AccessMask&0x000F01FF == 0x000F01FF {
-		rights = append(rights, RightGenericAll)
+	// Standard DACL/owner rights are not restricted by ObjectType — flag always.
+	if ace.AccessMask&ADS_RIGHT_WRITE_DACL != 0 || ace.AccessMask&0x00040000 != 0 {
+		rights = append(rights, RightWriteDACL)
 	}
-	if ace.AccessMask&0x00040000 != 0 {
-		if !containsRight(rights, RightWriteDACL) {
-			rights = append(rights, RightWriteDACL)
-		}
-	}
-	if ace.AccessMask&0x00080000 != 0 {
-		if !containsRight(rights, RightWriteOwner) {
-			rights = append(rights, RightWriteOwner)
-		}
+	if ace.AccessMask&ADS_RIGHT_WRITE_OWNER != 0 || ace.AccessMask&0x00080000 != 0 {
+		rights = append(rights, RightWriteOwner)
 	}
 
 	// Extended rights via GUID — must also verify the correct access-mask bit.
@@ -694,18 +725,19 @@ func detectDangerousRights(ace ACE) []ACLRight {
 		}
 	}
 
-	return rights
-}
-
-// containsRight reports whether right is already in the list.
-func containsRight(rights []ACLRight, right ACLRight) bool {
+	// Deduplicate (WriteDACL may appear from both bit paths).
+	seen := make(map[ACLRight]bool)
+	deduped := rights[:0]
 	for _, r := range rights {
-		if r == right {
-			return true
+		if !seen[r] {
+			seen[r] = true
+			deduped = append(deduped, r)
 		}
 	}
-	return false
+
+	return deduped
 }
+
 
 // ============================================================
 // Helper structures and functions
@@ -754,24 +786,26 @@ func getObjectType(entry *goldap.Entry) string {
 	return "object"
 }
 
-// getSIDForDN returns the ObjectSID for the given DN.
-func getSIDForDN(dn string, result *adldap.EnumerationResult) string {
+// buildDNSIDMap builds a lowercase-DN → ObjectSID lookup from all enumerated objects.
+// This replaces the O(N) per-ACE getSIDForDN scan with an O(1) map lookup (H-4).
+func buildDNSIDMap(result *adldap.EnumerationResult) map[string]string {
+	m := make(map[string]string, len(result.Users)+len(result.Groups)+len(result.Computers))
 	for _, u := range result.Users {
-		if strings.EqualFold(u.DN, dn) {
-			return u.ObjectSid
+		if u.ObjectSid != "" {
+			m[strings.ToLower(u.DN)] = u.ObjectSid
 		}
 	}
 	for _, g := range result.Groups {
-		if strings.EqualFold(g.DN, dn) {
-			return g.ObjectSid
+		if g.ObjectSid != "" {
+			m[strings.ToLower(g.DN)] = g.ObjectSid
 		}
 	}
 	for _, c := range result.Computers {
-		if strings.EqualFold(c.DN, dn) {
-			return c.ObjectSid
+		if c.ObjectSid != "" {
+			m[strings.ToLower(c.DN)] = c.ObjectSid
 		}
 	}
-	return ""
+	return m
 }
 
 

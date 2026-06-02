@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.2.1] — 2026-06-02
+
+### Security fixes
+
+- **Trust SID filtering direction-aware (H-1)** — SID filtering risk is now split by trust direction. Outbound/bidirectional trusts with SID filtering off are `High` (attacker in trusted domain can forge SIDs to escalate here). Inbound-only trusts are `Medium` (our principals could forge SIDs in the remote domain). Previously all were treated identically.
+- **Object ACE scoping (H-2, H-5)** — `GENERIC_ALL` and `GENERIC_WRITE` in Object ACEs (`ACCESS_ALLOWED_OBJECT_ACE`, type 0x05/0x0B) with a non-null `ObjectType` are now correctly scoped to that attribute only, not treated as full object takeover. Affects ACL, Shadow Credentials, and AdminSDHolder checks. Eliminates a class of false positives.
+- **ACL parser cursor desync (H-3)** — Variable-length SID fields in ACEs were not consumed correctly; remaining ACEs in a DACL could be mis-parsed. Fixed: cursor advances past the full SID length.
+- **Deny callback ACE types (H-5)** — Shadow Credentials check now skips ACE types 0x0A and 0x0C (deny callback Object ACEs) in addition to 0x01 and 0x06.
+- **DCSync domain owner check (H-6)** — Owner check now correctly compares against the domain root DN rather than a hardcoded string.
+- **ESC1 authentication EKU gate (M-15)** — ESC1 now requires at least one authentication-capable EKU. Server Authentication (`1.3.6.1.5.5.7.3.1`) added to the allowed set — certipy/Certify treat it as sufficient for S4U2Self/PKINIT abuse. Fixes a regression where WebServer-class templates were missed.
+- **ACE size validation** — Malformed ACEs shorter than their declared type's minimum size are now skipped rather than causing a parser panic.
+- **AdminSDHolder Object ACE scoping** — AdminSDHolder backdoor ACE check applies the same Object ACE scoping rules as the main ACL scan.
+
+### Performance
+
+- **O(1) DN→SID cache (H-4)** — `AnalyzeACL` now builds a single `map[string]string` (DN→SID) once per run instead of doing an O(N) linear scan per ACE. Large environments (10 k+ objects) see a significant speedup.
+
+### SOCKS5 proxy fixes (C-1)
+
+- **Cross-domain LDAP** — `SearchDomain` (used for child-domain computer enumeration) was using `net.DialTimeout` instead of the shared SOCKS5 dialer. Fixed.
+- **DNS lookup bypass** — `queryChildDomainComputers` resolved child-domain IPs via `net.LookupHost` even when `--proxy` was set, leaking DNS outside the tunnel. Fixed: when a proxy is configured the call goes through `SearchDomain` and hostname resolution is delegated to the SOCKS5 proxy.
+
+### HTML report — UI fixes
+
+- **Table filter hides non-matching rows** — clicking a group filter or typing in search now hides rows that don't match (previously rows were sorted to top but non-matching rows remained visible).
+- **Show all button re-applies filter** — "Show all N rows" now re-runs the active filter after revealing hidden rows, so non-matching rows stay hidden.
+- **Show all button hidden during active filter** — the button is suppressed while any filter is active to avoid confusion; it reappears when filters are cleared.
+- **Primary group highlights correctly** — users whose Primary Group is a privileged group (e.g. Domain Admins) are now highlighted red. AD does not include the primary group in `memberOf`, so a separate check on `PrimaryGroup` was added.
+
 ## [1.2.0] — 2026-05-28
 
 ### New features
