@@ -1,0 +1,27 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="iris" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f3c97a" stop-opacity="0.35"/>
+      <stop offset="60%" stop-color="#c9a961" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#c9a961" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <g transform="translate(100, 100)">
+    <circle cx="0" cy="0" r="65" fill="url(#iris)"/>
+    <circle cx="0" cy="0" r="65" fill="none" stroke="#c9a961" stroke-width="0.7" opacity="0.4"/>
+    <line x1="0" y1="0" x2="-31" y2="-31" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+    <line x1="0" y1="0" x2="31" y2="-31" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+    <line x1="0" y1="0" x2="-36" y2="22" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+    <line x1="0" y1="0" x2="36" y2="22" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+    <line x1="0" y1="0" x2="0" y2="-38" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+    <line x1="0" y1="0" x2="0" y2="40" stroke="#c9a961" stroke-width="1.4" opacity="0.75"/>
+    <circle cx="-31" cy="-31" r="3.5" fill="#c9a961"/>
+    <circle cx="31" cy="-31" r="3.5" fill="#c9a961"/>
+    <circle cx="-36" cy="22" r="3.5" fill="#c9a961"/>
+    <circle cx="36" cy="22" r="3.5" fill="#c9a961"/>
+    <circle cx="0" cy="-38" r="3.5" fill="#c9a961"/>
+    <circle cx="0" cy="40" r="3.5" fill="#c9a961"/>
+    <path d="M 0 -12 L 12 0 L 0 12 L -12 0 Z" fill="#0a0d14" stroke="#8b1e3f" stroke-width="2"/>
+    <circle cx="0" cy="0" r="3" fill="#c9a961"/>
+  </g>
+</svg>
