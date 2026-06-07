@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2] — unreleased
+
+### Bug fixes
+
+- **LDAPS auto-upgrade** — when the DC is configured with LDAP signing enforced (`signing:Enforced`), plain LDAP binds were rejected with "DC requires LDAP signing" and morok stopped. Now: on result code 8 (strongerAuthRequired) or 13 (confidentialityRequired), morok automatically reconnects on port 636 (LDAPS) and retries the bind. Simple bind (`-u/-p`) and Pass-the-Hash (`-H`) both handle the auto-upgrade. No user action required — the existing command works unchanged on signing-enforced DCs.
+- **`--ldaps` flag** — forces LDAPS (port 636) from the start, skipping the plain LDAP attempt entirely. Useful when you know the DC enforces signing, or to avoid any plaintext LDAP traffic.
+
 ## [1.2.1] — 2026-06-02
 
 ### Security fixes
