@@ -39,6 +39,7 @@ var (
 	wordlistPath   string // --wordlist: path to username wordlist for kerb-enum
 	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
 	scanSYSVOL     bool   // --sysvol: scan SYSVOL share (slow over proxy — opt-in)
+	ldapsFlag      bool   // --ldaps: force LDAPS (port 636) from the start
 )
 
 // ============================================================
@@ -67,7 +68,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		color.New(color.FgYellow).Println("morok v1.2.1")
+		color.New(color.FgYellow).Println("morok v1.2.2")
 		color.New(color.FgHiBlack).Println("AD attack path enumerator  ·  see through the fog")
 		color.White("https://github.com/YakinAnd/morok")
 	},
@@ -179,6 +180,7 @@ func init() {
 		cmd.Flags().StringVar(&ccachePath, "ccache", "", "Path to Kerberos ccache file for Pass-the-Ticket")
 		cmd.Flags().StringVar(&dc, "dc", "", "Domain controller IP or hostname")
 		cmd.Flags().StringVar(&proxyURL, "proxy", "", "SOCKS5 proxy URL (e.g. socks5://127.0.0.1:1080) — PTT/ccache not supported through proxy")
+		cmd.Flags().BoolVar(&ldapsFlag, "ldaps", false, "Force LDAPS (port 636) — use when DC enforces LDAP signing")
 		cmd.Flags().StringVar(&scopeDN, "scope", "", "Restrict enumeration to specific OU/DN (e.g. OU=Finance,DC=corp,DC=local)")
 		cmd.Flags().BoolVar(&verbose, "verbose", false, "Show all findings without truncation (disables 5-item limit per section)")
 		cmd.MarkFlagRequired("domain")
@@ -249,6 +251,7 @@ func connectAndBind() (*adldap.Client, error) {
 	client.NTHash = ntHash
 	client.CcachePath = ccachePath
 	client.ProxyURL = proxyURL
+	client.LDAPS = ldapsFlag
 	client.Quiet = quietMode
 	if scopeDN != "" {
 		client.BaseDN = scopeDN
@@ -1725,7 +1728,7 @@ func trunc(s string, maxLen int) string {
 func printBanner() {
 	color.New(color.FgHiWhite).Println(`  MOROK`)
 	color.New(color.FgHiBlack).Println(`  SEE · THROUGH · THE · FOG`)
-	color.New(color.FgHiBlack).Println(`  v1.2.1  ·  AD Attack Path Analysis`)
+	color.New(color.FgHiBlack).Println(`  v1.2.2  ·  AD Attack Path Analysis`)
 	color.New(color.FgHiBlack).Println(`  ` + strings.Repeat("─", 40))
 }
 

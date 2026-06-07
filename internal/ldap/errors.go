@@ -175,3 +175,13 @@ func windowsLogonError(code int64) string {
 	}
 	return ""
 }
+
+// isSigningRequired returns true when the DC rejected the bind because it
+// enforces LDAP signing (code 8) or channel binding (code 13).
+func isSigningRequired(err error) bool {
+	var ldapErr *goldap.Error
+	if errors.As(err, &ldapErr) {
+		return ldapErr.ResultCode == 8 || ldapErr.ResultCode == 13
+	}
+	return false
+}

@@ -23,6 +23,7 @@ type Client struct {
 	NTHash     string // NT hash for Pass-the-Hash (NTLM auth)
 	CcachePath string // path to ccache file for Pass-the-Ticket (Kerberos auth)
 	ProxyURL   string // SOCKS5 proxy, e.g. socks5://127.0.0.1:1080 (PTT not supported through proxy)
+	LDAPS         bool   // force LDAPS (port 636) from the start
 	IsAnon        bool   // true after successful anonymous bind
 	PrimaryDomain string // auth domain for cross-domain binds (empty = use Domain)
 	BaseDN        string
@@ -51,10 +52,27 @@ func NewClient(domain, username, password, dc string, verbose bool) *Client {
 	}
 }
 
-// Connect dials the DC, trying port 389 first then 636 (LDAPS).
+// Connect dials the DC. If LDAPS is true, connects directly on port 636.
+// Otherwise tries port 389 first with automatic fallback to 636 on TCP failure.
 func (c *Client) Connect() error {
-	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
+	if c.LDAPS {
+		c.Port = 636
+		address := fmt.Sprintf("%s:%d", c.Host, c.Port)
+		if c.Verbose {
+			color.Blue("[*] Connecting to %s (LDAPS)", address)
+		}
+		conn, _, err := c.dialWithTimeout(address, true)
+		if err != nil {
+			return friendlyLDAPError(fmt.Errorf("LDAPS connection failed: %w", err))
+		}
+		c.conn = conn
+		if c.Verbose {
+			color.Green("[+] Connected to %s", address)
+		}
+		return nil
+	}
 
+	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
 	if c.Verbose {
 		color.Blue("[*] Connecting to %s", address)
 	}
@@ -80,6 +98,27 @@ func (c *Client) Connect() error {
 		color.Green("[+] Connected to %s", address)
 	}
 
+	return nil
+}
+
+// upgradeToLDAPS closes the current plain LDAP connection and reconnects on port 636.
+// Called automatically when the DC rejects a bind due to signing enforcement (code 8/13).
+func (c *Client) upgradeToLDAPS() error {
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+		c.saslWrap = nil
+	}
+	c.Port = 636
+	if !c.Quiet {
+		color.White("  DC requires LDAP signing — upgrading to LDAPS (port 636)...")
+	}
+	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
+	conn, _, err := c.dialWithTimeout(address, true)
+	if err != nil {
+		return err
+	}
+	c.conn = conn
 	return nil
 }
 
@@ -177,11 +216,19 @@ func (c *Client) Bind() error {
 
 	err := c.conn.Bind(upn, c.Password)
 	if err != nil {
-		// retry with DOMAIN\user format
-		nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(authDomain, ".")[0]), c.Username)
-		err2 := c.conn.Bind(nt, c.Password)
-		if err2 != nil {
-			return friendlyLDAPError(err)
+		// DC enforces signing: auto-upgrade to LDAPS and retry
+		if isSigningRequired(err) && c.Port != 636 {
+			if upgradeErr := c.upgradeToLDAPS(); upgradeErr == nil {
+				err = c.conn.Bind(upn, c.Password)
+			}
+		}
+		if err != nil {
+			// retry with DOMAIN\user format
+			nt := fmt.Sprintf("%s\\%s", strings.ToUpper(strings.Split(authDomain, ".")[0]), c.Username)
+			err2 := c.conn.Bind(nt, c.Password)
+			if err2 != nil {
+				return friendlyLDAPError(err)
+			}
 		}
 	}
 
@@ -208,8 +255,17 @@ func (c *Client) BindNTLM() error {
 		color.Blue("[*] NTLM bind (Pass-the-Hash) as %s\\%s", netbiosDomain, c.Username)
 	}
 
-	if err := c.conn.NTLMBindWithHash(netbiosDomain, c.Username, c.NTHash); err != nil {
-		return friendlyLDAPError(err)
+	err := c.conn.NTLMBindWithHash(netbiosDomain, c.Username, c.NTHash)
+	if err != nil {
+		// DC enforces signing: auto-upgrade to LDAPS and retry
+		if isSigningRequired(err) && c.Port != 636 {
+			if upgradeErr := c.upgradeToLDAPS(); upgradeErr == nil {
+				err = c.conn.NTLMBindWithHash(netbiosDomain, c.Username, c.NTHash)
+			}
+		}
+		if err != nil {
+			return friendlyLDAPError(err)
+		}
 	}
 
 	if !c.Quiet {
@@ -371,36 +427,78 @@ func (c *Client) SearchBase(baseDN, filter string, attributes []string) ([]*gold
 // SearchGC connects to Global Catalog (port 3268) and searches the entire forest.
 // Returns all objects across all domains in the forest.
 // Supports password and NTLM hash auth; Kerberos ccache not yet supported.
+// Auto-upgrades to port 3269 (LDAPS GC) when DC enforces signing.
 func (c *Client) SearchGC(filter string, attributes []string) ([]*goldap.Entry, error) {
-	gcAddress := fmt.Sprintf("%s:3268", c.Host)
-
 	dialer, err := c.buildDialer(10 * time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("GC proxy setup failed: %w", err)
 	}
-	netConn, err := dialer.Dial("tcp", gcAddress)
-	if err != nil {
-		return nil, fmt.Errorf("GC connection to %s failed: %w", gcAddress, err)
+
+	// dialGC opens a GC connection, plain or TLS.
+	dialGC := func(useTLS bool) (*goldap.Conn, error) {
+		port := 3268
+		if useTLS || c.LDAPS {
+			port = 3269
+		}
+		addr := fmt.Sprintf("%s:%d", c.Host, port)
+		netConn, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			return nil, fmt.Errorf("GC connection to %s failed: %w", addr, err)
+		}
+		if useTLS || c.LDAPS {
+			tlsCfg := &tls.Config{InsecureSkipVerify: true, ServerName: c.Host}
+			tlsConn := tls.Client(netConn, tlsCfg)
+			if err := tlsConn.Handshake(); err != nil {
+				netConn.Close()
+				return nil, fmt.Errorf("GC TLS handshake failed: %w", err)
+			}
+			conn := goldap.NewConn(tlsConn, true)
+			conn.Start()
+			return conn, nil
+		}
+		wrap := newSASLConn(netConn)
+		conn := goldap.NewConn(wrap, false)
+		conn.Start()
+		return conn, nil
 	}
 
-	wrap := newSASLConn(netConn)
-	gcConn := goldap.NewConn(wrap, false)
-	gcConn.Start()
-	defer gcConn.Close()
+	gcConn, err := dialGC(false)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { gcConn.Close() }()
 
-	switch {
-	case c.NTHash != "":
-		netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
-		if err := gcConn.NTLMBindWithHash(netbios, c.Username, c.NTHash); err != nil {
-			return nil, friendlyLDAPError(err)
+	// bindGC authenticates on the given GC connection.
+	bindGC := func(conn *goldap.Conn) error {
+		switch {
+		case c.NTHash != "":
+			netbios := strings.ToUpper(strings.Split(c.Domain, ".")[0])
+			return conn.NTLMBindWithHash(netbios, c.Username, c.NTHash)
+		case c.Password != "" && c.Username != "":
+			upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
+			return conn.Bind(upn, c.Password)
+		default:
+			return fmt.Errorf("GC query requires credentials (anonymous/Kerberos not supported for GC yet)")
 		}
-	case c.Password != "" && c.Username != "":
-		upn := fmt.Sprintf("%s@%s", c.Username, c.Domain)
-		if err := gcConn.Bind(upn, c.Password); err != nil {
-			return nil, friendlyLDAPError(err)
+	}
+
+	if bindErr := bindGC(gcConn); bindErr != nil {
+		// DC enforces signing — upgrade to LDAPS GC (port 3269) and retry
+		if isSigningRequired(bindErr) && !c.LDAPS {
+			if !c.Quiet {
+				color.White("  DC requires LDAP signing — upgrading GC to LDAPS (port 3269)...")
+			}
+			gcConn.Close()
+			gcConn, err = dialGC(true)
+			if err != nil {
+				return nil, err
+			}
+			if bindErr = bindGC(gcConn); bindErr != nil {
+				return nil, friendlyLDAPError(bindErr)
+			}
+		} else {
+			return nil, friendlyLDAPError(bindErr)
 		}
-	default:
-		return nil, fmt.Errorf("GC query requires credentials (anonymous/Kerberos not supported for GC yet)")
 	}
 
 	searchReq := goldap.NewSearchRequest(

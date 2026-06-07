@@ -38,6 +38,7 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 - **Multi-domain** — follows forest trusts automatically; per-domain sections in CLI output and per-domain tabs in the HTML report
 - **Any privilege level** — works with any valid domain account; low-privilege is enough for most checks
 - **Multiple auth methods** — password, Pass-the-Hash (NTLM), Pass-the-Ticket (Kerberos ccache)
+- **LDAPS auto-upgrade** — automatically switches to LDAPS (port 636) when the DC enforces signing; `--ldaps` forces LDAPS from the start
 - **SOCKS5 proxy** — route all LDAP traffic through a proxy (`--proxy socks5://127.0.0.1:1080`)
 - **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
 - **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
@@ -79,6 +80,12 @@ morok enum -d corp.local -u administrator -H aad3b435b51404eeaad3b435b51404ee:88
 
 # Pass-the-Ticket (Kerberos ccache)
 morok enum -d corp.local --ccache /tmp/administrator.ccache --dc 10.0.0.1
+
+# DC with LDAP signing enforced (auto-detected, no flag needed)
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+
+# Force LDAPS explicitly
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --ldaps
 
 # SOCKS5 proxy (pivoting through a compromised host)
 morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --proxy socks5://127.0.0.1:1080
@@ -132,6 +139,7 @@ morok smb -d corp.local --dc 10.0.0.1
       --ccache      Kerberos ccache file path (Pass-the-Ticket)
       --dc          Domain controller IP or hostname
       --proxy       SOCKS5 proxy (socks5://host:port) — PTT not supported
+      --ldaps       Force LDAPS (port 636) — auto-detected when DC enforces signing
       --scope       Restrict to OU/DN
       --report      Save HTML report (e.g. report.html)
       --json        Export objects as JSON to directory
