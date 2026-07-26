@@ -10,6 +10,7 @@ import (
 
 type listFindingsIn struct {
 	Severity string `json:"severity,omitempty"`
+	Category string `json:"category,omitempty"`
 }
 
 // FindingEntry is one entry in the Out type for list_findings.
@@ -29,6 +30,9 @@ func listFindingsHandler(snap *report.Snapshot) func(context.Context, *mcp.CallT
 	return func(ctx context.Context, req *mcp.CallToolRequest, in listFindingsIn) (*mcp.CallToolResult, FindingList, error) {
 		var out FindingList
 		for category, findings := range snap.Findings {
+			if in.Category != "" && !strings.EqualFold(category, in.Category) {
+				continue
+			}
 			for _, f := range findings {
 				if in.Severity != "" && !strings.EqualFold(f.Severity, in.Severity) {
 					continue
@@ -62,7 +66,7 @@ func getRemediationChecklistHandler(snap *report.Snapshot) func(context.Context,
 	return func(ctx context.Context, req *mcp.CallToolRequest, in getRemediationChecklistIn) (*mcp.CallToolResult, RemediationChecklist, error) {
 		var out RemediationChecklist
 		for category, findings := range snap.Findings {
-			if in.Category != "" && category != in.Category {
+			if in.Category != "" && !strings.EqualFold(category, in.Category) {
 				continue
 			}
 			for _, f := range findings {
@@ -109,7 +113,7 @@ func getVulnerabilitySummaryHandler(snap *report.Snapshot) func(context.Context,
 func registerBlueteamTools(server *mcp.Server, snap *report.Snapshot) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_findings",
-		Description: "All findings across every category, optionally filtered by severity (Critical/High/Medium — case-insensitive).",
+		Description: "All findings across every category, optionally filtered by severity (Critical/High/Medium — case-insensitive) and/or category (e.g. \"acl\", \"vulns\" — case-insensitive, exact match). Both filters apply together when supplied.",
 	}, listFindingsHandler(snap))
 
 	mcp.AddTool(server, &mcp.Tool{

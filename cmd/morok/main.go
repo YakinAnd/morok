@@ -213,6 +213,7 @@ func init() {
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
 	enumUsersCmd.MarkFlagRequired("wordlist")
 
+	mcpCmd.SilenceUsage = true // don't dump usage on runtime errors (bad report path, parse failure)
 	mcpCmd.Flags().StringVar(&mcpReportPath, "report", "", "Path to an already-generated morok HTML report (required)")
 	mcpCmd.MarkFlagRequired("report")
 

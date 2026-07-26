@@ -28,6 +28,31 @@ func TestListFindingsHandler_FilterBySeverity(t *testing.T) {
 	}
 }
 
+func TestListFindingsHandler_FilterByCategory(t *testing.T) {
+	snap := testSnapshot()
+	_, out, err := listFindingsHandler(snap)(context.Background(), nil, listFindingsIn{Category: "ACL"})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	// testSnapshot has exactly 1 acl finding; category match is case-insensitive.
+	if len(out.Findings) != 1 || out.Findings[0].Category != "acl" {
+		t.Fatalf("Findings = %+v, want exactly the 1 acl finding (case-insensitive category match)", out.Findings)
+	}
+}
+
+func TestListFindingsHandler_FilterByCategoryAndSeverity(t *testing.T) {
+	snap := testSnapshot()
+	// vulns category has no Critical findings in the fixture, so combining
+	// filters should yield nothing even though "vulns" alone has 3 findings.
+	_, out, err := listFindingsHandler(snap)(context.Background(), nil, listFindingsIn{Category: "vulns", Severity: "critical"})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if len(out.Findings) != 0 {
+		t.Fatalf("Findings = %+v, want empty (category+severity filters both apply)", out.Findings)
+	}
+}
+
 func TestGetRemediationChecklistHandler_OnlyIncludesFindingsWithRemediation(t *testing.T) {
 	snap := testSnapshot()
 	_, out, err := getRemediationChecklistHandler(snap)(context.Background(), nil, getRemediationChecklistIn{})

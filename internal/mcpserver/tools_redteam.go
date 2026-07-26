@@ -26,7 +26,7 @@ func listAttackPathsHandler(snap *report.Snapshot) func(context.Context, *mcp.Ca
 		for i, p := range snap.AttackPaths {
 			out.Paths[i] = AttackPathSummary{Summary: p.Summary, TargetGroup: p.TargetGroup, Depth: p.Depth}
 		}
-		sort.Slice(out.Paths, func(i, j int) bool { return out.Paths[i].Depth < out.Paths[j].Depth })
+		sort.SliceStable(out.Paths, func(i, j int) bool { return out.Paths[i].Depth < out.Paths[j].Depth })
 		return nil, out, nil
 	}
 }
