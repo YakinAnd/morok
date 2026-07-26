@@ -21,3 +21,6 @@ cmd/spindemo/
 -o
 --help
 Demo_morok.gif
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
