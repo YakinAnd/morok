@@ -173,6 +173,23 @@ func buildSnapshot(d *ReportData) template.JS {
 		}
 	}
 
+	if d.VulnResult != nil {
+		for _, vf := range d.VulnResult.Findings {
+			status := "candidate"
+			switch vf.Status {
+			case analysis.VulnConfirmed:
+				status = "confirmed"
+			case analysis.VulnUnreachable:
+				status = "unreachable"
+			}
+			f["vulns"] = append(f["vulns"], SnapshotFinding{
+				Summary:     vf.CVE + "|" + vf.Name + "|" + status + "|" + vf.Host,
+				Detail:      vf.Detail,
+				Remediation: vf.Remediation,
+			})
+		}
+	}
+
 	b, _ := json.Marshal(snap)
 	return template.JS(b)
 }

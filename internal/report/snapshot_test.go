@@ -74,3 +74,43 @@ func TestBuildSnapshot_EmptyReportDataNoPanic(t *testing.T) {
 		t.Errorf("V = %d, want 2", snap.V)
 	}
 }
+
+func TestBuildSnapshot_VulnsCategory(t *testing.T) {
+	d := &ReportData{
+		VulnResult: &analysis.VulnResult{
+			Findings: []analysis.VulnFinding{
+				{
+					Host: "DC01$", FQDN: "dc01.corp.local", CVE: "CVE-2020-1472", Name: "Zerologon",
+					Status: analysis.VulnCandidate, Detail: "DC running Windows Server 2016",
+					Remediation: "Apply August 2020 CU.",
+				},
+				{
+					Host: "WS-XP01$", FQDN: "ws-xp01.corp.local", CVE: "MS17-010", Name: "EternalBlue",
+					Status: analysis.VulnConfirmed, Detail: "Trans2 probe confirmed",
+					Remediation: "Apply KB4012212.",
+				},
+			},
+		},
+	}
+
+	js := buildSnapshot(d)
+
+	var snap Snapshot
+	if err := json.Unmarshal([]byte(js), &snap); err != nil {
+		t.Fatalf("unmarshal snapshot: %v", err)
+	}
+
+	vulns := snap.Findings["vulns"]
+	if len(vulns) != 2 {
+		t.Fatalf("Findings[vulns] len = %d, want 2", len(vulns))
+	}
+	if vulns[0].Summary != "CVE-2020-1472|Zerologon|candidate|DC01$" {
+		t.Errorf("vulns[0].Summary = %q, want %q", vulns[0].Summary, "CVE-2020-1472|Zerologon|candidate|DC01$")
+	}
+	if vulns[0].Detail != "DC running Windows Server 2016" || vulns[0].Remediation != "Apply August 2020 CU." {
+		t.Errorf("vulns[0] detail/remediation = %+v", vulns[0])
+	}
+	if vulns[1].Summary != "MS17-010|EternalBlue|confirmed|WS-XP01$" {
+		t.Errorf("vulns[1].Summary = %q, want %q", vulns[1].Summary, "MS17-010|EternalBlue|confirmed|WS-XP01$")
+	}
+}

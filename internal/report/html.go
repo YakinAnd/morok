@@ -4417,6 +4417,7 @@ var _HIST_CATEGORIES = [
   { key: 'shadow_creds',      label: 'Shadow Credentials',      tab: 'shadow' },
   { key: 'gpo_write',         label: 'GPO Write ACL',           tab: 'gpo' },
   { key: 'gpp_passwords',     label: 'GPP Passwords',           tab: 'gpo' },
+  { key: 'vulns',             label: 'Vulnerability Checks',    tab: 'computers' },
 ];
 
 function loadHistoryFiles(input) {
