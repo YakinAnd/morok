@@ -73,6 +73,9 @@ type ReportData struct {
 	TopIssues []TopIssue
 	// History tab — embedded JSON snapshot for cross-report comparison
 	SnapshotJSON template.JS
+	// v1.3 — vulnerability checks
+	VulnResult    *analysis.VulnResult
+	ComputerVulns map[string][]analysis.VulnFinding // SAMAccountName → findings
 }
 
 // TrustedDomainEnumResult — status of an automatically-enumerated trusted domain.
@@ -169,6 +172,7 @@ func Generate(
 	lapsACLResult  *analysis.LAPSACLResult,
 	trustedDomains []*TrustedDomainEnumResult,
 	authMethod string,
+	vulnResult *analysis.VulnResult,
 ) error {
 
 	data := ReportData{
@@ -207,6 +211,13 @@ func Generate(
 }
 	if shadowResult != nil {
 		data.Summary.ShadowCredCount = len(shadowResult.Findings)
+	}
+	if vulnResult != nil {
+		data.VulnResult = vulnResult
+		data.ComputerVulns = make(map[string][]analysis.VulnFinding)
+		for _, f := range vulnResult.Findings {
+			data.ComputerVulns[f.Host] = append(data.ComputerVulns[f.Host], f)
+		}
 	}
 	data.TotalCritical, data.TotalHigh, data.TotalMedium = CountRiskTotals(&data)
 	data.RiskScore = CalculateRiskScore(&data)
@@ -1286,6 +1297,12 @@ html[data-theme="light"] .header-logo svg path[fill="#0a0d14"] { fill: #faf8f3; 
 .badge-medium { background: var(--badge-med-bg); color: var(--badge-med-txt); }
 .badge-high { background: var(--badge-high-bg); color: var(--badge-high-txt); }
 .badge-critical { background: var(--badge-crit-bg); color: var(--badge-crit-txt); }
+.badge-vuln-candidate    { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; background: #7a5100; color: #fcd34d; margin: 1px 2px; cursor: default; }
+.badge-vuln-confirmed    { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; background: var(--badge-crit-bg); color: var(--badge-crit-txt); margin: 1px 2px; cursor: default; }
+.badge-vuln-unreachable  { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; background: #2d2d2d; color: #9ca3af; margin: 1px 2px; cursor: default; border: 1px solid #4b5563; }
+[data-theme="light"] .badge-vuln-candidate    { background: #fef3c7; color: #92400e; }
+[data-theme="light"] .badge-vuln-confirmed    { background: var(--badge-crit-bg); color: var(--badge-crit-txt); }
+[data-theme="light"] .badge-vuln-unreachable  { background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db; }
 .mitre-badge { display: inline-block; padding: 1px 6px; border-radius: 3px;
   font-size: 0.7rem; font-weight: 600; font-family: monospace;
   background: #2d1b69; color: #a78bfa; text-decoration: none;
@@ -2162,14 +2179,17 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
         <th class="sortable" onclick="sortTable(this)">CN</th>
         <th class="mono">SID</th>
         <th>Description</th>
+        <th>CVEs</th>
       </tr>
     </thead>
     <tbody>
     {{range .Computers}}
+    {{$vulns := index $.ComputerVulns .SAMAccountName}}
     <tr>
       <td class="mono" style="white-space:nowrap">
         {{.SAMAccountName}}
         {{if .IsGC}}<span style="color:var(--text-subtle);font-size:0.72rem" title="Partial data from Global Catalog">&nbsp;(GC)</span>{{end}}
+        {{if .IsDC}}<span style="color:var(--text-subtle);font-size:0.72rem" title="Domain Controller">&nbsp;DC</span>{{end}}
         {{if .DNSHostName}}<div style="color:var(--text-muted);font-size:0.78rem">{{.DNSHostName}}</div>{{end}}
       </td>
       <td class="mono">{{.Domain}}</td>
@@ -2186,6 +2206,13 @@ th.sort-desc::after { content: ' ▼'; color: var(--accent); }
       <td class="mono">{{.CN}}</td>
       <td class="mono" style="font-size:0.75rem;color:var(--text-subtle)">{{.ObjectSid}}</td>
       <td style="color:var(--text-muted)">{{.Description}}</td>
+      <td style="white-space:nowrap">
+        {{range $vulns}}
+          {{if eq .Status 1}}<span class="badge-vuln-confirmed"   title="{{.CVE}} — {{.Detail}}&#10;Remediation: {{.Remediation}}">⚠ {{.Name}}</span>{{end}}
+          {{if eq .Status 0}}<span class="badge-vuln-candidate"   title="{{.CVE}} — {{.Detail}}&#10;Remediation: {{.Remediation}}">{{.Name}}</span>{{end}}
+          {{if eq .Status 3}}<span class="badge-vuln-unreachable" title="{{.CVE}} — active probe failed: {{.ProbeError}}&#10;Build-based detection only. Verify manually if in scope.">~ {{.Name}}</span>{{end}}
+        {{end}}
+      </td>
     </tr>
     {{end}}
     </tbody>

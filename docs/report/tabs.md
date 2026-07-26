@@ -50,6 +50,9 @@ Group list with member count and description.
 
 Computer table with: OS version, LAPS status, last logon, domain, description.
 
+- **CVEs column** — vulnerability badges from `--vuln-check` (see [enum flags → Vulnerability checks](../commands/enum.md#vulnerability-checks---vuln-check)): yellow `candidate` (build-based, phase 1), red `⚠ CONFIRMED` (active probe, phase 2), grey `~ unverified` (probe could not reach the host). Hover a badge for the CVE ID, detail, and remediation. Badges do not affect the computed risk score.
+- **DC** tag next to the SAMAccountName marks Domain Controllers.
+
 ## Kerberos
 
 - Kerberoastable accounts (enabled accounts with SPNs)

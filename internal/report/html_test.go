@@ -105,6 +105,7 @@ func TestGenerateReport(t *testing.T) {
 		nil, // LAPSACLResult
 		nil, // TrustedDomains
 		"Password",
+		nil, // VulnResult
 	)
 	if err != nil {
 		t.Fatalf("Generate returned error: %v", err)

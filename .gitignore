@@ -19,3 +19,5 @@ cmd/gendemo/
 cmd/gendemo2/
 cmd/spindemo/
 -o
+--help
+Demo_morok.gif

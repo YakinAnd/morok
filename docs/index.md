@@ -28,6 +28,7 @@ morok connects to a Domain Controller over LDAP and runs a comprehensive securit
 | **AdminSDHolder** | Orphaned adminCount=1 objects, backdoor ACEs |
 | **LDAP Security** | Signing/channel binding enforcement, SASL mechanisms, anonymous read |
 | **Audit Policy** | Legacy audit categories, AD Recycle Bin, machine account quota |
+| **Vulnerability Checks** | EternalBlue, Zerologon, noPac, PetitPotam, PrintNightmare — passive build-based candidates always; `--vuln-check` adds active SMB confirmation |
 
 Every finding includes **next steps** (exploit commands) and **remediation guidance**.
 
@@ -36,13 +37,14 @@ Every finding includes **next steps** (exploit commands) and **remediation guida
 ## Key features
 
 - **Single binary** — no Neo4j, no Python, no BloodHound required
-- **Multi-domain** — follows forest trusts automatically; per-domain sections in CLI output and per-domain tabs in the HTML report
+- **Multi-domain** — `--follow-trusts` enumerates reachable forest trusts (opt-in — verify scope first); per-domain sections in CLI output and per-domain tabs in the HTML report
 - **Any privilege level** — works with any valid domain account; low-privilege is enough for most checks
 - **Multiple auth methods** — password, Pass-the-Hash (NTLM), Pass-the-Ticket (Kerberos ccache)
 - **LDAPS auto-upgrade** — automatically switches to LDAPS (port 636) when the DC enforces signing; `--ldaps` forces LDAPS from the start
 - **SOCKS5 proxy** — route all LDAP traffic through a proxy (`--proxy socks5://127.0.0.1:1080`)
 - **Scoped audit** — restrict enumeration to a specific OU (`--scope "OU=Finance,DC=corp,DC=local"`)
 - **JSON export** — export AD objects as JSON (`--json ./json_out/`); format compatible with BloodHound CE v5
+- **Vulnerability checks** — passive CVE candidate detection (EternalBlue, Zerologon, noPac, PetitPotam, PrintNightmare) always runs; `--vuln-check` adds active SMB probes to confirm EternalBlue/Zerologon/PrintNightmare
 - **Self-contained HTML report** — single file, dark/light theme, global search, D3.js attack path graph
 - **Remediation tracking** — the History tab in the HTML report compares any two (or more) morok reports side-by-side: executive verdict, risk score trend chart, and a per-category findings diff split into Regressions / Resolved / Outstanding. Runs entirely in the browser — no uploads, no server.
 - **CI mode** — `--quiet` prints a single-line verdict with no ANSI codes, safe for Jenkins/GitHub Actions/GitLab
@@ -85,6 +87,12 @@ morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --scope "OU=Financ
 
 # Stealth mode — minimal LDAP footprint (SIEM-heavy environments)
 morok enum --stealth -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1
+
+# Vulnerability checks — passive candidates always; --vuln-check confirms via active SMB probes
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --vuln-check
+
+# Follow trusted domains (opt-in — verify these are in scope first)
+morok enum -d corp.local -u jdoe -p 'Password1' --dc 10.0.0.1 --follow-trusts
 
 # Username enumeration without credentials (Kerberos AS-REQ)
 morok kerb-enum -d corp.local --dc 10.0.0.1 --wordlist users.txt

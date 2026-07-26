@@ -75,6 +75,7 @@ type LDAPComputer struct {
 	LAPSEnabled             bool
 	Domain                  string // e.g. "north.sevenkingdoms.local"
 	IsGC                    bool   // true if data came from GC (may be partial)
+	IsDC                    bool   // true if SERVER_TRUST_ACCOUNT (UAC 0x2000)
 	CN                      string
 	ChangedOn               string
 }
@@ -325,6 +326,7 @@ func parseComputer(entry *goldap.Entry) LDAPComputer {
 		Enabled:                 !isBitSet(uac, 0x0002),
 		LastLogon:               parseFileTime(entry.GetAttributeValue("lastLogonTimestamp")),
 		SPNs:                    entry.GetAttributeValues("servicePrincipalName"),
+		IsDC:                    isBitSet(uac, 0x2000),
 		UnconstrainedDelegation: isBitSet(uac, 0x80000) && !isBitSet(uac, 0x2000),
 		ObjectSid:               parseSIDBytes(entry.GetRawAttributeValue("objectSid")),
 		Description:             entry.GetAttributeValue("description"),

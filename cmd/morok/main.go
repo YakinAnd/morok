@@ -40,6 +40,8 @@ var (
 	stealth        bool   // --stealth: minimal LDAP queries, no GC, no heavy analysis
 	scanSYSVOL     bool   // --sysvol: scan SYSVOL share (slow over proxy — opt-in)
 	ldapsFlag      bool   // --ldaps: force LDAPS (port 636) from the start
+	vulnCheck      bool   // --vuln-check: active SMB probes on vulnerable candidates
+	followTrusts   bool   // --follow-trusts: enumerate and test trusted domains (opt-in — confirm scope with client)
 )
 
 // ============================================================
@@ -192,6 +194,8 @@ func init() {
 	enumCmd.Flags().BoolVar(&stealth, "stealth", false, "Stealth mode — minimal LDAP queries, no GC, no ACL/GPO/ADCS/delegation analysis")
 	enumCmd.Flags().BoolVar(&scanSYSVOL, "sysvol", false, "Scan SYSVOL share for GPP cPassword, scripts, and executables (slow over proxy — run separately when needed)")
 	enumCmd.Flags().BoolVar(&quietMode, "quiet", false, "Quiet mode — print only risk verdict line (for CI/scripting)")
+	enumCmd.Flags().BoolVar(&vulnCheck, "vuln-check", false, "Active SMB probes on vulnerability candidates (generates network traffic)")
+	enumCmd.Flags().BoolVar(&followTrusts, "follow-trusts", false, "Enumerate trusted domains (opt-in — verify these are in scope before use)")
 
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
 	enumUsersCmd.MarkFlagRequired("wordlist")
@@ -435,9 +439,9 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		lapsACLResult, _ = analysis.AnalyzeLAPSACL(client, result)
 	}
 
-	// ── Trusted domain enumeration (follow trusts automatically) ─────────────
+	// ── Trusted domain enumeration (opt-in via --follow-trusts) ─────────────
 	var trustedData []*trustedDomainData
-	if trustResult != nil && !stealth {
+	if followTrusts && trustResult != nil && !stealth {
 		for _, t := range trustResult.Trusts {
 			if t.Direction == analysis.TrustDirectionDisabled {
 				continue
@@ -538,8 +542,21 @@ func runEnum(cmd *cobra.Command, args []string) error {
 	cliCrit, cliHigh, cliMed := report.CountRiskTotals(cliRiskData)
 	cliRiskScore := report.CalculateRiskScore(cliRiskData)
 
+	// ── vulnerability checks (phase 1 always; phase 2 with --vuln-check) ─
+	var vulnResult *analysis.VulnResult
+	if result != nil && !stealth {
+		maq := 0
+		if auditResult != nil {
+			maq = auditResult.MachineAccountQuota
+		}
+		vulnResult = analysis.RunVulnChecks(result.Computers, maq, ldapSecResult, vulnCheck)
+	}
+
 	// ── terminal output ───────────────────────────────────────
 	printEnumSummary(rdsInfo, result, paths, kr, aclResult, adcsResult, shadowResult, smbResult, hr, ldapSecResult, auditResult, trustResult, trustedResults, trustedData, cliCrit, cliHigh, cliMed, cliRiskScore)
+	if !quietMode {
+		analysis.PrintVulnResult(vulnResult)
+	}
 
 	// ── HTML report (opt-in via --report) ────────────────────
 	if reportPath != "" {
@@ -553,7 +570,7 @@ func runEnum(cmd *cobra.Command, args []string) error {
 		case username == "":
 			authMethod = "Anonymous"
 		}
-		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, sysvolResult, lapsACLResult, trustedResults, authMethod); err != nil {
+		if err := report.Generate(outPath, result, g, paths, kr, aclResult, dr, gr, hr, psoResult, adcsResult, puResult, adminSDResult, trustResult, shadowResult, ldapSecResult, auditResult, smbResult, sysvolResult, lapsACLResult, trustedResults, authMethod, vulnResult); err != nil {
 			return fmt.Errorf("report error: %w", err)
 		}
 		if !quietMode {
