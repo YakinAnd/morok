@@ -20,6 +20,7 @@ func Serve(ctx context.Context, path string) error {
 
 	registerSharedTools(server, snap)
 	registerBlueteamTools(server, snap)
+	registerRedteamTools(server, snap)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
