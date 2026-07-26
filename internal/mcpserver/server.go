@@ -19,6 +19,7 @@ func Serve(ctx context.Context, path string) error {
 	server := mcp.NewServer(&mcp.Implementation{Name: "morok", Version: "1.2.2"}, nil)
 
 	registerSharedTools(server, snap)
+	registerBlueteamTools(server, snap)
 
 	return server.Run(ctx, &mcp.StdioTransport{})
 }
