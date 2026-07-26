@@ -114,3 +114,83 @@ func TestBuildSnapshot_VulnsCategory(t *testing.T) {
 		t.Errorf("vulns[1].Summary = %q, want %q", vulns[1].Summary, "MS17-010|EternalBlue|confirmed|WS-XP01$")
 	}
 }
+
+// TestBuildSnapshot_JSONKeyNamesLockedForHistoryTab guards the v1/v2
+// backward-compatibility contract the History tab's JS relies on: it reads
+// only .length on findings[category] arrays plus a fixed set of top-level
+// keys (v, generated_at, score.grade, score.value, counts.critical/high/
+// medium, findings). Unmarshaling into map[string]interface{} instead of the
+// typed Snapshot struct means this test checks the raw JSON key strings —
+// a json tag rename on Snapshot/SnapshotScore/SnapshotCounts would silently
+// break the History tab's ability to read old or new reports without this
+// test catching it, since a typed-struct-based test wouldn't notice a
+// renamed tag (the struct field would just go through json.Unmarshal fine).
+func TestBuildSnapshot_JSONKeyNamesLockedForHistoryTab(t *testing.T) {
+	d := &ReportData{
+		GeneratedAt: "2026-07-26 10:00:00",
+		Domain:      "test.local",
+		Version:     "1.3.0",
+		RiskScore:   RiskScore{Grade: "C", Total: 53},
+		ACLResult: &analysis.ACLResult{
+			Findings: []analysis.ACLFinding{
+				{PrincipalName: "tyrion", Right: analysis.RightWriteDACL, TargetName: "Small Council", Severity: "Critical", CVSS: 9.1},
+			},
+		},
+	}
+
+	js := buildSnapshot(d)
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(js), &raw); err != nil {
+		t.Fatalf("unmarshal snapshot into map: %v", err)
+	}
+
+	for _, key := range []string{"v", "generated_at", "domain", "version", "score", "counts", "findings"} {
+		if _, ok := raw[key]; !ok {
+			t.Errorf("top-level key %q missing from snapshot JSON: %+v", key, raw)
+		}
+	}
+
+	score, ok := raw["score"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("score = %#v, want map[string]interface{}", raw["score"])
+	}
+	for _, key := range []string{"grade", "value"} {
+		if _, ok := score[key]; !ok {
+			t.Errorf("score key %q missing: %+v", key, score)
+		}
+	}
+
+	counts, ok := raw["counts"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("counts = %#v, want map[string]interface{}", raw["counts"])
+	}
+	for _, key := range []string{"critical", "high", "medium"} {
+		if _, ok := counts[key]; !ok {
+			t.Errorf("counts key %q missing: %+v", key, counts)
+		}
+	}
+
+	findings, ok := raw["findings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("findings = %#v, want map[string]interface{}", raw["findings"])
+	}
+	aclRaw, ok := findings["acl"]
+	if !ok {
+		t.Fatalf("findings[\"acl\"] missing: %+v", findings)
+	}
+	aclArr, ok := aclRaw.([]interface{})
+	if !ok {
+		t.Fatalf("findings[\"acl\"] = %#v, want a JSON array (not an object)", aclRaw)
+	}
+	if len(aclArr) == 0 {
+		t.Fatal("findings[\"acl\"] is an empty array, want at least one entry")
+	}
+	entry, ok := aclArr[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("findings[\"acl\"][0] = %#v, want an object", aclArr[0])
+	}
+	if _, ok := entry["summary"]; !ok {
+		t.Errorf("findings[\"acl\"][0] missing %q key: %+v", "summary", entry)
+	}
+}
