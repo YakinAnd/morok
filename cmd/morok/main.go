@@ -15,6 +15,7 @@ import (
 	"github.com/YakinAnd/morok/internal/graph"
 	adkerberos "github.com/YakinAnd/morok/internal/kerberos"
 	adldap "github.com/YakinAnd/morok/internal/ldap"
+	"github.com/YakinAnd/morok/internal/mcpserver"
 	"github.com/YakinAnd/morok/internal/report"
 )
 
@@ -42,6 +43,7 @@ var (
 	ldapsFlag      bool   // --ldaps: force LDAPS (port 636) from the start
 	vulnCheck      bool   // --vuln-check: active SMB probes on vulnerable candidates
 	followTrusts   bool   // --follow-trusts: enumerate and test trusted domains (opt-in — confirm scope with client)
+	mcpReportPath  string // --report for `morok mcp`: path to an already-generated report
 )
 
 // ============================================================
@@ -74,6 +76,17 @@ var versionCmd = &cobra.Command{
 		color.New(color.FgHiBlack).Println("AD attack path enumerator  ·  see through the fog")
 		color.White("https://github.com/YakinAnd/morok")
 	},
+}
+
+var mcpCmd = &cobra.Command{
+	Use:     "mcp",
+	Short:   "Run an MCP server exposing a generated report's findings",
+	Example: `  morok mcp --report /tmp/corp.html`,
+	RunE:    runMCP,
+}
+
+func runMCP(cmd *cobra.Command, args []string) error {
+	return mcpserver.Serve(cmd.Context(), mcpReportPath)
 }
 
 var kerberosCmd = &cobra.Command{
@@ -200,9 +213,13 @@ func init() {
 	enumUsersCmd.Flags().StringVar(&wordlistPath, "wordlist", "", "Path to username wordlist (one username per line, required)")
 	enumUsersCmd.MarkFlagRequired("wordlist")
 
+	mcpCmd.Flags().StringVar(&mcpReportPath, "report", "", "Path to an already-generated morok HTML report (required)")
+	mcpCmd.MarkFlagRequired("report")
+
 	rootCmd.AddCommand(aclCmd)
 	rootCmd.AddCommand(enumCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(kerberosCmd)
 	rootCmd.AddCommand(delegationCmd)
 	rootCmd.AddCommand(gpoCmd)
