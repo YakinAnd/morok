@@ -1,7 +1,6 @@
 package report
 
 import (
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"os"
@@ -594,110 +593,6 @@ func marshalD3(d3 D3Graph) string {
 
 	sb.WriteString(`]}`)
 	return sb.String()
-}
-
-// ============================================================
-// Snapshot builder — embedded JSON for History tab cross-report comparison
-// ============================================================
-
-// buildSnapshot serializes a compact fingerprint of all findings into JSON.
-// The resulting blob is embedded in the HTML report so that other reports can
-// load this file as a "baseline" and compute NEW / FIXED / PERSISTENT diffs.
-func buildSnapshot(d *ReportData) template.JS {
-	type snapScore struct {
-		Grade string `json:"grade"`
-		Value int    `json:"value"`
-	}
-	type snapCounts struct {
-		Critical int `json:"critical"`
-		High     int `json:"high"`
-		Medium   int `json:"medium"`
-	}
-	type snapshot struct {
-		V           int                 `json:"v"`
-		GeneratedAt string              `json:"generated_at"`
-		Domain      string              `json:"domain"`
-		Version     string              `json:"version"`
-		Score       snapScore           `json:"score"`
-		Counts      snapCounts          `json:"counts"`
-		Findings    map[string][]string `json:"findings"`
-	}
-
-	snap := snapshot{
-		V:           1,
-		GeneratedAt: d.GeneratedAt,
-		Domain:      d.Domain,
-		Version:     d.Version,
-		Score:       snapScore{Grade: d.RiskScore.Grade, Value: d.RiskScore.Total},
-		Counts:      snapCounts{Critical: d.TotalCritical, High: d.TotalHigh, Medium: d.TotalMedium},
-		Findings:    make(map[string][]string),
-	}
-	f := snap.Findings
-
-	if d.KerberosResult != nil {
-		for _, acc := range d.KerberosResult.KerberoastableAccounts {
-			f["kerberoastable"] = append(f["kerberoastable"], acc.SAMAccountName)
-		}
-		for _, acc := range d.KerberosResult.ASREPAccounts {
-			f["asrep"] = append(f["asrep"], acc.SAMAccountName)
-		}
-	}
-
-	if d.ACLResult != nil {
-		for _, af := range d.ACLResult.Findings {
-			f["acl"] = append(f["acl"], af.PrincipalName+"|"+string(af.Right)+"|"+af.TargetName)
-		}
-	}
-
-	if d.DelegationResult != nil {
-		for _, df := range d.DelegationResult.Findings {
-			switch df.DelegationType {
-			case analysis.DelegationUnconstrained:
-				f["unconstrained_deleg"] = append(f["unconstrained_deleg"], df.SAMAccountName)
-			case analysis.DelegationConstrained:
-				f["constrained_deleg"] = append(f["constrained_deleg"], df.SAMAccountName+"|"+strings.Join(df.AllowedServices, ","))
-			case analysis.DelegationRBCD:
-				f["rbcd"] = append(f["rbcd"], df.SAMAccountName+"|"+strings.Join(df.TrusteeNames, ","))
-			}
-		}
-	}
-
-	for _, path := range d.AttackPaths {
-		if len(path.Nodes) > 0 {
-			f["attack_paths"] = append(f["attack_paths"],
-				fmt.Sprintf("%s→%s(%dhops)", path.Nodes[0].SAMAccountName, path.TargetGroup, path.Depth))
-		}
-	}
-
-	if d.ADCSResult != nil {
-		for _, tf := range d.ADCSResult.TemplateFindings {
-			vulns := make([]string, len(tf.VulnTypes))
-			for i, v := range tf.VulnTypes {
-				vulns[i] = string(v)
-			}
-			f["adcs_templates"] = append(f["adcs_templates"], tf.TemplateName+"|"+strings.Join(vulns, "/"))
-		}
-	}
-
-	if d.ShadowCredentialsResult != nil {
-		for _, sf := range d.ShadowCredentialsResult.Findings {
-			f["shadow_creds"] = append(f["shadow_creds"], sf.PrincipalName+"|"+sf.TargetName)
-		}
-	}
-
-	if d.GPOResult != nil {
-		for _, af := range d.GPOResult.GPOACLFindings {
-			f["gpo_write"] = append(f["gpo_write"], af.PrincipalName+"|"+af.GPOName)
-		}
-		for _, gpo := range d.GPOResult.GPOFindings {
-			if gpo.HasCPassword {
-				f["gpp_passwords"] = append(f["gpp_passwords"], gpo.Name)
-			}
-		}
-	}
-
-	b, _ := json.Marshal(snap)
-	return template.JS(b)
 }
 
 // ============================================================
@@ -4522,6 +4417,7 @@ var _HIST_CATEGORIES = [
   { key: 'shadow_creds',      label: 'Shadow Credentials',      tab: 'shadow' },
   { key: 'gpo_write',         label: 'GPO Write ACL',           tab: 'gpo' },
   { key: 'gpp_passwords',     label: 'GPP Passwords',           tab: 'gpo' },
+  { key: 'vulns',             label: 'Vulnerability Checks',    tab: 'computers' },
 ];
 
 function loadHistoryFiles(input) {

@@ -135,3 +135,4 @@ Pre-built binaries for Linux, macOS, and Windows are available on the [Releases]
 | `kerb-enum` | Username enumeration via Kerberos AS-REQ — no credentials required |
 | `smb` | SMB signing check on DC port 445 — no credentials required |
 | `version` | Print version |
+| `mcp` | Run an MCP server exposing a generated report's findings to MCP clients |

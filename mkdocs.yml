@@ -71,6 +71,7 @@ nav:
     - computers: commands/computers.md
     - kerb-enum: commands/kerb-enum.md
     - smb: commands/smb.md
+    - mcp: commands/mcp.md
   - HTML Report:
     - Overview: report/overview.md
     - Tabs reference: report/tabs.md
